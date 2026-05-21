@@ -10,6 +10,11 @@ struct GraphCanvasView: View {
     @State private var offset: CGSize = .zero
     @State private var lastScaleValue: CGFloat = 1
     @State private var selectedNodeID: String?
+    /// Wall-clock time of the most recent selection. Drives the
+    /// "selected node briefly doubles in size" pulse.
+    @State private var selectionPulseStart: TimeInterval?
+
+    private let selectionPulseDuration: Double = 0.4
 
     /// Cached node positions in world space. Rewritten when the graph
     /// changes (first to a circular seed, then to a force-directed layout
@@ -49,15 +54,19 @@ struct GraphCanvasView: View {
                     let s = scale
                     let off = offset
 
-                    // Subtle ambient drift — each node wobbles a couple of
-                    // pixels along an irreducible offset derived from its ID.
+                    // Subtle ambient drift — each node wanders along a sum
+                    // of two slow sinusoids at unrelated frequencies, with
+                    // four independent per-node phase offsets. The result
+                    // looks random and never quite repeats.
                     func driftFor(_ id: String) -> CGPoint {
-                        let h = Double(id.hashValue & 0xFFFF)
-                        let phase = h * 0.0001
-                        return CGPoint(
-                            x: sin(t * 0.35 + phase * 6.28) * 1.6,
-                            y: cos(t * 0.30 + phase * 6.28 + 1.2) * 1.6
-                        )
+                        let h = id.hashValue
+                        let pa = Double(h & 0xFFFF) / 65535.0 * 6.28318
+                        let pb = Double((h >> 16) & 0xFFFF) / 65535.0 * 6.28318
+                        let pc = Double((h >> 32) & 0xFFFF) / 65535.0 * 6.28318
+                        let pd = Double((h >> 48) & 0xFFFF) / 65535.0 * 6.28318
+                        let x = sin(t * 0.07 + pa) * 1.4 + sin(t * 0.13 + pb) * 0.7
+                        let y = cos(t * 0.06 + pc) * 1.4 + cos(t * 0.11 + pd) * 0.7
+                        return CGPoint(x: x, y: y)
                     }
 
                     func toScreen(_ id: String, _ p: CGPoint) -> CGPoint {
@@ -86,19 +95,34 @@ struct GraphCanvasView: View {
                     }
 
                     // Nodes
-                    let nodeRadius: CGFloat = 6
+                    let baseRadius: CGFloat = 6
                     let labelEnabled = s > 0.55
+                    // One-shot selection pulse: radius briefly doubles, then
+                    // eases back over `selectionPulseDuration`.
+                    let selectionPulse: CGFloat = {
+                        guard let start = selectionPulseStart else { return 0 }
+                        let elapsed = t - start
+                        guard elapsed >= 0, elapsed <= selectionPulseDuration else { return 0 }
+                        let phase = elapsed / selectionPulseDuration
+                        return CGFloat(sin(.pi * phase))
+                    }()
+
                     for node in store.graph.nodes.values {
                         guard let worldPoint = layout[node.id] else { continue }
                         let p = toScreen(node.id, worldPoint)
                         let inHighlight = !hasSelection || highlight.contains(node.id)
+                        let isSelected = selectedNodeID == node.id
+
+                        let nodeRadius: CGFloat = isSelected
+                            ? baseRadius * (1 + selectionPulse)
+                            : baseRadius
 
                         let fill = nodeColor(node).opacity(inHighlight ? 1.0 : dimOpacity)
                         let rect = CGRect(x: p.x - nodeRadius, y: p.y - nodeRadius,
                                           width: nodeRadius * 2, height: nodeRadius * 2)
                         context.fill(Path(ellipseIn: rect), with: .color(fill))
 
-                        if selectedNodeID == node.id {
+                        if isSelected {
                             let r: CGFloat = nodeRadius + 3
                             let ring = CGRect(x: p.x - r, y: p.y - r,
                                               width: r * 2, height: r * 2)
