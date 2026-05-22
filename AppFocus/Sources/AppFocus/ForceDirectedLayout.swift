@@ -9,13 +9,13 @@ import CoreGraphics
 /// Pure value-typed inputs and outputs so it's safe to run on a background
 /// `Task` and hand the result back to the main actor.
 struct ForceDirectedLayout: Sendable {
-    var iterations: Int = 220
+    var iterations: Int = 260
     /// Ideal edge length. Bigger value = more spread.
-    var idealEdgeLength: Double = 80
+    var idealEdgeLength: Double = 140
     /// Multiplier on the cooling temperature curve. Bigger = larger steps.
-    var temperatureScale: Double = 1.4
+    var temperatureScale: Double = 1.6
     /// Pulls every node weakly toward (0, 0). Bigger = tighter ball.
-    var gravity: Double = 0.04
+    var gravity: Double = 0.025
 
     func compute(nodeIDs: [String], edges: [(String, String)]) -> [String: CGPoint] {
         let n = nodeIDs.count

@@ -9,7 +9,8 @@ struct GraphCanvasView: View {
     @State private var scale: CGFloat = 1
     @State private var offset: CGSize = .zero
     @State private var lastScaleValue: CGFloat = 1
-    @State private var selectedNodeID: String?
+    /// Owned by `GraphView` so the inspector panel can drive it too.
+    @Binding var selectedNodeID: String?
     /// Wall-clock time of the most recent selection. Drives the
     /// "selected node briefly doubles in size" pulse.
     @State private var selectionPulseStart: TimeInterval?
@@ -29,7 +30,7 @@ struct GraphCanvasView: View {
     private enum LayoutKind { case none, circular, forceDirected }
 
     /// How many BFS hops from the selected node remain at full opacity.
-    private let highlightDepth = 2
+    private let highlightDepth = 1
 
     /// Opacity for nodes/edges outside the highlight set when a node is
     /// selected. 1.0 when no selection.
@@ -46,35 +47,43 @@ struct GraphCanvasView: View {
         GeometryReader { geo in
             let highlight = highlightedNodeIDs()
 
-            TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: false)) { timeline in
+            TimelineView(.periodic(from: .now, by: 1.0 / 30.0)) { timeline in
+                // Subtract a baseline so `t` stays a small positive double
+                // (timeIntervalSinceReferenceDate is currently ~8e8 — fine
+                // for sin precision but a bit absurd to multiply by).
                 let t = timeline.date.timeIntervalSinceReferenceDate
+                    .truncatingRemainder(dividingBy: 86400)
 
                 Canvas(opaque: false, rendersAsynchronously: false) { context, size in
                     let center = CGPoint(x: size.width / 2, y: size.height / 2)
                     let s = scale
                     let off = offset
 
-                    // Subtle ambient drift — each node wanders along a sum
-                    // of two slow sinusoids at unrelated frequencies, with
-                    // four independent per-node phase offsets. The result
-                    // looks random and never quite repeats.
+                    // Ambient drift — sea-anemone style: each node has its
+                    // own *frequency* per axis (not just phase), derived
+                    // from hash bits, so the field looks fully independent.
+                    // Angular velocities live in the 1–3 rad/sec range
+                    // (period ~2-6s) and amplitudes are in screen pixels.
                     func driftFor(_ id: String) -> CGPoint {
                         let h = id.hashValue
-                        let pa = Double(h & 0xFFFF) / 65535.0 * 6.28318
-                        let pb = Double((h >> 16) & 0xFFFF) / 65535.0 * 6.28318
-                        let pc = Double((h >> 32) & 0xFFFF) / 65535.0 * 6.28318
-                        let pd = Double((h >> 48) & 0xFFFF) / 65535.0 * 6.28318
-                        let x = sin(t * 0.07 + pa) * 1.4 + sin(t * 0.13 + pb) * 0.7
-                        let y = cos(t * 0.06 + pc) * 1.4 + cos(t * 0.11 + pd) * 0.7
+                        let pa = Double(h & 0xFF) / 255.0 * 6.28318
+                        let pb = Double((h >> 8) & 0xFF) / 255.0 * 6.28318
+                        let pc = Double((h >> 16) & 0xFF) / 255.0 * 6.28318
+                        let pd = Double((h >> 24) & 0xFF) / 255.0 * 6.28318
+                        // Frequencies: 1.0–2.5 and 1.4–2.9 rad/sec.
+                        let fa = 1.0 + Double((h >> 32) & 0xFF) / 255.0 * 1.5
+                        let fb = 1.4 + Double((h >> 40) & 0xFF) / 255.0 * 1.5
+                        let fc = 1.0 + Double((h >> 48) & 0xFF) / 255.0 * 1.5
+                        let fd = 1.4 + Double((h >> 56) & 0xFF) / 255.0 * 1.5
+                        let x = sin(t * fa + pa) * 8.0 + sin(t * fb + pb) * 4.0
+                        let y = cos(t * fc + pc) * 8.0 + cos(t * fd + pd) * 4.0
                         return CGPoint(x: x, y: y)
                     }
 
                     func toScreen(_ id: String, _ p: CGPoint) -> CGPoint {
                         let drift = driftFor(id)
-                        let wx = p.x + drift.x
-                        let wy = p.y + drift.y
-                        return CGPoint(x: center.x + wx * s + off.width,
-                                       y: center.y + wy * s + off.height)
+                        return CGPoint(x: center.x + p.x * s + off.width + drift.x,
+                                       y: center.y + p.y * s + off.height + drift.y)
                     }
 
                     let hasSelection = selectedNodeID != nil
@@ -94,11 +103,11 @@ struct GraphCanvasView: View {
                                        lineWidth: 1.2)
                     }
 
-                    // Nodes
-                    let baseRadius: CGFloat = 6
-                    let labelEnabled = s > 0.55
-                    // One-shot selection pulse: radius briefly doubles, then
-                    // eases back over `selectionPulseDuration`.
+                    // Nodes — radius scales with degree (min 10, sqrt curve so
+                    // hub nodes are clearly bigger without dwarfing leaves).
+                    // Label visibility raised so labels only render once
+                    // there's room (avoids the dense mass-of-text look).
+                    let labelEnabled = s > 0.85
                     let selectionPulse: CGFloat = {
                         guard let start = selectionPulseStart else { return 0 }
                         let elapsed = t - start
@@ -107,37 +116,62 @@ struct GraphCanvasView: View {
                         return CGFloat(sin(.pi * phase))
                     }()
 
+                    // Defer the selected node to a second pass so it draws
+                    // on top of everything else.
+                    var deferredSelected: (Node, CGPoint, CGFloat)?
+
+                    // First pass — all non-selected nodes.
                     for node in store.graph.nodes.values {
                         guard let worldPoint = layout[node.id] else { continue }
                         let p = toScreen(node.id, worldPoint)
-                        let inHighlight = !hasSelection || highlight.contains(node.id)
                         let isSelected = selectedNodeID == node.id
-
-                        let nodeRadius: CGFloat = isSelected
-                            ? baseRadius * (1 + selectionPulse)
-                            : baseRadius
-
-                        let fill = nodeColor(node).opacity(inHighlight ? 1.0 : dimOpacity)
-                        let rect = CGRect(x: p.x - nodeRadius, y: p.y - nodeRadius,
-                                          width: nodeRadius * 2, height: nodeRadius * 2)
-                        context.fill(Path(ellipseIn: rect), with: .color(fill))
+                        let baseRadius = radiusFor(nodeID: node.id)
 
                         if isSelected {
-                            let r: CGFloat = nodeRadius + 3
-                            let ring = CGRect(x: p.x - r, y: p.y - r,
-                                              width: r * 2, height: r * 2)
-                            context.stroke(Path(ellipseIn: ring),
-                                           with: .color(.accentColor), lineWidth: 2)
+                            deferredSelected = (node, p, baseRadius)
+                            continue
                         }
+
+                        let inHighlight = !hasSelection || highlight.contains(node.id)
+                        let fill = nodeColor(node).opacity(inHighlight ? 1.0 : dimOpacity)
+                        let rect = CGRect(x: p.x - baseRadius, y: p.y - baseRadius,
+                                          width: baseRadius * 2, height: baseRadius * 2)
+                        context.fill(Path(ellipseIn: rect), with: .color(fill))
 
                         if labelEnabled && inHighlight {
                             let resolved = context.resolve(
                                 Text(node.label).font(.system(size: 10))
                             )
                             context.draw(resolved,
-                                         at: CGPoint(x: p.x, y: p.y + nodeRadius + 8),
+                                         at: CGPoint(x: p.x, y: p.y + baseRadius + 5),
                                          anchor: .top)
                         }
+                    }
+
+                    // Second pass — the selected node, drawn last so it sits
+                    // on top of every edge, neighbor, and label.
+                    if let (node, p, baseRadius) = deferredSelected {
+                        let nodeRadius = baseRadius * (1 + selectionPulse)
+                        let fill = nodeColor(node)
+                        let rect = CGRect(x: p.x - nodeRadius, y: p.y - nodeRadius,
+                                          width: nodeRadius * 2, height: nodeRadius * 2)
+                        context.fill(Path(ellipseIn: rect), with: .color(fill))
+
+                        let r: CGFloat = nodeRadius + 3
+                        let ring = CGRect(x: p.x - r, y: p.y - r,
+                                          width: r * 2, height: r * 2)
+                        context.stroke(Path(ellipseIn: ring),
+                                       with: .color(.accentColor), lineWidth: 2)
+
+                        // Selected label is always visible (no zoom gate), so
+                        // the focus point can be read at any scale.
+                        let labelScale: CGFloat = 1 + selectionPulse
+                        let resolved = context.resolve(
+                            Text(node.label).font(.system(size: 11 * labelScale).weight(.semibold))
+                        )
+                        context.draw(resolved,
+                                     at: CGPoint(x: p.x, y: p.y + nodeRadius + 4 + (labelScale * 4)),
+                                     anchor: .top)
                     }
                 }
             }
@@ -163,6 +197,14 @@ struct GraphCanvasView: View {
         }
         .task(id: store.graph.nodes.count) {
             await rebuildLayoutPipeline()
+        }
+        .onChange(of: selectedNodeID) { _, newValue in
+            if newValue != nil {
+                // Match the time domain used inside the Canvas closure
+                // (timeline.date mod 86400) so `elapsed = t - start` is sane.
+                selectionPulseStart = Date().timeIntervalSinceReferenceDate
+                    .truncatingRemainder(dividingBy: 86400)
+            }
         }
     }
 
@@ -237,6 +279,18 @@ struct GraphCanvasView: View {
         adjacency = adj
     }
 
+    // MARK: - Node sizing by degree
+
+    private let minNodeRadius: CGFloat = 10
+    private let degreeRadiusFactor: CGFloat = 2.4   // multiplier on sqrt(degree)
+    private let maxNodeRadius: CGFloat = 28
+
+    private func radiusFor(nodeID: String) -> CGFloat {
+        let degree = adjacency[nodeID]?.count ?? 0
+        let scaled = minNodeRadius + degreeRadiusFactor * CGFloat(sqrt(Double(degree)))
+        return min(scaled, maxNodeRadius)
+    }
+
     // MARK: - Hit testing
 
     private func handleTap(at point: CGPoint, size: CGSize) {
@@ -245,17 +299,22 @@ struct GraphCanvasView: View {
         let worldY = (point.y - center.y - offset.height) / scale
         let world = CGPoint(x: worldX, y: worldY)
 
-        let tapRadius: CGFloat = 12 / scale
+        // Tap radius is each node's own visual radius + a small slack,
+        // converted into world units so it scales inversely with zoom.
+        let slack: CGFloat = 4
         var bestID: String?
         var bestDistance: CGFloat = .greatestFiniteMagnitude
         for (id, p) in layout {
             let d = hypot(p.x - world.x, p.y - world.y)
+            let tapRadius = (radiusFor(nodeID: id) + slack) / scale
             if d < tapRadius && d < bestDistance {
                 bestDistance = d
                 bestID = id
             }
         }
         selectedNodeID = bestID
+        // Pulse-start is driven by `.onChange(of: selectedNodeID)` so it
+        // fires for selections coming from the inspector too.
     }
 
     // MARK: - Edge batching
