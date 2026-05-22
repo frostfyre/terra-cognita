@@ -11,6 +11,9 @@ struct GraphCanvasView: View {
     @State private var lastScaleValue: CGFloat = 1
     /// Owned by `GraphView` so the inspector panel can drive it too.
     @Binding var selectedNodeID: String?
+    /// Optional node-visibility filter (lens). `nil` means show everything.
+    /// Edges are visible only when both endpoints pass the filter.
+    var visibleNodeFilter: ((Node) -> Bool)? = nil
     /// Wall-clock time of the most recent selection. Drives the
     /// "selected node briefly doubles in size" pulse.
     @State private var selectionPulseStart: TimeInterval?
@@ -46,6 +49,9 @@ struct GraphCanvasView: View {
     var body: some View {
         GeometryReader { geo in
             let highlight = highlightedNodeIDs()
+            let visibleSet: Set<String>? = visibleNodeFilter.map { filter in
+                Set(store.graph.nodes.values.filter(filter).map(\.id))
+            }
 
             TimelineView(.periodic(from: .now, by: 1.0 / 30.0)) { timeline in
                 // Subtract a baseline so `t` stays a small positive double
@@ -91,7 +97,8 @@ struct GraphCanvasView: View {
                     // Edges — dim layer first, bright on top.
                     let groups = edgeGroups(toScreen: toScreen,
                                             highlight: highlight,
-                                            hasSelection: hasSelection)
+                                            hasSelection: hasSelection,
+                                            visibleSet: visibleSet)
                     for group in groups.dim {
                         context.stroke(group.path,
                                        with: .color(group.color.opacity(dimOpacity * 0.6)),
@@ -122,6 +129,7 @@ struct GraphCanvasView: View {
 
                     // First pass — all non-selected nodes.
                     for node in store.graph.nodes.values {
+                        if let visibleSet, !visibleSet.contains(node.id) { continue }
                         guard let worldPoint = layout[node.id] else { continue }
                         let p = toScreen(node.id, worldPoint)
                         let isSelected = selectedNodeID == node.id
@@ -304,7 +312,12 @@ struct GraphCanvasView: View {
         let slack: CGFloat = 4
         var bestID: String?
         var bestDistance: CGFloat = .greatestFiniteMagnitude
+        // Respect the active lens — filtered-out nodes are not tappable.
+        let visibleSet: Set<String>? = visibleNodeFilter.map { filter in
+            Set(store.graph.nodes.values.filter(filter).map(\.id))
+        }
         for (id, p) in layout {
+            if let visibleSet, !visibleSet.contains(id) { continue }
             let d = hypot(p.x - world.x, p.y - world.y)
             let tapRadius = (radiusFor(nodeID: id) + slack) / scale
             if d < tapRadius && d < bestDistance {
@@ -326,11 +339,16 @@ struct GraphCanvasView: View {
 
     private func edgeGroups(toScreen: (String, CGPoint) -> CGPoint,
                             highlight: Set<String>,
-                            hasSelection: Bool) -> EdgeBatches {
+                            hasSelection: Bool,
+                            visibleSet: Set<String>?) -> EdgeBatches {
         var dimByColor: [String: (Color, Path)] = [:]
         var brightByColor: [String: (Color, Path)] = [:]
 
         for edge in store.graph.edges {
+            if let visibleSet,
+               !(visibleSet.contains(edge.sourceID) && visibleSet.contains(edge.targetID)) {
+                continue
+            }
             guard let a = layout[edge.sourceID], let b = layout[edge.targetID] else { continue }
             let color = edgeColor(edge)
             let key = colorKey(color)
