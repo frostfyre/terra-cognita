@@ -9,6 +9,7 @@ struct GraphCanvasView: View {
     @State private var scale: CGFloat = 1
     @State private var offset: CGSize = .zero
     @State private var lastScaleValue: CGFloat = 1
+    @State private var canvasSize: CGSize = .zero
     /// Owned by `GraphView` so the inspector panel can drive it too.
     @Binding var selectedNodeID: String?
     /// Optional node-visibility filter (lens). `nil` means show everything.
@@ -146,13 +147,18 @@ struct GraphCanvasView: View {
                                           width: baseRadius * 2, height: baseRadius * 2)
                         context.fill(Path(ellipseIn: rect), with: .color(fill))
 
-                        if labelEnabled && inHighlight {
+                        // Show labels when:
+                        //   - zoomed in enough (overview stays clean), OR
+                        //   - this node is part of an active highlight set
+                        //     (the focused subnet always reads).
+                        let showLabel = inHighlight && (labelEnabled || hasSelection)
+                        if showLabel {
                             let resolved = context.resolve(
-                                Text(node.label).font(.system(size: 10))
+                                Text(node.label)
+                                    .font(.system(size: 10))
+                                    .foregroundStyle(.primary)
                             )
-                            context.draw(resolved,
-                                         at: CGPoint(x: p.x, y: p.y + baseRadius + 5),
-                                         anchor: .top)
+                            context.draw(resolved, at: p, anchor: .center)
                         }
                     }
 
@@ -171,15 +177,15 @@ struct GraphCanvasView: View {
                         context.stroke(Path(ellipseIn: ring),
                                        with: .color(.accentColor), lineWidth: 2)
 
-                        // Selected label is always visible (no zoom gate), so
-                        // the focus point can be read at any scale.
+                        // Selected label is always visible and centred on
+                        // the node so the focus point reads at any scale.
                         let labelScale: CGFloat = 1 + selectionPulse
                         let resolved = context.resolve(
-                            Text(node.label).font(.system(size: 11 * labelScale).weight(.semibold))
+                            Text(node.label)
+                                .font(.system(size: 11 * labelScale).weight(.semibold))
+                                .foregroundStyle(.primary)
                         )
-                        context.draw(resolved,
-                                     at: CGPoint(x: p.x, y: p.y + nodeRadius + 4 + (labelScale * 4)),
-                                     anchor: .top)
+                        context.draw(resolved, at: p, anchor: .center)
                     }
                 }
             }
@@ -202,6 +208,8 @@ struct GraphCanvasView: View {
                 handleTap(at: point, size: geo.size)
             }
             .contextMenu { selectedNodeMenu() }
+            .onAppear { canvasSize = geo.size }
+            .onChange(of: geo.size) { _, newSize in canvasSize = newSize }
         }
         .task(id: store.graph.nodes.count) {
             await rebuildLayoutPipeline()
@@ -212,7 +220,51 @@ struct GraphCanvasView: View {
                 // (timeline.date mod 86400) so `elapsed = t - start` is sane.
                 selectionPulseStart = Date().timeIntervalSinceReferenceDate
                     .truncatingRemainder(dividingBy: 86400)
+                frameHighlightedSubnet()
             }
+        }
+    }
+
+    // MARK: - Auto-framing
+
+    /// Animate `scale` and `offset` so the currently highlighted subnet
+    /// (selected node + 1-hop neighbors) fits the canvas with padding.
+    /// Skipped if the layout or canvas size isn't ready yet.
+    private func frameHighlightedSubnet() {
+        guard canvasSize.width > 0, canvasSize.height > 0 else { return }
+        let highlighted = highlightedNodeIDs()
+        let points = highlighted.compactMap { layout[$0] }
+        guard !points.isEmpty else { return }
+
+        let xs = points.map(\.x), ys = points.map(\.y)
+        let minX = xs.min()!, maxX = xs.max()!
+        let minY = ys.min()!, maxY = ys.max()!
+        let centerWorld = CGPoint(x: (minX + maxX) / 2,
+                                  y: (minY + maxY) / 2)
+        // Floor the bbox so a singleton (no neighbors) doesn't try to zoom
+        // to infinity, and pad the world rect to make room for node radii
+        // and a little breathing space.
+        let widthWorld  = max(maxX - minX + 80, 200)
+        let heightWorld = max(maxY - minY + 80, 200)
+
+        let chromePadding: CGFloat = 60  // top bar + inspector breathing room
+        let availableWidth  = max(canvasSize.width  - chromePadding * 2, 200)
+        let availableHeight = max(canvasSize.height - chromePadding * 2, 200)
+
+        let candidate = min(availableWidth / widthWorld,
+                            availableHeight / heightWorld)
+        // Don't zoom past 2.2× (a singleton would otherwise become huge),
+        // and don't zoom out below the user's current setting unless we
+        // need to.
+        let targetScale = max(0.4, min(candidate, 2.2))
+
+        let targetOffset = CGSize(width: -centerWorld.x * targetScale,
+                                  height: -centerWorld.y * targetScale)
+
+        withAnimation(.easeInOut(duration: 0.55)) {
+            scale = targetScale
+            offset = targetOffset
+            lastScaleValue = 1
         }
     }
 
