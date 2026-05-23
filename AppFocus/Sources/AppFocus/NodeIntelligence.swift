@@ -7,24 +7,32 @@ import FoundationModels
 ///
 /// All Foundation Models calls are gated behind `#if canImport(FoundationModels)`
 /// (compile time) and `@available(macOS 26, *)` (runtime) so the app
-/// continues to build and run on macOS 14/15 — the AI section simply
-/// shows an "unavailable" message there.
+/// continues to build and run on macOS 14/15 — the AI panel just shows
+/// an "unavailable" message there.
 ///
-/// Per DESIGN.md: "Apple Intelligence should support node summarization,
-/// relationship explanation, semantic search". This module exposes the
-/// first two; semantic search hangs off the same plumbing later.
+/// `NodeIntelligence` keeps a single `LanguageModelSession` alive per
+/// conversation so follow-up questions inherit the prior context. The
+/// session resets whenever the inspector calls `prepare(for:)` with a
+/// new node id.
 @MainActor
 final class NodeIntelligence: ObservableObject {
 
-    enum Status: Equatable {
+    struct Message: Identifiable, Equatable {
+        enum Role { case user, assistant, system }
+        let id = UUID()
+        let role: Role
+        let content: String
+    }
+
+    enum Activity: Equatable {
         case idle
         case running
-        case finished(String)
         case failed(String)
         case unavailable(String)
     }
 
-    @Published var status: Status = .idle
+    @Published private(set) var messages: [Message] = []
+    @Published private(set) var activity: Activity = .idle
 
     /// True only when the on-device model is ready to take a request.
     var isAvailable: Bool {
@@ -39,7 +47,6 @@ final class NodeIntelligence: ObservableObject {
         return false
     }
 
-    /// A human-friendly explanation of why the model isn't available.
     var availabilityNote: String? {
         #if canImport(FoundationModels)
         if #available(macOS 26, *) {
@@ -62,90 +69,137 @@ final class NodeIntelligence: ObservableObject {
         #endif
     }
 
-    /// Generate a short summary of a single node.
+    /// Reset the conversation and bind to a new node. Cheaper than tearing
+    /// down the whole intelligence object on each navigation.
+    func prepare(for node: Node) {
+        cancel()
+        messages.removeAll()
+        boundNodeID = node.id
+        boundContextPrompt = Self.contextPrompt(for: node)
+        #if canImport(FoundationModels)
+        if #available(macOS 26, *) {
+            session = LanguageModelSession(instructions: Self.instructions)
+        } else {
+            session = nil
+        }
+        #else
+        session = nil
+        #endif
+        activity = .idle
+    }
+
+    /// Kick off a node summary as a fresh-conversation first turn.
     func summarize(node: Node) {
-        let prompt = Self.summaryPrompt(for: node)
-        run(instructions: Self.summaryInstructions, prompt: prompt)
+        ensureBound(node)
+        let prompt = "Summarize this note in three or four sentences. Use only what's in the note."
+        send(userPrompt: prompt)
     }
 
-    /// Explain how the selected node relates to a neighbor in plain prose.
-    func explainRelationship(from: Node, to: Node, relationshipType: String?) {
-        let prompt = """
-        Explain in two or three sentences how "\(from.label)" connects to "\(to.label)" \
-        in this person's heritage map\(relationshipType.map { " (relationship type: \($0))" } ?? ""). \
-        Use only the information in the notes below.
+    /// Explain how the bound node relates to a neighbour, using the
+    /// neighbour's note text as additional context.
+    func explainRelationship(to other: Node, relationshipType: String?, currentNode: Node) {
+        ensureBound(currentNode)
+        let neighborSection = """
 
-        --- "\(from.label)" ---
-        \(Self.trimmedBody(from.markdownContent ?? ""))
-
-        --- "\(to.label)" ---
-        \(Self.trimmedBody(to.markdownContent ?? ""))
+        --- Note: "\(other.label)" ---
+        \(Self.trimmedBody(other.markdownContent ?? ""))
         """
-        run(instructions: Self.relationshipInstructions, prompt: prompt)
+        let prompt = """
+        Using the note above and the note below, explain in two or three sentences \
+        how "\(currentNode.label)" connects to "\(other.label)"\
+        \(relationshipType.map { " (relationship type: \($0))" } ?? ""). \
+        If the connection isn't clear, say so plainly rather than guessing.
+        \(neighborSection)
+        """
+        send(userPrompt: prompt)
     }
 
-    /// Cancel any in-flight call and reset to idle.
+    /// Send a free-form follow-up question. The session keeps prior turns
+    /// in its transcript so the model can refer back.
+    func ask(_ question: String, currentNode: Node) {
+        ensureBound(currentNode)
+        send(userPrompt: question)
+    }
+
     func cancel() {
         currentTask?.cancel()
         currentTask = nil
-        status = .idle
+        activity = .idle
     }
 
     // MARK: - Internals
 
+    private var session: Any? // Type-erased so the file compiles pre-macOS 26.
     private var currentTask: Task<Void, Never>?
+    private var boundNodeID: String?
+    private var boundContextPrompt: String = ""
 
-    private func run(instructions: String, prompt: String) {
-        cancel()
-        guard isAvailable else {
-            status = .unavailable(availabilityNote ?? "Unavailable.")
-            return
-        }
-        status = .running
-        currentTask = Task { [weak self] in
-            await self?.perform(instructions: instructions, prompt: prompt)
+    private func ensureBound(_ node: Node) {
+        if boundNodeID != node.id {
+            prepare(for: node)
         }
     }
 
-    private func perform(instructions: String, prompt: String) async {
+    private func send(userPrompt: String) {
+        guard isAvailable else {
+            activity = .unavailable(availabilityNote ?? "Unavailable.")
+            return
+        }
+        cancel()
+
+        // Prepend the bound node's body on the first turn only — subsequent
+        // turns can rely on the session's transcript memory.
+        let fullPrompt: String
+        if messages.isEmpty {
+            fullPrompt = boundContextPrompt + "\n\nQuestion: " + userPrompt
+        } else {
+            fullPrompt = userPrompt
+        }
+
+        messages.append(Message(role: .user, content: userPrompt))
+        activity = .running
+
+        currentTask = Task { [weak self] in
+            await self?.perform(prompt: fullPrompt)
+        }
+    }
+
+    private func perform(prompt: String) async {
         #if canImport(FoundationModels)
         if #available(macOS 26, *) {
+            guard let session = session as? LanguageModelSession else {
+                activity = .failed("No session.")
+                return
+            }
             do {
-                let session = LanguageModelSession(instructions: instructions)
                 let response = try await session.respond(to: prompt)
                 if Task.isCancelled { return }
-                status = .finished(response.content)
+                messages.append(Message(role: .assistant, content: response.content))
+                activity = .idle
             } catch {
                 if Task.isCancelled { return }
-                status = .failed(error.localizedDescription)
+                activity = .failed(error.localizedDescription)
             }
             return
         }
         #endif
-        status = .unavailable(availabilityNote ?? "Unavailable.")
+        activity = .unavailable(availabilityNote ?? "Unavailable.")
     }
 
     // MARK: - Prompt scaffolding
 
-    private static let summaryInstructions = """
-    You are a careful reader who summarizes a single note about a person, \
-    institution, work, event, or concept. Produce one short paragraph \
-    (three to four sentences) that captures the essence of the note and \
-    its role in this heritage map. Use only information present in the \
-    note itself — do not invent facts, names, or dates.
+    private static let instructions = """
+    You help a person navigate their personal heritage map — a graph of \
+    people, institutions, works, events and concepts that have shaped them. \
+    Answer based only on the notes provided in the conversation. Keep \
+    responses concise (one short paragraph by default). If the notes don't \
+    contain enough information to answer, say so plainly instead of guessing.
     """
 
-    private static let relationshipInstructions = """
-    You explain how two entities in a personal heritage map relate to each \
-    other, using only the text in the two notes provided. Keep it concise \
-    (two to three sentences). If the notes don't make the connection clear, \
-    say so plainly rather than guessing.
-    """
-
-    private static func summaryPrompt(for node: Node) -> String {
+    private static func contextPrompt(for node: Node) -> String {
         let kind = node.attributes["type"] ?? node.attributes["folder"] ?? "entry"
         return """
-        Summarize the following \(kind) note:
+        We are looking at this \(kind) note:
 
         Title: \(node.label)
 
@@ -153,10 +207,7 @@ final class NodeIntelligence: ObservableObject {
         """
     }
 
-    /// Foundation Models has a context window. Trim very long notes so we
-    /// don't blow past it (the vault has a few long ones).
     private static func trimmedBody(_ raw: String) -> String {
-        // Drop front-matter and the leading `# heading`.
         var body = raw
         if body.hasPrefix("---") {
             if let end = body.range(of: "\n---",
@@ -165,7 +216,6 @@ final class NodeIntelligence: ObservableObject {
                 body = String(body[body.index(end.upperBound, offsetBy: 0)...])
             }
         }
-        // Cap at ~3500 characters — well under typical context for one note.
         if body.count > 3500 {
             body = String(body.prefix(3500)) + "\n…"
         }

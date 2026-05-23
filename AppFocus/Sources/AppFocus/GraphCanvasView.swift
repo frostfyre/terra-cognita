@@ -10,6 +10,12 @@ struct GraphCanvasView: View {
     @State private var offset: CGSize = .zero
     @State private var lastScaleValue: CGFloat = 1
     @State private var canvasSize: CGSize = .zero
+
+    /// Per-node manually-pinned positions in world space. Pinned nodes
+    /// are not displaced by future automatic layouts.
+    @State private var pinnedPositions: [String: CGPoint] = [:]
+    /// While the user is dragging a node, this holds its id.
+    @State private var draggingNodeID: String?
     /// Owned by `GraphView` so the inspector panel can drive it too.
     @Binding var selectedNodeID: String?
     /// Optional node-visibility filter (lens). `nil` means show everything.
@@ -131,7 +137,7 @@ struct GraphCanvasView: View {
                     // First pass — all non-selected nodes.
                     for node in store.graph.nodes.values {
                         if let visibleSet, !visibleSet.contains(node.id) { continue }
-                        guard let worldPoint = layout[node.id] else { continue }
+                        guard let worldPoint = effectivePosition(for: node.id) else { continue }
                         let p = toScreen(node.id, worldPoint)
                         let isSelected = selectedNodeID == node.id
                         let baseRadius = radiusFor(nodeID: node.id)
@@ -146,6 +152,14 @@ struct GraphCanvasView: View {
                         let rect = CGRect(x: p.x - baseRadius, y: p.y - baseRadius,
                                           width: baseRadius * 2, height: baseRadius * 2)
                         context.fill(Path(ellipseIn: rect), with: .color(fill))
+
+                        // Pinned indicator — small white outline so the pin
+                        // status is legible at a glance.
+                        if pinnedPositions[node.id] != nil {
+                            context.stroke(Path(ellipseIn: rect),
+                                           with: .color(.white.opacity(inHighlight ? 0.95 : dimOpacity)),
+                                           lineWidth: 1.5)
+                        }
 
                         // Show labels when:
                         //   - zoomed in enough (overview stays clean), OR
@@ -204,6 +218,7 @@ struct GraphCanvasView: View {
                 )
             )
             .gesture(pinchGesture())
+            .gesture(nodeDragGesture(size: geo.size))
             .onTapGesture(coordinateSpace: .local) { point in
                 handleTap(at: point, size: geo.size)
             }
@@ -233,7 +248,7 @@ struct GraphCanvasView: View {
     private func frameHighlightedSubnet() {
         guard canvasSize.width > 0, canvasSize.height > 0 else { return }
         let highlighted = highlightedNodeIDs()
-        let points = highlighted.compactMap { layout[$0] }
+        let points = highlighted.compactMap { effectivePosition(for: $0) }
         guard !points.isEmpty else { return }
 
         let xs = points.map(\.x), ys = points.map(\.y)
@@ -275,12 +290,31 @@ struct GraphCanvasView: View {
         let nodeIDs = snapshotNodes.map { $0.id }
         let edgePairs = store.graph.edges.map { ($0.sourceID, $0.targetID) }
 
+        rebuildAdjacency()
+
+        guard !nodeIDs.isEmpty else {
+            layout = [:]
+            return
+        }
+
+        // Try to restore a saved layout for the same node set. If every
+        // current node has a saved position we skip FA2 entirely — the
+        // user's persistent placements stay put across launches.
+        if let persisted = LayoutPersistence.load() {
+            let saved = persisted.cgPositions
+            if Set(nodeIDs).isSubset(of: Set(saved.keys)) {
+                layout = saved
+                pinnedPositions = persisted.cgPinned
+                scale = max(0.25, min(4.0, CGFloat(persisted.scale)))
+                offset = CGSize(width: persisted.offsetX, height: persisted.offsetY)
+                layoutKind = .forceDirected
+                return
+            }
+        }
+
         // 1. Cheap circular seed so something appears immediately.
         layout = makeCircularLayout(for: nodeIDs)
         layoutKind = .circular
-        rebuildAdjacency()
-
-        guard !nodeIDs.isEmpty else { return }
 
         // 2. Background force-directed layout, swapped in once it converges.
         let solver = ForceDirectedLayout()
@@ -295,6 +329,18 @@ struct GraphCanvasView: View {
             layout = computed
             layoutKind = .forceDirected
         }
+        persistLayout()
+    }
+
+    /// Snapshot current layout + view state and persist to disk.
+    private func persistLayout() {
+        var snapshot = PersistedLayout()
+        snapshot.positions = layout.mapValues(PersistedLayout.Point.init)
+        snapshot.pinned = pinnedPositions.mapValues(PersistedLayout.Point.init)
+        snapshot.scale = Double(scale)
+        snapshot.offsetX = Double(offset.width)
+        snapshot.offsetY = Double(offset.height)
+        Task.detached { LayoutPersistence.save(snapshot) }
     }
 
     private func makeCircularLayout(for ids: [String]) -> [String: CGPoint] {
@@ -354,30 +400,7 @@ struct GraphCanvasView: View {
     // MARK: - Hit testing
 
     private func handleTap(at point: CGPoint, size: CGSize) {
-        let center = CGPoint(x: size.width / 2, y: size.height / 2)
-        let worldX = (point.x - center.x - offset.width) / scale
-        let worldY = (point.y - center.y - offset.height) / scale
-        let world = CGPoint(x: worldX, y: worldY)
-
-        // Tap radius is each node's own visual radius + a small slack,
-        // converted into world units so it scales inversely with zoom.
-        let slack: CGFloat = 4
-        var bestID: String?
-        var bestDistance: CGFloat = .greatestFiniteMagnitude
-        // Respect the active lens — filtered-out nodes are not tappable.
-        let visibleSet: Set<String>? = visibleNodeFilter.map { filter in
-            Set(store.graph.nodes.values.filter(filter).map(\.id))
-        }
-        for (id, p) in layout {
-            if let visibleSet, !visibleSet.contains(id) { continue }
-            let d = hypot(p.x - world.x, p.y - world.y)
-            let tapRadius = (radiusFor(nodeID: id) + slack) / scale
-            if d < tapRadius && d < bestDistance {
-                bestDistance = d
-                bestID = id
-            }
-        }
-        selectedNodeID = bestID
+        selectedNodeID = nodeAt(screenPoint: point, size: size)
         // Pulse-start is driven by `.onChange(of: selectedNodeID)` so it
         // fires for selections coming from the inspector too.
     }
@@ -401,7 +424,8 @@ struct GraphCanvasView: View {
                !(visibleSet.contains(edge.sourceID) && visibleSet.contains(edge.targetID)) {
                 continue
             }
-            guard let a = layout[edge.sourceID], let b = layout[edge.targetID] else { continue }
+            guard let a = effectivePosition(for: edge.sourceID),
+                  let b = effectivePosition(for: edge.targetID) else { continue }
             let color = edgeColor(edge)
             let key = colorKey(color)
             let isBright = !hasSelection ||
@@ -443,6 +467,66 @@ struct GraphCanvasView: View {
             }
     }
 
+    /// Left-mouse drag = move a node (if drag started on one). Drags on
+    /// empty canvas are ignored — middle-mouse pan handles panning.
+    private func nodeDragGesture(size: CGSize) -> some Gesture {
+        DragGesture(minimumDistance: 3, coordinateSpace: .local)
+            .onChanged { value in
+                if draggingNodeID == nil {
+                    // First frame of the drag — see if it started on a node.
+                    if let hit = nodeAt(screenPoint: value.startLocation, size: size) {
+                        draggingNodeID = hit
+                        selectedNodeID = hit
+                    }
+                }
+                if let id = draggingNodeID {
+                    pinnedPositions[id] = worldPoint(at: value.location, size: size)
+                }
+            }
+            .onEnded { _ in
+                draggingNodeID = nil
+                persistLayout()
+            }
+    }
+
+    /// World-space position the canvas should render for a given node.
+    /// Pinned positions override the layout dictionary.
+    private func effectivePosition(for id: String) -> CGPoint? {
+        if let pinned = pinnedPositions[id] { return pinned }
+        return layout[id]
+    }
+
+    /// Convert a screen-space point inside the canvas to a world-space
+    /// coordinate, undoing the current scale/offset/centre transform.
+    private func worldPoint(at screen: CGPoint, size: CGSize) -> CGPoint {
+        let centre = CGPoint(x: size.width / 2, y: size.height / 2)
+        return CGPoint(x: (screen.x - centre.x - offset.width) / scale,
+                       y: (screen.y - centre.y - offset.height) / scale)
+    }
+
+    /// Hit-test a screen point and return the id of the topmost visible
+    /// node under the cursor (respecting per-node radius + zoom-aware slack).
+    private func nodeAt(screenPoint: CGPoint, size: CGSize) -> String? {
+        let world = worldPoint(at: screenPoint, size: size)
+        let slack: CGFloat = 4
+        let visibleSet: Set<String>? = visibleNodeFilter.map { filter in
+            Set(store.graph.nodes.values.filter(filter).map(\.id))
+        }
+        var bestID: String?
+        var bestDistance: CGFloat = .greatestFiniteMagnitude
+        for id in store.graph.nodes.keys {
+            if let visibleSet, !visibleSet.contains(id) { continue }
+            guard let p = effectivePosition(for: id) else { continue }
+            let d = hypot(p.x - world.x, p.y - world.y)
+            let tapRadius = (radiusFor(nodeID: id) + slack) / scale
+            if d < tapRadius && d < bestDistance {
+                bestDistance = d
+                bestID = id
+            }
+        }
+        return bestID
+    }
+
     // MARK: - Styling
 
     private func edgeColor(_ edge: Edge) -> Color {
@@ -477,13 +561,34 @@ struct GraphCanvasView: View {
             Text(node.label)
             Button("Open note") { openSelectedNote(node) }
                 .disabled(noteURL(for: node) == nil)
+            Divider()
+            if pinnedPositions[id] != nil {
+                Button("Unpin") {
+                    pinnedPositions.removeValue(forKey: id)
+                    persistLayout()
+                }
+            } else {
+                Button("Pin in place") {
+                    if let p = layout[id] { pinnedPositions[id] = p }
+                    persistLayout()
+                }
+            }
+            if !pinnedPositions.isEmpty {
+                Button("Unpin all (\(pinnedPositions.count))") {
+                    pinnedPositions.removeAll()
+                    persistLayout()
+                }
+            }
+            Divider()
             Button("Clear selection") { selectedNodeID = nil }
-            Button("Expand neighbors") { /* TODO */ }
-            Button("Pin node") { /* TODO */ }
-            Button("Focus subnet") { /* TODO */ }
-            Button("Trace lineage") { /* TODO */ }
         } else {
             Text("No node selected")
+            if !pinnedPositions.isEmpty {
+                Button("Unpin all (\(pinnedPositions.count))") {
+                    pinnedPositions.removeAll()
+                    persistLayout()
+                }
+            }
         }
     }
 
