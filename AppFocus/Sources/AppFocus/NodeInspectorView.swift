@@ -13,11 +13,12 @@ struct NodeInspectorView: View {
     /// outbound row, or an inline `[[wikilink]]` in the note body).
     var onSelectNode: (String) -> Void
 
-    @State private var showMetadata = true
+    @State private var showAI = true
+    @State private var showMetadata = false
     @State private var showNote = true
     @State private var showOutbound = true
     @State private var showInbound = false
-    @State private var showAI = false
+    @State private var followupDraft: String = ""
     @StateObject private var ai = NodeIntelligence()
 
     var body: some View {
@@ -27,11 +28,19 @@ struct NodeInspectorView: View {
                     VStack(alignment: .leading, spacing: 14) {
                         header(node)
 
-                        DisclosureGroup(isExpanded: $showMetadata) {
-                            metadataSection(node)
-                                .padding(.top, 4)
+                        // AI sits right under the header so it's the first
+                        // affordance a user sees after selecting a node.
+                        DisclosureGroup(isExpanded: $showAI) {
+                            aiSection(node).padding(.top, 4)
                         } label: {
-                            sectionLabel("Metadata")
+                            HStack(spacing: 6) {
+                                Image(systemName: "sparkles")
+                                    .foregroundStyle(.purple)
+                                Text("AI").font(.headline)
+                                if ai.activity == .running {
+                                    ProgressView().controlSize(.small).padding(.leading, 4)
+                                }
+                            }
                         }
 
                         DisclosureGroup(isExpanded: $showNote) {
@@ -52,6 +61,13 @@ struct NodeInspectorView: View {
                             sectionLabel("Note")
                         }
 
+                        DisclosureGroup(isExpanded: $showMetadata) {
+                            metadataSection(node)
+                                .padding(.top, 4)
+                        } label: {
+                            sectionLabel("Metadata")
+                        }
+
                         DisclosureGroup(isExpanded: $showOutbound) {
                             outboundList(node).padding(.top, 4)
                         } label: {
@@ -63,23 +79,12 @@ struct NodeInspectorView: View {
                         } label: {
                             sectionLabel("Inbound", count: inboundEdges(node).count)
                         }
-
-                        DisclosureGroup(isExpanded: $showAI) {
-                            aiSection(node).padding(.top, 4)
-                        } label: {
-                            HStack(spacing: 6) {
-                                Image(systemName: "sparkles")
-                                    .foregroundStyle(.purple)
-                                Text("AI").font(.headline)
-                            }
-                        }
                     }
                     .padding()
                 }
+                .onAppear { ai.prepare(for: node) }
                 .onChange(of: nodeID) { _, _ in
-                    // Reset the AI panel when navigating to a different node
-                    // so we don't leave a stale summary on screen.
-                    ai.cancel()
+                    if let n = store.graph.nodes[nodeID] { ai.prepare(for: n) }
                 }
             } else {
                 ContentUnavailableView(
@@ -105,12 +110,26 @@ struct NodeInspectorView: View {
                     TagPill(text: folder, color: .secondary)
                 }
             }
-            if let path = node.filePath {
-                Button("Open in default app") {
-                    _ = openFileURL(URL(fileURLWithPath: path))
+            HStack(spacing: 12) {
+                Button {
+                    showAI = true
+                    ai.summarize(node: node)
+                } label: {
+                    Label("Summarize", systemImage: "sparkles")
+                        .font(.caption)
                 }
-                .buttonStyle(.link)
-                .font(.caption)
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+                .tint(.purple)
+                .disabled(!ai.isAvailable)
+
+                if let path = node.filePath {
+                    Button("Open in default app") {
+                        _ = openFileURL(URL(fileURLWithPath: path))
+                    }
+                    .buttonStyle(.link)
+                    .font(.caption)
+                }
             }
         }
     }
@@ -219,80 +238,128 @@ struct NodeInspectorView: View {
 
     @ViewBuilder
     private func aiSection(_ node: Node) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 10) {
             if !ai.isAvailable, let note = ai.availabilityNote {
                 Label(note, systemImage: "info.circle")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
 
-            HStack(spacing: 8) {
-                Button {
-                    ai.summarize(node: node)
-                } label: {
-                    Label("Summarize this note", systemImage: "sparkles")
-                }
-                .disabled(!ai.isAvailable
-                          || (node.markdownContent ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                          || ai.status == .running)
-
-                if ai.status == .running {
-                    ProgressView().controlSize(.small)
-                    Button("Cancel") { ai.cancel() }
-                        .buttonStyle(.borderless)
-                }
-            }
-
-            switch ai.status {
-            case .idle:
-                EmptyView()
-            case .running:
-                Text("Thinking…")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            case .finished(let text):
-                Text(text)
-                    .font(.callout)
-                    .textSelection(.enabled)
-                    .padding(8)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(.purple.opacity(0.08), in: RoundedRectangle(cornerRadius: 6))
-            case .failed(let message):
-                Label(message, systemImage: "exclamationmark.triangle")
-                    .font(.caption)
-                    .foregroundStyle(.red)
-            case .unavailable(let message):
-                Label(message, systemImage: "info.circle")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            // Quick "explain connection" affordance, one row per neighbor.
-            let neighbors = outboundEdges(node) + inboundEdges(node)
-            if ai.isAvailable && !neighbors.isEmpty {
-                Divider()
-                Text("Explain connection to…").font(.caption).foregroundStyle(.secondary)
-                ForEach(Array(neighbors.prefix(6)), id: \.id) { edge in
-                    let otherID = edge.sourceID == node.id ? edge.targetID : edge.sourceID
-                    if let other = store.graph.nodes[otherID] {
-                        Button {
-                            ai.explainRelationship(
-                                from: node,
-                                to: other,
-                                relationshipType: edge.relationshipType
-                            )
-                        } label: {
-                            HStack(spacing: 4) {
-                                Image(systemName: "arrow.right.circle")
-                                Text(other.label).lineLimit(1)
-                            }
-                        }
-                        .buttonStyle(.plain)
-                        .foregroundStyle(.purple)
-                        .font(.caption)
+            // Transcript of the conversation so far.
+            if !ai.messages.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(ai.messages) { message in
+                        messageBubble(message)
                     }
                 }
             }
+
+            // In-flight indicator + cancel.
+            if ai.activity == .running {
+                HStack(spacing: 6) {
+                    ProgressView().controlSize(.small)
+                    Text("Thinking…").font(.caption).foregroundStyle(.secondary)
+                    Spacer()
+                    Button("Cancel") { ai.cancel() }
+                        .buttonStyle(.borderless)
+                        .font(.caption)
+                }
+            }
+
+            if case .failed(let message) = ai.activity {
+                Label(message, systemImage: "exclamationmark.triangle")
+                    .font(.caption)
+                    .foregroundStyle(.red)
+            }
+
+            // Free-form follow-up question — bound to the same session.
+            if ai.isAvailable {
+                HStack(spacing: 6) {
+                    TextField("Ask about this node…", text: $followupDraft, axis: .vertical)
+                        .textFieldStyle(.roundedBorder)
+                        .font(.callout)
+                        .lineLimit(1...3)
+                        .onSubmit(sendFollowup)
+                    Button {
+                        sendFollowup()
+                    } label: {
+                        Image(systemName: "arrow.up.circle.fill")
+                            .font(.title3)
+                            .foregroundStyle(.purple)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(followupDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                              || ai.activity == .running)
+                }
+
+                // Quick "explain connection" suggestions for direct neighbours.
+                let neighbours = (outboundEdges(node) + inboundEdges(node)).prefix(6)
+                if !neighbours.isEmpty {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Explain connection to…")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        FlowLayout(spacing: 6) {
+                            ForEach(Array(neighbours), id: \.id) { edge in
+                                let otherID = edge.sourceID == node.id ? edge.targetID : edge.sourceID
+                                if let other = store.graph.nodes[otherID] {
+                                    Button {
+                                        ai.explainRelationship(
+                                            to: other,
+                                            relationshipType: edge.relationshipType,
+                                            currentNode: node
+                                        )
+                                    } label: {
+                                        Text(other.label)
+                                            .font(.caption)
+                                            .lineLimit(1)
+                                            .padding(.horizontal, 8).padding(.vertical, 3)
+                                            .background(.purple.opacity(0.12), in: Capsule())
+                                            .foregroundStyle(.purple)
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func sendFollowup() {
+        let q = followupDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !q.isEmpty, let node = store.graph.nodes[nodeID] else { return }
+        ai.ask(q, currentNode: node)
+        followupDraft = ""
+    }
+
+    @ViewBuilder
+    private func messageBubble(_ message: NodeIntelligence.Message) -> some View {
+        switch message.role {
+        case .user:
+            HStack {
+                Spacer(minLength: 24)
+                Text(message.content)
+                    .font(.callout)
+                    .padding(8)
+                    .background(.blue.opacity(0.18), in: RoundedRectangle(cornerRadius: 8))
+                    .textSelection(.enabled)
+            }
+        case .assistant:
+            HStack {
+                Text(message.content)
+                    .font(.callout)
+                    .padding(8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(.purple.opacity(0.10), in: RoundedRectangle(cornerRadius: 8))
+                    .textSelection(.enabled)
+                Spacer(minLength: 24)
+            }
+        case .system:
+            Text(message.content)
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
     }
 
@@ -350,5 +417,71 @@ private struct TagPill: View {
             .font(.caption2)
             .padding(.horizontal, 6).padding(.vertical, 2)
             .background(color.opacity(0.25), in: Capsule())
+    }
+}
+
+/// Minimal flow layout — wraps children onto multiple lines when the row
+/// width is exhausted. Used for the "explain connection to" chips.
+private struct FlowLayout: Layout {
+    var spacing: CGFloat = 6
+
+    func sizeThatFits(proposal: ProposedViewSize,
+                      subviews: Subviews,
+                      cache: inout ()) -> CGSize {
+        let width = proposal.width ?? .infinity
+        let result = layoutRows(in: width, subviews: subviews)
+        return CGSize(width: result.width, height: result.totalHeight)
+    }
+
+    func placeSubviews(in bounds: CGRect,
+                       proposal: ProposedViewSize,
+                       subviews: Subviews,
+                       cache: inout ()) {
+        let result = layoutRows(in: bounds.width, subviews: subviews)
+        var y = bounds.minY
+        for row in result.rows {
+            var x = bounds.minX
+            for (subview, size) in row {
+                subview.place(at: CGPoint(x: x, y: y),
+                              anchor: .topLeading,
+                              proposal: ProposedViewSize(size))
+                x += size.width + spacing
+            }
+            y += (row.first?.1.height ?? 0) + spacing
+        }
+    }
+
+    private struct LayoutResult {
+        var rows: [[(LayoutSubview, CGSize)]] = []
+        var width: CGFloat = 0
+        var totalHeight: CGFloat = 0
+    }
+
+    private func layoutRows(in width: CGFloat, subviews: Subviews) -> LayoutResult {
+        var result = LayoutResult()
+        var currentRow: [(LayoutSubview, CGSize)] = []
+        var rowWidth: CGFloat = 0
+        var rowHeight: CGFloat = 0
+        for subview in subviews {
+            let size = subview.sizeThatFits(.unspecified)
+            let needed = rowWidth == 0 ? size.width : rowWidth + spacing + size.width
+            if needed > width && !currentRow.isEmpty {
+                result.rows.append(currentRow)
+                result.width = max(result.width, rowWidth)
+                result.totalHeight += rowHeight + spacing
+                currentRow = []
+                rowWidth = 0
+                rowHeight = 0
+            }
+            currentRow.append((subview, size))
+            rowWidth = currentRow.count == 1 ? size.width : rowWidth + spacing + size.width
+            rowHeight = max(rowHeight, size.height)
+        }
+        if !currentRow.isEmpty {
+            result.rows.append(currentRow)
+            result.width = max(result.width, rowWidth)
+            result.totalHeight += rowHeight
+        }
+        return result
     }
 }
