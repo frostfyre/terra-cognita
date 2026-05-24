@@ -49,6 +49,18 @@ struct GraphCanvasView: View {
     /// every Canvas redraw.
     @State private var depthOrderedNodes: [Node] = []
 
+    /// Deep-background specks (a sparse star-field) seeded once on
+    /// appear. They drift in world space with the maximum parallax so
+    /// they appear "behind" everything when the user pans.
+    @State private var atmosphereSpecks: [AtmosphereSpeck] = []
+
+    private struct AtmosphereSpeck {
+        var x: CGFloat       // world x
+        var y: CGFloat       // world y
+        var radius: CGFloat  // 0.6 – 1.6 px
+        var phase: Double    // twinkle phase
+    }
+
     private enum LayoutKind { case none, circular, forceDirected }
 
     /// How many BFS hops from the selected node remain at full opacity.
@@ -105,13 +117,54 @@ struct GraphCanvasView: View {
                         return CGPoint(x: x, y: y)
                     }
 
-                    func toScreen(_ id: String, _ p: CGPoint) -> CGPoint {
+                    /// Parallax factor for a node at depth `d` (0 = deep, 1 = front).
+                    /// Foreground tracks pan 1:1, deepest layer at ~55%.
+                    func parallax(_ d: Double) -> CGFloat {
+                        CGFloat(0.55 + 0.45 * d)
+                    }
+
+                    /// Project a world point to screen coordinates with
+                    /// parallax (depth-aware offset) and ambient drift.
+                    func toScreen(_ id: String, _ p: CGPoint, _ d: Double) -> CGPoint {
                         let drift = driftFor(id)
-                        return CGPoint(x: center.x + p.x * s + off.width + drift.x,
-                                       y: center.y + p.y * s + off.height + drift.y)
+                        let pf = parallax(d)
+                        return CGPoint(x: center.x + p.x * s + off.width * pf + drift.x,
+                                       y: center.y + p.y * s + off.height * pf + drift.y)
                     }
 
                     let hasSelection = selectedNodeID != nil
+
+                    // --- Atmospheric background ---
+                    // A radial vignette from a subtle indigo centre to a
+                    // darker edge, so the canvas reads as a volume rather
+                    // than a flat sheet.
+                    let bgRect = CGRect(origin: .zero, size: size)
+                    context.fill(
+                        Path(bgRect),
+                        with: .radialGradient(
+                            Gradient(colors: [
+                                Color(red: 0.10, green: 0.11, blue: 0.18).opacity(0.55),
+                                Color(red: 0.03, green: 0.03, blue: 0.06).opacity(0.85)
+                            ]),
+                            center: center,
+                            startRadius: 0,
+                            endRadius: max(size.width, size.height) * 0.7
+                        )
+                    )
+                    // Deep specks — a sparse star-field at the back of the
+                    // depth axis, with maximum parallax. Provides motion
+                    // parallax against the moving graph.
+                    let speckParallax = parallax(0)
+                    for speck in atmosphereSpecks {
+                        let sx = center.x + speck.x * s + off.width * speckParallax
+                        let sy = center.y + speck.y * s + off.height * speckParallax
+                        // Subtle twinkle keyed off the speck's own offset.
+                        let twinkle = 0.45 + 0.4 * sin(t * 0.6 + speck.phase)
+                        let r = CGFloat(speck.radius)
+                        let rect = CGRect(x: sx - r, y: sy - r, width: r * 2, height: r * 2)
+                        context.fill(Path(ellipseIn: rect),
+                                     with: .color(.white.opacity(twinkle * 0.45)))
+                    }
 
                     // Edges — dim layer first, bright on top.
                     let groups = edgeGroups(toScreen: toScreen,
@@ -166,7 +219,8 @@ struct GraphCanvasView: View {
                     for node in depthOrderedNodes {
                         if let visibleSet, !visibleSet.contains(node.id) { continue }
                         guard let worldPoint = effectivePosition(for: node.id) else { continue }
-                        let p = toScreen(node.id, worldPoint)
+                        let depth = node.depth
+                        let p = toScreen(node.id, worldPoint, depth)
                         let isSelected = selectedNodeID == node.id
                         let isAmbient = !hasSelection
                             && ambientHighlightID == node.id
@@ -186,7 +240,6 @@ struct GraphCanvasView: View {
                         // Depth cue: nodes from older eras shrink slightly and
                         // lose a touch of opacity, so the foreground stays
                         // visually dominant without losing background context.
-                        let depth = node.depth
                         let depthSizeMul = 0.85 + 0.35 * CGFloat(depth)
                         let depthOpacityMul = 0.55 + 0.45 * depth
                         let drawRadius = baseRadius * depthSizeMul
@@ -295,7 +348,10 @@ struct GraphCanvasView: View {
                 handleTap(at: point, size: geo.size)
             }
             .contextMenu { selectedNodeMenu() }
-            .onAppear { canvasSize = geo.size }
+            .onAppear {
+                canvasSize = geo.size
+                seedAtmosphereSpecks()
+            }
             .onChange(of: geo.size) { _, newSize in canvasSize = newSize }
         }
         .task(id: store.graph.nodes.count) {
@@ -343,6 +399,25 @@ struct GraphCanvasView: View {
             ambientHighlightID = id
             ambientHighlightStart = Date().timeIntervalSinceReferenceDate
                 .truncatingRemainder(dividingBy: 86400)
+        }
+    }
+
+    /// Generate a deterministic field of background specks once so they
+    /// don't shimmer between redraws. Scattered across a wide world rect
+    /// so panning reveals new specks rather than running out.
+    private func seedAtmosphereSpecks() {
+        guard atmosphereSpecks.isEmpty else { return }
+        var rng = SplitMix64(seed: 0xC0FFEE_CAFE_BEEF)
+        let count = 140
+        let halfWidth: CGFloat = 4000
+        let halfHeight: CGFloat = 3000
+        atmosphereSpecks = (0..<count).map { _ in
+            AtmosphereSpeck(
+                x: CGFloat(rng.nextUnit() * 2 - 1) * halfWidth,
+                y: CGFloat(rng.nextUnit() * 2 - 1) * halfHeight,
+                radius: 0.6 + CGFloat(rng.nextUnit()) * 1.0,
+                phase: rng.nextUnit() * 6.28318
+            )
         }
     }
 
@@ -534,7 +609,7 @@ struct GraphCanvasView: View {
         var bright: [EdgeGroup] = []
     }
 
-    private func edgeGroups(toScreen: (String, CGPoint) -> CGPoint,
+    private func edgeGroups(toScreen: (String, CGPoint, Double) -> CGPoint,
                             highlight: Set<String>,
                             hasSelection: Bool,
                             visibleSet: Set<String>?) -> EdgeBatches {
@@ -548,6 +623,8 @@ struct GraphCanvasView: View {
             }
             guard let a = effectivePosition(for: edge.sourceID),
                   let b = effectivePosition(for: edge.targetID) else { continue }
+            let dA = store.graph.nodes[edge.sourceID]?.depth ?? 0.55
+            let dB = store.graph.nodes[edge.targetID]?.depth ?? 0.55
             let color = edgeColor(edge)
             let key = colorKey(color)
             let isBright = !hasSelection ||
@@ -555,13 +632,13 @@ struct GraphCanvasView: View {
 
             if isBright {
                 var entry = brightByColor[key] ?? (color, Path())
-                entry.1.move(to: toScreen(edge.sourceID, a))
-                entry.1.addLine(to: toScreen(edge.targetID, b))
+                entry.1.move(to: toScreen(edge.sourceID, a, dA))
+                entry.1.addLine(to: toScreen(edge.targetID, b, dB))
                 brightByColor[key] = entry
             } else {
                 var entry = dimByColor[key] ?? (color, Path())
-                entry.1.move(to: toScreen(edge.sourceID, a))
-                entry.1.addLine(to: toScreen(edge.targetID, b))
+                entry.1.move(to: toScreen(edge.sourceID, a, dA))
+                entry.1.addLine(to: toScreen(edge.targetID, b, dB))
                 dimByColor[key] = entry
             }
         }
@@ -627,20 +704,29 @@ struct GraphCanvasView: View {
     }
 
     /// Hit-test a screen point and return the id of the topmost visible
-    /// node under the cursor (respecting per-node radius + zoom-aware slack).
+    /// node under the cursor (respecting per-node radius + zoom-aware
+    /// slack + the depth-based parallax offset).
     private func nodeAt(screenPoint: CGPoint, size: CGSize) -> String? {
-        let world = worldPoint(at: screenPoint, size: size)
+        let centre = CGPoint(x: size.width / 2, y: size.height / 2)
         let slack: CGFloat = 4
         let visibleSet: Set<String>? = visibleNodeFilter.map { filter in
             Set(store.graph.nodes.values.filter(filter).map(\.id))
         }
+        // Walk front-to-back so the topmost (most foreground) node wins
+        // when several stack near the cursor.
         var bestID: String?
         var bestDistance: CGFloat = .greatestFiniteMagnitude
-        for id in store.graph.nodes.keys {
+        for node in depthOrderedNodes.reversed() {
+            let id = node.id
             if let visibleSet, !visibleSet.contains(id) { continue }
             guard let p = effectivePosition(for: id) else { continue }
-            let d = hypot(p.x - world.x, p.y - world.y)
-            let tapRadius = (radiusFor(nodeID: id) + slack) / scale
+            let pf = CGFloat(0.55 + 0.45 * node.depth)
+            // Same projection as toScreen, minus the per-frame drift
+            // (drift wobble shouldn't disturb hit-testing).
+            let sx = centre.x + p.x * scale + offset.width * pf
+            let sy = centre.y + p.y * scale + offset.height * pf
+            let d = hypot(sx - screenPoint.x, sy - screenPoint.y)
+            let tapRadius = radiusFor(nodeID: id) + slack
             if d < tapRadius && d < bestDistance {
                 bestDistance = d
                 bestID = id
@@ -727,6 +813,29 @@ struct GraphCanvasView: View {
         if let url = noteURL(for: node) {
             _ = openFileURL(url)
         }
+    }
+}
+
+// MARK: - Deterministic RNG for the atmosphere speck field
+
+/// Tiny seeded RNG so the background star-field is identical every launch.
+/// Not cryptographically anything — just stable + cheap.
+private struct SplitMix64 {
+    private var state: UInt64
+
+    init(seed: UInt64) { self.state = seed }
+
+    mutating func next() -> UInt64 {
+        state &+= 0x9E3779B97F4A7C15
+        var z = state
+        z = (z ^ (z >> 30)) &* 0xBF58476D1CE4E5B9
+        z = (z ^ (z >> 27)) &* 0x94D049BB133111EB
+        return z ^ (z >> 31)
+    }
+
+    /// Returns a Double in `[0, 1)`.
+    mutating func nextUnit() -> Double {
+        Double(next() >> 11) / Double(1 << 53)
     }
 }
 
