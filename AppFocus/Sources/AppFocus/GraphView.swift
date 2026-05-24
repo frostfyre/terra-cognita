@@ -32,7 +32,7 @@ struct GraphView: View {
 
             // Top bar — lens picker + (optional) subnet badge + find button
             HStack(spacing: 8) {
-                LensPicker(active: $activeLens, store: store)
+                LensPicker(active: $activeLens, store: store, bridges: subnets.bridges)
                 if let rootID = subnetRootID,
                    let root = store.graph.nodes[rootID] {
                     SubnetBadge(label: root.label) { subnetRootID = nil }
@@ -109,21 +109,26 @@ struct GraphView: View {
     }
 
     /// Composed visible-node filter:
-    ///   - Top level: only hubs + wilderness (subnet members are hidden)
+    ///   - Top level: hubs + wilderness (subnet members are hidden)
     ///   - Inside a subnet: only that subnet's hub + its members
-    /// All paths are then intersected with the active lens.
+    ///   - Seamwalkers lens: only bridge nodes (intersected with the
+    ///     surrounding subnet/top-level scope)
     private var visibleFilter: ((Node) -> Bool)? {
-        let lens = activeLens.makeFilter()
+        let typeFilter = activeLens.makeTypeFilter()
         let topology = subnets
+        let seamwalkersOnly = (activeLens == .seamwalkers)
+
         if let rootID = subnetRootID {
             return { node in
-                topology.isInside(node.id, subnet: rootID)
-                    && (lens?(node) ?? true)
+                guard topology.isInside(node.id, subnet: rootID) else { return false }
+                if seamwalkersOnly && !topology.bridges.contains(node.id) { return false }
+                return typeFilter?(node) ?? true
             }
         }
         return { node in
-            topology.isTopLevel(node.id)
-                && (lens?(node) ?? true)
+            guard topology.isTopLevel(node.id) else { return false }
+            if seamwalkersOnly && !topology.bridges.contains(node.id) { return false }
+            return typeFilter?(node) ?? true
         }
     }
 }
@@ -163,6 +168,7 @@ enum Lens: Hashable, CaseIterable, Identifiable {
     case institutions
     case events
     case works
+    case seamwalkers
 
     var id: Self { self }
 
@@ -174,6 +180,7 @@ enum Lens: Hashable, CaseIterable, Identifiable {
         case .institutions: return "Institutions"
         case .events: return "Events"
         case .works: return "Works"
+        case .seamwalkers: return "Seamwalkers"
         }
     }
 
@@ -185,15 +192,15 @@ enum Lens: Hashable, CaseIterable, Identifiable {
         case .institutions: return "building.2.fill"
         case .events: return "calendar"
         case .works: return "book.fill"
+        case .seamwalkers: return "point.3.connected.trianglepath.dotted"
         }
     }
 
-    /// Build a closure `(Node) -> Bool` that decides whether a node is
-    /// visible under the lens. `nil` means "include everything" (faster
-    /// than always returning true; canvas can skip the visibility check).
-    func makeFilter() -> ((Node) -> Bool)? {
+    /// Pure type-based filter, when the lens doesn't need topology.
+    /// `nil` means "include everything".
+    func makeTypeFilter() -> ((Node) -> Bool)? {
         switch self {
-        case .all: return nil
+        case .all, .seamwalkers: return nil
         case .people:        return { $0.type == "person" }
         case .concepts:      return { $0.type == "concept" }
         case .institutions:  return { $0.type == "institution" }
@@ -206,6 +213,7 @@ enum Lens: Hashable, CaseIterable, Identifiable {
 private struct LensPicker: View {
     @Binding var active: Lens
     @ObservedObject var store: GraphStore
+    var bridges: Set<String> = []
 
     var body: some View {
         Menu {
@@ -224,7 +232,10 @@ private struct LensPicker: View {
     }
 
     private func countSuffix(_ lens: Lens) -> String {
-        guard let filter = lens.makeFilter() else { return "" }
+        if lens == .seamwalkers {
+            return bridges.isEmpty ? "" : " (\(bridges.count))"
+        }
+        guard let filter = lens.makeTypeFilter() else { return "" }
         let n = store.graph.nodes.values.filter(filter).count
         return n > 0 ? " (\(n))" : ""
     }

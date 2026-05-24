@@ -272,6 +272,26 @@ struct GraphCanvasView: View {
                                            lineWidth: 1.5)
                         }
 
+                        // Seam-walker bridge marker — a thin teal ring on
+                        // nodes whose neighbours span multiple subnets.
+                        // Line width nudged up by extra spans so a 4-subnet
+                        // bridge reads heavier than a 2-subnet one.
+                        if let span = topology.bridgeSpan[node.id] {
+                            let extra = CGFloat(min(span - 2, 3)) * 0.5
+                            let bridgeRadius = drawRadius + 3 + extra
+                            let bridgeRect = CGRect(
+                                x: p.x - bridgeRadius,
+                                y: p.y - bridgeRadius,
+                                width: bridgeRadius * 2,
+                                height: bridgeRadius * 2
+                            )
+                            context.stroke(
+                                Path(ellipseIn: bridgeRect),
+                                with: .color(.teal.opacity((inHighlight ? 0.85 : dimOpacity * 1.5))),
+                                lineWidth: 1.2 + extra
+                            )
+                        }
+
                         // Subnet rim ports — small satellites slowly orbiting
                         // hub nodes to signal "has interior to enter".
                         if isSubnetCandidate(node.id) {
