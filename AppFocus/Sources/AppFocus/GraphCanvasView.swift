@@ -302,22 +302,61 @@ struct GraphCanvasView: View {
                     }
 
                     // Second pass — the selected node, drawn last so it sits
-                    // on top of every edge, neighbor, and label.
+                    // on top of every edge, neighbor, and label. Treatment:
+                    //   1. soft breathing halo (stacked translucent rings)
+                    //   2. core fill (the node itself, pulsed)
+                    //   3. sparse orbital sparks (very subtle, slow)
+                    //   4. label
                     if let (node, p, baseRadius) = deferredSelected {
                         let nodeRadius = baseRadius * (1 + selectionPulse)
+
+                        // --- Glow halo ---------------------------------
+                        // Four concentric translucent fills approximate a
+                        // soft radial gradient without any shader work.
+                        // A slow `breath` keeps the halo from feeling static.
+                        let breath = 1.0 + 0.18 * sin(t * 1.3)
+                        let halo: [(CGFloat, Double)] = [
+                            (nodeRadius + 4  * CGFloat(breath), 0.42),
+                            (nodeRadius + 10 * CGFloat(breath), 0.22),
+                            (nodeRadius + 18 * CGFloat(breath), 0.10),
+                            (nodeRadius + 30 * CGFloat(breath), 0.04),
+                        ]
+                        // Largest first so smaller rings paint on top.
+                        for (r, alpha) in halo.reversed() {
+                            let glowRect = CGRect(x: p.x - r, y: p.y - r,
+                                                  width: r * 2, height: r * 2)
+                            context.fill(Path(ellipseIn: glowRect),
+                                         with: .color(.accentColor.opacity(alpha)))
+                        }
+
+                        // --- Core ------------------------------------
                         let fill = nodeColor(node)
                         let rect = CGRect(x: p.x - nodeRadius, y: p.y - nodeRadius,
                                           width: nodeRadius * 2, height: nodeRadius * 2)
                         context.fill(Path(ellipseIn: rect), with: .color(fill))
 
-                        let r: CGFloat = nodeRadius + 3
-                        let ring = CGRect(x: p.x - r, y: p.y - r,
-                                          width: r * 2, height: r * 2)
-                        context.stroke(Path(ellipseIn: ring),
-                                       with: .color(.accentColor), lineWidth: 2)
+                        // --- Orbital sparks --------------------------
+                        // Six small specks orbit the node at ~9 sec/turn,
+                        // each with a slow pulse so the system feels alive
+                        // without looking like a game effect.
+                        let sparkCount = 6
+                        let orbitBase = nodeRadius + 14
+                        for i in 0..<sparkCount {
+                            let baseAngle = Double(i) / Double(sparkCount) * .pi * 2
+                            let angle = baseAngle + t * 0.7
+                            let wobble = sin(t * 2.1 + Double(i)) * 1.2
+                            let orbitR = orbitBase + CGFloat(wobble)
+                            let sx = p.x + orbitR * CGFloat(cos(angle))
+                            let sy = p.y + orbitR * CGFloat(sin(angle))
+                            let pulse = 0.55 + 0.35 * sin(t * 1.7 + Double(i) * 0.9)
+                            let sr: CGFloat = 1.4
+                            let sparkRect = CGRect(x: sx - sr, y: sy - sr,
+                                                   width: sr * 2, height: sr * 2)
+                            context.fill(Path(ellipseIn: sparkRect),
+                                         with: .color(.accentColor.opacity(pulse * 0.7)))
+                        }
 
-                        // Selected label is always visible and centred on
-                        // the node so the focus point reads at any scale.
+                        // --- Label ----------------------------------
                         let labelScale: CGFloat = 1 + selectionPulse
                         let resolved = context.resolve(
                             Text(node.label)
