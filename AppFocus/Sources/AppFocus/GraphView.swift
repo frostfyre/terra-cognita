@@ -2,12 +2,12 @@ import SwiftUI
 
 struct GraphView: View {
     @StateObject private var store: GraphStore
-    /// Selected node lives here so the canvas, the inspector, and the
-    /// search popover can all observe and mutate it.
     @State private var selectedNodeID: String?
-    /// Active lens filtering. `nil` = show everything.
     @State private var activeLens: Lens = .all
     @State private var showingSearch: Bool = false
+    /// When non-nil, the canvas is "inside" this node's subnet: visible
+    /// nodes are restricted to the root + 2-hop neighbourhood.
+    @State private var subnetRootID: String?
 
     init(store: GraphStore) {
         _store = StateObject(wrappedValue: store)
@@ -22,12 +22,17 @@ struct GraphView: View {
             GraphCanvasView(
                 store: store,
                 selectedNodeID: $selectedNodeID,
-                visibleNodeFilter: activeLens.makeFilter()
+                subnetRootID: $subnetRootID,
+                visibleNodeFilter: visibleFilter
             )
 
-            // Top bar — lens picker + find button
+            // Top bar — lens picker + (optional) subnet badge + find button
             HStack(spacing: 8) {
                 LensPicker(active: $activeLens, store: store)
+                if let rootID = subnetRootID,
+                   let root = store.graph.nodes[rootID] {
+                    SubnetBadge(label: root.label) { subnetRootID = nil }
+                }
                 Spacer()
                 Button {
                     showingSearch = true
@@ -57,7 +62,6 @@ struct GraphView: View {
                 }
             }
 
-            // Search popover (fade in/out)
             if showingSearch {
                 VStack {
                     Spacer().frame(height: 56)
@@ -68,6 +72,17 @@ struct GraphView: View {
                     Spacer()
                 }
                 .transition(.opacity)
+            }
+
+            // Invisible Escape catcher — exits subnet mode when active.
+            // (SwiftUI lacks a direct top-level keyboard handler outside
+            // a focused field, so this gives us one without stealing
+            // any user-visible behaviour.)
+            if subnetRootID != nil {
+                Button("") { subnetRootID = nil }
+                    .keyboardShortcut(.escape, modifiers: [])
+                    .opacity(0)
+                    .frame(width: 0, height: 0)
             }
         }
         .onAppear { store.loadDefaultVault() }
@@ -84,6 +99,65 @@ struct GraphView: View {
                 .inspectorColumnWidth(min: 280, ideal: 360, max: 520)
             }
         }
+    }
+
+    /// Composed visible-node filter: lens intersected with subnet
+    /// membership (if a subnet is active).
+    private var visibleFilter: ((Node) -> Bool)? {
+        let lens = activeLens.makeFilter()
+        guard let rootID = subnetRootID else { return lens }
+        let members = subnetMembers(of: rootID, depth: 2)
+        return { node in
+            members.contains(node.id) && (lens?(node) ?? true)
+        }
+    }
+
+    /// BFS the `depth`-hop neighbourhood of a node from the store's edges.
+    /// Includes the root itself.
+    private func subnetMembers(of rootID: String, depth: Int) -> Set<String> {
+        var visited: Set<String> = [rootID]
+        var frontier: [String] = [rootID]
+        // Build adjacency on demand (cheap enough for ~1k edges).
+        var adj: [String: [String]] = [:]
+        for edge in store.graph.edges {
+            adj[edge.sourceID, default: []].append(edge.targetID)
+            adj[edge.targetID, default: []].append(edge.sourceID)
+        }
+        for _ in 0..<depth {
+            var next: [String] = []
+            for n in frontier {
+                for m in adj[n] ?? [] where !visited.contains(m) {
+                    visited.insert(m)
+                    next.append(m)
+                }
+            }
+            if next.isEmpty { break }
+            frontier = next
+        }
+        return visited
+    }
+}
+
+// MARK: - Subnet badge
+
+private struct SubnetBadge: View {
+    let label: String
+    let onExit: () -> Void
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Image(systemName: "arrow.left").font(.caption)
+            Text(label).font(.caption).lineLimit(1)
+            Image(systemName: "xmark.circle.fill")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 3)
+        .background(.purple.opacity(0.18), in: Capsule())
+        .foregroundStyle(.purple)
+        .help("Exit subnet (Esc)")
+        .onTapGesture { onExit() }
     }
 }
 
@@ -165,4 +239,3 @@ private struct LensPicker: View {
         return n > 0 ? " (\(n))" : ""
     }
 }
-

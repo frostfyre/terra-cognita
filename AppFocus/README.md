@@ -1,4 +1,7 @@
-# AppFocus / Graph Workbench
+# Terra Cognita
+
+*Working name. The SwiftPM target is still `AppFocus` for now — rename in
+flight as the project matures.*
 
 A native macOS app that treats a heritage graph (a markdown vault of people,
 events, institutions, works, and concepts) as the primary work surface —
