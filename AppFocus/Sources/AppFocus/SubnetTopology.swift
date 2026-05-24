@@ -19,6 +19,12 @@ struct SubnetTopology: Equatable {
     var membership: [String: String] = [:]
     /// Hub id → list of member node ids, for quick "inside-subnet" lookup.
     var members: [String: [String]] = [:]
+    /// "Seam-walker" nodes — those whose neighbours collectively span
+    /// two or more distinct subnets. The connective tissue of the graph.
+    var bridges: Set<String> = []
+    /// node id → number of distinct subnets the node touches (≥ 2 for
+    /// bridges). Drives intensity of the visual bridge marker.
+    var bridgeSpan: [String: Int] = [:]
 
     /// True if `id` is shown at the top level (no subnet entered).
     func isTopLevel(_ id: String) -> Bool {
@@ -81,6 +87,32 @@ extension SubnetTopology {
             members[hub, default: []].append(memberID)
         }
 
-        return SubnetTopology(hubs: hubs, membership: membership, members: members)
+        // 5. Bridges — nodes whose neighbours span ≥ 2 distinct subnets.
+        // A neighbour's "home" is the hub it lives in: itself if it *is*
+        // a hub, its membership otherwise, or no home (skip) if wilderness.
+        var bridges: Set<String> = []
+        var bridgeSpan: [String: Int] = [:]
+        for (id, neighbours) in adj {
+            var homes: Set<String> = []
+            for n in neighbours {
+                if hubs.contains(n) {
+                    homes.insert(n)
+                } else if let h = membership[n] {
+                    homes.insert(h)
+                }
+            }
+            if homes.count >= 2 {
+                bridges.insert(id)
+                bridgeSpan[id] = homes.count
+            }
+        }
+
+        return SubnetTopology(
+            hubs: hubs,
+            membership: membership,
+            members: members,
+            bridges: bridges,
+            bridgeSpan: bridgeSpan
+        )
     }
 }
