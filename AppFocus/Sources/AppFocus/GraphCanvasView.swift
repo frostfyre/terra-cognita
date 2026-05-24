@@ -17,6 +17,11 @@ struct GraphCanvasView: View {
     /// While the user is dragging a node, this holds its id.
     @State private var draggingNodeID: String?
 
+    /// Local radial layout used when the user enters a subnet — hub at
+    /// origin (relative to canvas centre), members fanned around it.
+    /// Empty when no subnet is entered.
+    @State private var subnetLocalLayout: [String: CGPoint] = [:]
+
     /// When nothing is selected, the canvas periodically "puffs" a random
     /// node so the graph feels alive and the eye gets surfaced to nodes
     /// it might not otherwise notice.
@@ -31,6 +36,10 @@ struct GraphCanvasView: View {
     /// Optional node-visibility filter (lens). `nil` means show everything.
     /// Edges are visible only when both endpoints pass the filter.
     var visibleNodeFilter: ((Node) -> Bool)? = nil
+    /// Subnet decomposition (which nodes belong to which hub). Used to
+    /// compute a local radial layout when the user enters a subnet, so
+    /// the hub anchors the centre and members fan out around it.
+    var topology: SubnetTopology = SubnetTopology()
     /// Wall-clock time of the most recent selection. Drives the
     /// "selected node briefly doubles in size" pulse.
     @State private var selectionPulseStart: TimeInterval?
@@ -434,6 +443,56 @@ struct GraphCanvasView: View {
                 ambientHighlightStart = nil
             }
         }
+        .onChange(of: subnetRootID) { _, newValue in
+            rebuildSubnetLocalLayout(for: newValue)
+            // Auto-frame onto the hub when entering, and back to the
+            // global graph when exiting.
+            if newValue != nil {
+                selectedNodeID = newValue
+            } else {
+                // Exiting subnet — reset view to overview.
+                withAnimation(.easeInOut(duration: 0.5)) {
+                    scale = 1
+                    offset = .zero
+                    lastScaleValue = 1
+                }
+            }
+        }
+    }
+
+    /// Compute a clean radial layout when the user enters a subnet: hub
+    /// anchored where it lives in the global layout, members arranged on
+    /// a circle around it with radius scaled to the member count so
+    /// large subnets don't crowd. Empty when no subnet is entered.
+    private func rebuildSubnetLocalLayout(for rootID: String?) {
+        guard let rootID,
+              let hubPos = layout[rootID] else {
+            withAnimation(.easeInOut(duration: 0.45)) {
+                subnetLocalLayout = [:]
+            }
+            return
+        }
+        let members = topology.members[rootID] ?? []
+        let count = max(members.count, 1)
+        // Radius scales gently with member count so small subnets feel
+        // tight and large ones still readable.
+        let radius: CGFloat = 130 + CGFloat(min(count, 40)) * 6
+        var local: [String: CGPoint] = [rootID: hubPos]
+        for (i, memberID) in members.enumerated() {
+            let angle = 2 * .pi * Double(i) / Double(count)
+            // Push higher-degree members a touch outward so the rim has
+            // some visual variation rather than perfectly uniform spacing.
+            let memberDegree = adjacency[memberID]?.count ?? 0
+            let bump = CGFloat(min(memberDegree, 8)) * 4
+            let r = radius + bump
+            local[memberID] = CGPoint(
+                x: hubPos.x + r * CGFloat(cos(angle)),
+                y: hubPos.y + r * CGFloat(sin(angle))
+            )
+        }
+        withAnimation(.easeInOut(duration: 0.55)) {
+            subnetLocalLayout = local
+        }
     }
 
     // MARK: - Idle / ambient animation
@@ -759,8 +818,10 @@ struct GraphCanvasView: View {
     }
 
     /// World-space position the canvas should render for a given node.
-    /// Pinned positions override the layout dictionary.
+    /// Priority: subnet-local layout (when entered) → pinned position →
+    /// global layout.
     private func effectivePosition(for id: String) -> CGPoint? {
+        if subnetRootID != nil, let p = subnetLocalLayout[id] { return p }
         if let pinned = pinnedPositions[id] { return pinned }
         return layout[id]
     }

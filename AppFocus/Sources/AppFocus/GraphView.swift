@@ -26,7 +26,8 @@ struct GraphView: View {
                 store: store,
                 selectedNodeID: $selectedNodeID,
                 subnetRootID: $subnetRootID,
-                visibleNodeFilter: visibleFilter
+                visibleNodeFilter: visibleFilter,
+                topology: subnets
             )
 
             // Top bar — lens picker + (optional) subnet badge + find button
