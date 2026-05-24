@@ -16,6 +16,13 @@ struct GraphCanvasView: View {
     @State private var pinnedPositions: [String: CGPoint] = [:]
     /// While the user is dragging a node, this holds its id.
     @State private var draggingNodeID: String?
+
+    /// When nothing is selected, the canvas periodically "puffs" a random
+    /// node so the graph feels alive and the eye gets surfaced to nodes
+    /// it might not otherwise notice.
+    @State private var ambientHighlightID: String?
+    @State private var ambientHighlightStart: TimeInterval?
+    private let ambientPuffDuration: Double = 2.4
     /// Owned by `GraphView` so the inspector panel can drive it too.
     @Binding var selectedNodeID: String?
     /// Optional node-visibility filter (lens). `nil` means show everything.
@@ -36,6 +43,11 @@ struct GraphCanvasView: View {
     /// Undirected adjacency, rebuilt when the graph changes. Used for the
     /// "dim everything outside the N-hop neighborhood of the selection".
     @State private var adjacency: [String: [String]] = [:]
+
+    /// Nodes sorted back-to-front by depth (oldest era first). Rebuilt
+    /// when the graph changes so we don't pay for an O(n log n) sort on
+    /// every Canvas redraw.
+    @State private var depthOrderedNodes: [Node] = []
 
     private enum LayoutKind { case none, circular, forceDirected }
 
@@ -130,27 +142,58 @@ struct GraphCanvasView: View {
                         return CGFloat(sin(.pi * phase))
                     }()
 
-                    // Defer the selected node to a second pass so it draws
-                    // on top of everything else.
-                    var deferredSelected: (Node, CGPoint, CGFloat)?
+                    // Idle-state ambient puff — only fires when nothing is
+                    // selected. A sin curve scales the node radius up then
+                    // back down over `ambientPuffDuration` seconds.
+                    let ambientPuff: CGFloat = {
+                        guard !hasSelection,
+                              ambientHighlightID != nil,
+                              let start = ambientHighlightStart else { return 0 }
+                        let elapsed = t - start
+                        guard elapsed >= 0, elapsed <= ambientPuffDuration else { return 0 }
+                        let phase = elapsed / ambientPuffDuration
+                        return CGFloat(sin(.pi * phase))
+                    }()
 
-                    // First pass — all non-selected nodes.
-                    for node in store.graph.nodes.values {
+                    // Defer the selected and currently-puffed nodes so they
+                    // draw on top of everything else.
+                    var deferredSelected: (Node, CGPoint, CGFloat)?
+                    var deferredAmbient: (Node, CGPoint, CGFloat)?
+
+                    // First pass — all non-deferred nodes, walked in
+                    // depth order so the most "present" nodes overdraw
+                    // older ones (DESIGN.md's "time as depth" idea).
+                    for node in depthOrderedNodes {
                         if let visibleSet, !visibleSet.contains(node.id) { continue }
                         guard let worldPoint = effectivePosition(for: node.id) else { continue }
                         let p = toScreen(node.id, worldPoint)
                         let isSelected = selectedNodeID == node.id
+                        let isAmbient = !hasSelection
+                            && ambientHighlightID == node.id
+                            && ambientPuff > 0.01
                         let baseRadius = radiusFor(nodeID: node.id)
 
                         if isSelected {
                             deferredSelected = (node, p, baseRadius)
                             continue
                         }
+                        if isAmbient {
+                            deferredAmbient = (node, p, baseRadius)
+                            continue
+                        }
 
                         let inHighlight = !hasSelection || highlight.contains(node.id)
-                        let fill = nodeColor(node).opacity(inHighlight ? 1.0 : dimOpacity)
-                        let rect = CGRect(x: p.x - baseRadius, y: p.y - baseRadius,
-                                          width: baseRadius * 2, height: baseRadius * 2)
+                        // Depth cue: nodes from older eras shrink slightly and
+                        // lose a touch of opacity, so the foreground stays
+                        // visually dominant without losing background context.
+                        let depth = node.depth
+                        let depthSizeMul = 0.85 + 0.35 * CGFloat(depth)
+                        let depthOpacityMul = 0.55 + 0.45 * depth
+                        let drawRadius = baseRadius * depthSizeMul
+                        let opacity = (inHighlight ? 1.0 : dimOpacity) * depthOpacityMul
+                        let fill = nodeColor(node).opacity(opacity)
+                        let rect = CGRect(x: p.x - drawRadius, y: p.y - drawRadius,
+                                          width: drawRadius * 2, height: drawRadius * 2)
                         context.fill(Path(ellipseIn: rect), with: .color(fill))
 
                         // Pinned indicator — small white outline so the pin
@@ -161,19 +204,48 @@ struct GraphCanvasView: View {
                                            lineWidth: 1.5)
                         }
 
-                        // Show labels when:
-                        //   - zoomed in enough (overview stays clean), OR
-                        //   - this node is part of an active highlight set
-                        //     (the focused subnet always reads).
+                        // Labels for background-pass nodes: only when
+                        // zoomed in or part of an active highlight set.
                         let showLabel = inHighlight && (labelEnabled || hasSelection)
                         if showLabel {
                             let resolved = context.resolve(
                                 Text(node.label)
                                     .font(.system(size: 10))
-                                    .foregroundStyle(.primary)
+                                    .foregroundStyle(.primary.opacity(depthOpacityMul))
                             )
                             context.draw(resolved, at: p, anchor: .center)
                         }
+                    }
+
+                    // Foreground pass — the idle-puffed node, drawn above
+                    // every other background node so the spotlight reads.
+                    if let (node, p, baseRadius) = deferredAmbient {
+                        let drawRadius = baseRadius * (1 + ambientPuff * 0.9)
+                        let fill = nodeColor(node)
+                        let rect = CGRect(x: p.x - drawRadius, y: p.y - drawRadius,
+                                          width: drawRadius * 2, height: drawRadius * 2)
+                        context.fill(Path(ellipseIn: rect), with: .color(fill))
+
+                        if pinnedPositions[node.id] != nil {
+                            context.stroke(Path(ellipseIn: rect),
+                                           with: .color(.white),
+                                           lineWidth: 1.5)
+                        }
+
+                        let r = drawRadius + 2 + ambientPuff * 2
+                        let ring = CGRect(x: p.x - r, y: p.y - r,
+                                          width: r * 2, height: r * 2)
+                        context.stroke(Path(ellipseIn: ring),
+                                       with: .color(.accentColor.opacity(0.55 * ambientPuff)),
+                                       lineWidth: 1.5)
+
+                        let fontSize: CGFloat = 10 + ambientPuff * 3
+                        let resolved = context.resolve(
+                            Text(node.label)
+                                .font(.system(size: fontSize).weight(.medium))
+                                .foregroundStyle(.primary)
+                        )
+                        context.draw(resolved, at: p, anchor: .center)
                     }
 
                     // Second pass — the selected node, drawn last so it sits
@@ -229,6 +301,7 @@ struct GraphCanvasView: View {
         .task(id: store.graph.nodes.count) {
             await rebuildLayoutPipeline()
         }
+        .task { await runAmbientCycle() }
         .onChange(of: selectedNodeID) { _, newValue in
             if newValue != nil {
                 // Match the time domain used inside the Canvas closure
@@ -236,8 +309,55 @@ struct GraphCanvasView: View {
                 selectionPulseStart = Date().timeIntervalSinceReferenceDate
                     .truncatingRemainder(dividingBy: 86400)
                 frameHighlightedSubnet()
+                // Cancel any in-flight ambient puff so it doesn't fight
+                // the user's deliberate selection.
+                ambientHighlightID = nil
+                ambientHighlightStart = nil
             }
         }
+    }
+
+    // MARK: - Idle / ambient animation
+
+    /// Background loop that periodically picks a random node and puffs it
+    /// when the user is idle (no selection). One puff at a time, spaced
+    /// 3.5–6.5 seconds apart. Sleeps quietly during user interaction.
+    private func runAmbientCycle() async {
+        // Small initial delay so the first puff doesn't fire while the
+        // layout is still settling.
+        try? await Task.sleep(for: .seconds(2))
+        while !Task.isCancelled {
+            let pause = Double.random(in: 3.5...6.5)
+            try? await Task.sleep(for: .seconds(pause))
+            if Task.isCancelled { break }
+
+            // Only act when the user is idle and we have nodes to choose from.
+            guard selectedNodeID == nil, !store.graph.nodes.isEmpty else { continue }
+
+            // Pick a node, weighted toward higher-degree (more interesting)
+            // nodes so the spotlight surfaces meaningful entries more often.
+            let nodes = Array(store.graph.nodes.values)
+            let chosen = pickWeightedNode(from: nodes) ?? nodes.randomElement()
+            guard let id = chosen?.id, id != ambientHighlightID else { continue }
+
+            ambientHighlightID = id
+            ambientHighlightStart = Date().timeIntervalSinceReferenceDate
+                .truncatingRemainder(dividingBy: 86400)
+        }
+    }
+
+    /// Weighted random pick: prefer nodes with more connections.
+    private func pickWeightedNode(from nodes: [Node]) -> Node? {
+        let weights = nodes.map { 1 + (adjacency[$0.id]?.count ?? 0) }
+        let total = weights.reduce(0, +)
+        guard total > 0 else { return nil }
+        let target = Int.random(in: 0..<total)
+        var running = 0
+        for (i, w) in weights.enumerated() {
+            running += w
+            if running > target { return nodes[i] }
+        }
+        return nodes.last
     }
 
     // MARK: - Auto-framing
@@ -383,6 +503,8 @@ struct GraphCanvasView: View {
             adj[edge.targetID, default: []].append(edge.sourceID)
         }
         adjacency = adj
+        depthOrderedNodes = store.graph.nodes.values
+            .sorted { $0.depth < $1.depth }
     }
 
     // MARK: - Node sizing by degree
