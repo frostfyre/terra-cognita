@@ -745,29 +745,55 @@ struct GraphCanvasView: View {
         var dimByColor: [String: (Color, Path)] = [:]
         var brightByColor: [String: (Color, Path)] = [:]
 
+        // At the top level (no subnet entered) we *collapse* edges
+        // through their hubs: a wilderness→member edge becomes a
+        // wilderness→hub edge so the wilderness node visibly connects to
+        // the subnet it touches, instead of looking like an orphan.
+        let collapseToHub = subnetRootID == nil && !topology.membership.isEmpty
+        // Dedupe collapsed edges so the same hub→hub bridge doesn't get
+        // drawn dozens of times when many leaves bridge two subnets.
+        var seenCollapsed: Set<String> = []
+
         for edge in store.graph.edges {
+            var sourceID = edge.sourceID
+            var targetID = edge.targetID
+
+            if collapseToHub {
+                // Redirect each endpoint to its hub if it's a hidden member.
+                if let hub = topology.membership[sourceID] { sourceID = hub }
+                if let hub = topology.membership[targetID] { targetID = hub }
+                // Drop self-loops created by both endpoints belonging to
+                // the same subnet.
+                if sourceID == targetID { continue }
+                let key = sourceID < targetID
+                    ? "\(sourceID)|\(targetID)"
+                    : "\(targetID)|\(sourceID)"
+                if seenCollapsed.contains(key) { continue }
+                seenCollapsed.insert(key)
+            }
+
             if let visibleSet,
-               !(visibleSet.contains(edge.sourceID) && visibleSet.contains(edge.targetID)) {
+               !(visibleSet.contains(sourceID) && visibleSet.contains(targetID)) {
                 continue
             }
-            guard let a = effectivePosition(for: edge.sourceID),
-                  let b = effectivePosition(for: edge.targetID) else { continue }
-            let dA = store.graph.nodes[edge.sourceID]?.depth ?? 0.55
-            let dB = store.graph.nodes[edge.targetID]?.depth ?? 0.55
+            guard let a = effectivePosition(for: sourceID),
+                  let b = effectivePosition(for: targetID) else { continue }
+            let dA = store.graph.nodes[sourceID]?.depth ?? 0.55
+            let dB = store.graph.nodes[targetID]?.depth ?? 0.55
             let color = edgeColor(edge)
             let key = colorKey(color)
             let isBright = !hasSelection ||
-                (highlight.contains(edge.sourceID) && highlight.contains(edge.targetID))
+                (highlight.contains(sourceID) && highlight.contains(targetID))
 
             if isBright {
                 var entry = brightByColor[key] ?? (color, Path())
-                entry.1.move(to: toScreen(edge.sourceID, a, dA))
-                entry.1.addLine(to: toScreen(edge.targetID, b, dB))
+                entry.1.move(to: toScreen(sourceID, a, dA))
+                entry.1.addLine(to: toScreen(targetID, b, dB))
                 brightByColor[key] = entry
             } else {
                 var entry = dimByColor[key] ?? (color, Path())
-                entry.1.move(to: toScreen(edge.sourceID, a, dA))
-                entry.1.addLine(to: toScreen(edge.targetID, b, dB))
+                entry.1.move(to: toScreen(sourceID, a, dA))
+                entry.1.addLine(to: toScreen(targetID, b, dB))
                 dimByColor[key] = entry
             }
         }
