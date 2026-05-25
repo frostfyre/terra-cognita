@@ -16,6 +16,10 @@ struct GraphCanvasView: View {
     @State private var pinnedPositions: [String: CGPoint] = [:]
     /// While the user is dragging a node, this holds its id.
     @State private var draggingNodeID: String?
+    /// While the user is panning (drag started on empty canvas), this
+    /// holds the `offset` at the start of the drag so each onChanged
+    /// frame can compute the new offset relative to it.
+    @State private var panAnchor: CGSize?
 
     /// Local radial layout used when the user enters a subnet — hub at
     /// origin (relative to canvas centre), members fanned around it.
@@ -841,25 +845,38 @@ struct GraphCanvasView: View {
             }
     }
 
-    /// Left-mouse drag = move a node (if drag started on one). Drags on
-    /// empty canvas are ignored — middle-mouse pan handles panning.
+    /// Drag gesture: if started on a node, drag that node; otherwise pan
+    /// the canvas. On macOS, middle-mouse-drag also pans (via the
+    /// MouseInputMonitor NSEvent layer) — both paths coexist. On iOS /
+    /// iPadOS, this gesture is the only pan affordance.
     private func nodeDragGesture(size: CGSize) -> some Gesture {
         DragGesture(minimumDistance: 3, coordinateSpace: .local)
             .onChanged { value in
-                if draggingNodeID == nil {
-                    // First frame of the drag — see if it started on a node.
+                if draggingNodeID == nil && panAnchor == nil {
                     if let hit = nodeAt(screenPoint: value.startLocation, size: size) {
+                        // Started on a node → drag that node.
                         draggingNodeID = hit
                         selectedNodeID = hit
+                    } else {
+                        // Empty canvas → start a pan.
+                        panAnchor = offset
                     }
                 }
                 if let id = draggingNodeID {
                     pinnedPositions[id] = worldPoint(at: value.location, size: size)
+                } else if let anchor = panAnchor {
+                    offset = CGSize(
+                        width: anchor.width + value.translation.width,
+                        height: anchor.height + value.translation.height
+                    )
                 }
             }
             .onEnded { _ in
-                draggingNodeID = nil
-                persistLayout()
+                if draggingNodeID != nil {
+                    draggingNodeID = nil
+                    persistLayout()
+                }
+                panAnchor = nil
             }
     }
 

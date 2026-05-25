@@ -5,6 +5,9 @@ public struct GraphView: View {
     @State private var selectedNodeID: String?
     @State private var activeLens: Lens = .all
     @State private var showingSearch: Bool = false
+    #if os(iOS)
+    @Environment(\.horizontalSizeClass) private var hSizeClass
+    #endif
     /// When non-nil, the canvas is "inside" this node's subnet: only
     /// that subnet's hub + members are visible.
     @State private var subnetRootID: String?
@@ -93,19 +96,33 @@ public struct GraphView: View {
         .onChange(of: store.graph.nodes.count) { _, _ in
             subnets = SubnetTopology.compute(from: store.graph)
         }
-        .inspector(isPresented: Binding(
-            get: { selectedNodeID != nil },
-            set: { if !$0 { selectedNodeID = nil } }
-        )) {
-            if let id = selectedNodeID {
-                NodeInspectorView(
-                    nodeID: id,
-                    store: store,
-                    onSelectNode: { newID in selectedNodeID = newID }
-                )
-                .inspectorColumnWidth(min: 280, ideal: 360, max: 520)
+        .modifier(InspectorPresentation(
+            isPresented: Binding(
+                get: { selectedNodeID != nil },
+                set: { if !$0 { selectedNodeID = nil } }
+            ),
+            useSheet: useSheetForInspector
+        ) {
+            Group {
+                if let id = selectedNodeID {
+                    NodeInspectorView(
+                        nodeID: id,
+                        store: store,
+                        onSelectNode: { newID in selectedNodeID = newID }
+                    )
+                }
             }
-        }
+        })
+    }
+
+    /// On iPhone (compact width) the inspector pane is a poor fit — we
+    /// switch to a sheet with detents. iPad and macOS keep the side panel.
+    private var useSheetForInspector: Bool {
+        #if os(iOS)
+        return hSizeClass == .compact
+        #else
+        return false
+        #endif
     }
 
     /// Composed visible-node filter:
@@ -129,6 +146,34 @@ public struct GraphView: View {
             guard topology.isTopLevel(node.id) else { return false }
             if seamwalkersOnly && !topology.bridges.contains(node.id) { return false }
             return typeFilter?(node) ?? true
+        }
+    }
+}
+
+// MARK: - Inspector adaptive presentation
+
+/// Picks between `.inspector(isPresented:)` (side panel, macOS + iPad
+/// regular width) and `.sheet(isPresented:)` (iPhone / iPad compact)
+/// based on `useSheet`. Keeps a single call-site in GraphView.
+private struct InspectorPresentation<InspectorContent: View>: ViewModifier {
+    @Binding var isPresented: Bool
+    let useSheet: Bool
+    @ViewBuilder var content: () -> InspectorContent
+
+    func body(content base: Content) -> some View {
+        if useSheet {
+            base.sheet(isPresented: $isPresented) {
+                content()
+                #if os(iOS)
+                    .presentationDetents([.medium, .large])
+                    .presentationDragIndicator(.visible)
+                #endif
+            }
+        } else {
+            base.inspector(isPresented: $isPresented) {
+                content()
+                    .inspectorColumnWidth(min: 280, ideal: 360, max: 520)
+            }
         }
     }
 }
