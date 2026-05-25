@@ -166,6 +166,10 @@ private struct InspectorPresentation<InspectorContent: View>: ViewModifier {
                 #if os(iOS)
                     .presentationDetents([.medium, .large])
                     .presentationDragIndicator(.visible)
+                    // Prefer scrolling the inner ScrollView over resizing
+                    // the sheet when the user drags on the content. Sheet
+                    // resizes only via the drag indicator + edge swipes.
+                    .presentationContentInteraction(.scrolls)
                 #endif
             }
         } else {

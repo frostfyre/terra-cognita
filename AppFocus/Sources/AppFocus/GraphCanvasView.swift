@@ -438,13 +438,13 @@ struct GraphCanvasView: View {
                     }
                 )
             )
-            // Drag is the primary gesture (selects/moves a node or pans
-            // the canvas). Pinch must be *simultaneous*, otherwise on
-            // iPad SwiftUI's default exclusive policy makes the first
-            // finger trigger drag-pan before the second finger lands
-            // and pinch never engages.
+            // Pinch wins when two fingers are detected — otherwise drag
+            // (single-finger pan or node-drag) handles the gesture.
+            // `.highPriorityGesture` is what makes pinch beat drag on
+            // iPad; `.simultaneousGesture` alone wasn't enough — the
+            // drag would still latch onto the first finger.
+            .highPriorityGesture(pinchGesture())
             .gesture(nodeDragGesture(size: geo.size))
-            .simultaneousGesture(pinchGesture())
             .onTapGesture(coordinateSpace: .local) { point in
                 handleTap(at: point, size: geo.size)
             }
