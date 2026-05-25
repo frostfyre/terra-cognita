@@ -3,11 +3,17 @@ import SwiftUI
 
 // Minimal graph container that GraphCanvasView expects.
 @MainActor
-final class GraphStore: ObservableObject {
+public final class GraphStore: ObservableObject {
     @Published var graph: Graph
     @Published var loadStatus: String = ""
 
-    init(graph: Graph = Graph(nodes: [:], edges: [])) {
+    /// Empty store. The app's `GraphView` calls `loadDefaultVault()` to
+    /// populate it from the heritage vault on disk.
+    public init() {
+        self.graph = Graph(nodes: [:], edges: [])
+    }
+
+    init(graph: Graph) {
         self.graph = graph
     }
 
@@ -44,7 +50,8 @@ final class GraphStore: ObservableObject {
 }
 
 // Lightweight graph model used by GraphStore.
-// Matches usage in GraphCanvasView: `graph.nodes.values` and `graph.edges` with `Edge.id`, `Edge.sourceID`, `Edge.targetID`, and optional `Edge.provenance`.
+// Matches usage in GraphCanvasView: `graph.nodes.values` and `graph.edges`
+// with `Edge.id`, `Edge.sourceID`, `Edge.targetID`, `Edge.provenance`.
 struct Graph {
     var nodes: [String: Node]
     var edges: [Edge]
