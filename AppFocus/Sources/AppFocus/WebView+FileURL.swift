@@ -7,9 +7,9 @@ import UIKit
 #endif
 
 /// Opens a file URL using the appropriate platform API.
-/// Some call sites may have used an incorrect parameter label (url: vs fileURL:).
-/// Use this helper to avoid signature mismatches and handle platform differences.
+/// `UIApplication.shared` is `@MainActor` on iOS 18+, so this is too.
 @discardableResult
+@MainActor
 public func openFileURL(_ fileURL: URL) -> Bool {
     #if os(macOS)
     return NSWorkspace.shared.open(fileURL)

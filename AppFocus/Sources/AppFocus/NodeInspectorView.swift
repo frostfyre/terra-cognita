@@ -127,7 +127,12 @@ struct NodeInspectorView: View {
                     Button("Open in default app") {
                         _ = openFileURL(URL(fileURLWithPath: path))
                     }
+                    #if os(macOS)
                     .buttonStyle(.link)
+                    #else
+                    .buttonStyle(.borderless)
+                    .foregroundStyle(.tint)
+                    #endif
                     .font(.caption)
                 }
             }

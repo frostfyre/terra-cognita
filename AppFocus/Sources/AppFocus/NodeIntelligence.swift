@@ -37,7 +37,7 @@ final class NodeIntelligence: ObservableObject {
     /// True only when the on-device model is ready to take a request.
     var isAvailable: Bool {
         #if canImport(FoundationModels)
-        if #available(macOS 26, *) {
+        if #available(macOS 26, iOS 26, *) {
             switch SystemLanguageModel.default.availability {
             case .available: return true
             default: return false
@@ -49,7 +49,7 @@ final class NodeIntelligence: ObservableObject {
 
     var availabilityNote: String? {
         #if canImport(FoundationModels)
-        if #available(macOS 26, *) {
+        if #available(macOS 26, iOS 26, *) {
             switch SystemLanguageModel.default.availability {
             case .available:
                 return nil
@@ -77,7 +77,7 @@ final class NodeIntelligence: ObservableObject {
         boundNodeID = node.id
         boundContextPrompt = Self.contextPrompt(for: node)
         #if canImport(FoundationModels)
-        if #available(macOS 26, *) {
+        if #available(macOS 26, iOS 26, *) {
             session = LanguageModelSession(instructions: Self.instructions)
         } else {
             session = nil
@@ -166,7 +166,7 @@ final class NodeIntelligence: ObservableObject {
 
     private func perform(prompt: String) async {
         #if canImport(FoundationModels)
-        if #available(macOS 26, *) {
+        if #available(macOS 26, iOS 26, *) {
             guard let session = session as? LanguageModelSession else {
                 activity = .failed("No session.")
                 return

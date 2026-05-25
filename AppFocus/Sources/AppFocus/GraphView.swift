@@ -1,6 +1,6 @@
 import SwiftUI
 
-struct GraphView: View {
+public struct GraphView: View {
     @StateObject private var store: GraphStore
     @State private var selectedNodeID: String?
     @State private var activeLens: Lens = .all
@@ -12,15 +12,15 @@ struct GraphView: View {
     /// once when the graph loads.
     @State private var subnets: SubnetTopology = SubnetTopology()
 
-    init(store: GraphStore) {
+    public init(store: GraphStore) {
         _store = StateObject(wrappedValue: store)
     }
 
-    init() {
+    public init() {
         _store = StateObject(wrappedValue: GraphStore())
     }
 
-    var body: some View {
+    public var body: some View {
         ZStack(alignment: .top) {
             GraphCanvasView(
                 store: store,
