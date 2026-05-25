@@ -18,7 +18,13 @@ let package = Package(
     targets: [
         .target(
             name: "AppFocusKit",
-            path: "Sources/AppFocus"
+            path: "Sources/AppFocus",
+            resources: [
+                // "The World of Hayao Miyazaki" demo vault, bundled with
+                // every target so the app launches with content even when
+                // no on-disk vault is available (e.g. iOS).
+                .copy("Resources/miyazaki-vault")
+            ]
         ),
         .executableTarget(
             name: "AppFocus",

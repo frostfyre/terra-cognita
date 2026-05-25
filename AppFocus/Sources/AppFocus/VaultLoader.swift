@@ -10,25 +10,35 @@ import Foundation
 struct VaultLoader {
     let vaultURL: URL
 
-    /// Resolves a vault directory by searching a few sensible locations:
-    /// the current working directory (when run via `swift run`), the source
-    /// file's parent chain, and the executable's parent chain. Returns the
-    /// first that contains `<dir>/heritage-vault`.
+    /// Resolves a vault directory by trying, in order:
+    ///   1. The Miyazaki demo vault bundled with AppFocusKit (`Bundle.module`)
+    ///   2. The current working directory + `Data/heritage-vault/heritage-vault`
+    ///      (where the development heritage vault lives on macOS via swift run)
+    ///   3. The executable's parent chain (walks up 8 levels)
     static func defaultVault() -> URL? {
         let fm = FileManager.default
-        let needle = "Data/heritage-vault/heritage-vault"
 
+        // 1. Library-bundled Miyazaki demo vault. Always present on iOS
+        //    and any Xcode app target; first preference everywhere.
+        if let bundled = Bundle.module.url(forResource: "miyazaki-vault",
+                                           withExtension: nil) {
+            var isDir: ObjCBool = false
+            if fm.fileExists(atPath: bundled.path, isDirectory: &isDir),
+               isDir.boolValue {
+                return bundled
+            }
+        }
+
+        // 2. Filesystem fallback for development (swift run, working dir at repo root).
+        let needle = "Data/heritage-vault/heritage-vault"
         var candidates: [URL] = []
         candidates.append(URL(fileURLWithPath: fm.currentDirectoryPath))
-
-        // Walk up from the executable's directory looking for the vault.
         var dir = URL(fileURLWithPath: CommandLine.arguments[0])
             .deletingLastPathComponent()
         for _ in 0..<8 {
             candidates.append(dir)
             dir = dir.deletingLastPathComponent()
         }
-
         for base in candidates {
             let url = base.appendingPathComponent(needle)
             var isDir: ObjCBool = false
