@@ -838,12 +838,15 @@ struct GraphCanvasView: View {
     // MARK: - Gestures
 
     private func pinchGesture() -> some Gesture {
-        MagnificationGesture()
+        // `MagnifyGesture` (iOS 17 / macOS 14+) is the modern replacement
+        // for `MagnificationGesture` — the older API still works but
+        // touch-handling on iPad has been observed to lag behind it.
+        MagnifyGesture()
             .onChanged { value in
-                let delta = value / lastScaleValue
+                let delta = value.magnification / lastScaleValue
                 let newScale = scale * delta
                 scale = max(0.25, min(4.0, newScale))
-                lastScaleValue = value
+                lastScaleValue = value.magnification
             }
             .onEnded { _ in
                 lastScaleValue = 1
@@ -1132,6 +1135,10 @@ private struct MouseInputMonitor: NSViewRepresentable {
 private struct MouseInputMonitor: View {
     let onScroll: (CGFloat) -> Void
     let onMiddleDrag: (CGFloat, CGFloat) -> Void
-    var body: some View { Color.clear }
+    var body: some View {
+        // Explicitly opt out of hit-testing so we never steal a touch
+        // from the canvas's pinch / drag / tap gestures on iOS.
+        Color.clear.allowsHitTesting(false)
+    }
 }
 #endif
