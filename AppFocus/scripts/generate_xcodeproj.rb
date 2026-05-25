@@ -55,11 +55,22 @@ def shared_build_settings(target, deployment_setting_key, deployment_value)
   end
 end
 
+# Helper — adds an .xcassets folder reference to the target as a
+# Resources build phase entry. The folder is referenced as a group,
+# so all of its files (Contents.json plus the .appiconset) are
+# carried along automatically.
+def attach_assets(target, group, asset_dir_name)
+  asset_ref = group.new_reference(asset_dir_name)
+  asset_ref.last_known_file_type = 'folder.assetcatalog'
+  target.resources_build_phase.add_file_reference(asset_ref)
+end
+
 # --- macOS app target ---
 mac_target = project.new_target(:application, 'TerraCognita-macOS', :osx, '14.0', nil, :swift)
 mac_group = project.new_group('TerraCognita-macOS', 'Apps/TerraCognita-macOS')
 mac_app_file = mac_group.new_reference('TerraCognitaMacApp.swift')
 mac_target.source_build_phase.add_file_reference(mac_app_file)
+attach_assets(mac_target, mac_group, 'Assets.xcassets')
 add_appfocus_kit_dependency(mac_target, local_package)
 shared_build_settings(mac_target, 'MACOSX_DEPLOYMENT_TARGET', '14.0')
 mac_target.build_configurations.each do |config|
@@ -68,6 +79,7 @@ mac_target.build_configurations.each do |config|
   s['INFOPLIST_KEY_LSApplicationCategoryType'] = 'public.app-category.productivity'
   s['ENABLE_HARDENED_RUNTIME'] = 'YES'
   s['CODE_SIGN_IDENTITY'] = '-' # ad-hoc, no team required for local builds
+  s['ASSETCATALOG_COMPILER_APPICON_NAME'] = 'AppIcon'
 end
 
 # --- iOS app target (universal: iPhone + iPad) ---
@@ -75,6 +87,7 @@ ios_target = project.new_target(:application, 'TerraCognita-iOS', :ios, '17.0', 
 ios_group = project.new_group('TerraCognita-iOS', 'Apps/TerraCognita-iOS')
 ios_app_file = ios_group.new_reference('TerraCognitaIOSApp.swift')
 ios_target.source_build_phase.add_file_reference(ios_app_file)
+attach_assets(ios_target, ios_group, 'Assets.xcassets')
 add_appfocus_kit_dependency(ios_target, local_package)
 shared_build_settings(ios_target, 'IPHONEOS_DEPLOYMENT_TARGET', '17.0')
 ios_target.build_configurations.each do |config|
@@ -90,6 +103,7 @@ ios_target.build_configurations.each do |config|
   # Sim-only signing during local development; xcodebuild w/ iOS Simulator
   # ignores signing requirements unless CODE_SIGNING_ALLOWED is set.
   s['CODE_SIGN_IDENTITY[sdk=iphoneos*]'] = 'Apple Development'
+  s['ASSETCATALOG_COMPILER_APPICON_NAME'] = 'AppIcon'
 end
 
 # --- Shared schemes so the two apps surface in Xcode's scheme picker ---
