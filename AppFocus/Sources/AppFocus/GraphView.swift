@@ -7,6 +7,9 @@ public struct GraphView: View {
     @State private var activeLens: Lens = .all
     @State private var showingSearch: Bool = false
     @State private var showingVaultPicker: Bool = false
+    #if os(iOS)
+    @Environment(\.horizontalSizeClass) private var hSizeClass
+    #endif
     /// When non-nil, the canvas is "inside" this node's subnet: only
     /// that subnet's hub + members are visible.
     @State private var subnetRootID: String?
@@ -183,13 +186,16 @@ public struct GraphView: View {
         })
     }
 
-    /// On iOS (iPhone and iPad both) we lean into touch-first patterns:
-    /// the inspector is a sheet with detents, not a side panel. macOS
-    /// keeps the side-panel inspector since it has the screen for it
-    /// and the interaction model is pointer-driven.
+    /// Inspector presentation rule:
+    ///   - macOS: side panel (pointer-driven, plenty of room)
+    ///   - iPad regular width (landscape / full-screen): side panel
+    ///     — the iPad has the real-estate, and the sheet was obscuring
+    ///     too much of the canvas
+    ///   - iPad compact (split view / Slide Over) + iPhone: sheet
+    ///     with detents
     private var useSheetForInspector: Bool {
         #if os(iOS)
-        return true
+        return hSizeClass == .compact
         #else
         return false
         #endif
@@ -235,11 +241,11 @@ private struct InspectorPresentation<InspectorContent: View>: ViewModifier {
             base.sheet(isPresented: $isPresented) {
                 content()
                 #if os(iOS)
-                    .presentationDetents([.medium, .large])
+                    // Three detents — a small "peek" so the canvas stays
+                    // visible behind it, plus the standard medium/large.
+                    .presentationDetents([.fraction(0.28), .medium, .large])
                     .presentationDragIndicator(.visible)
-                    // Prefer scrolling the inner ScrollView over resizing
-                    // the sheet when the user drags on the content. Sheet
-                    // resizes only via the drag indicator + edge swipes.
+                    .presentationBackgroundInteraction(.enabled(upThrough: .medium))
                     .presentationContentInteraction(.scrolls)
                 #endif
             }
