@@ -5,9 +5,6 @@ public struct GraphView: View {
     @State private var selectedNodeID: String?
     @State private var activeLens: Lens = .all
     @State private var showingSearch: Bool = false
-    #if os(iOS)
-    @Environment(\.horizontalSizeClass) private var hSizeClass
-    #endif
     /// When non-nil, the canvas is "inside" this node's subnet: only
     /// that subnet's hub + members are visible.
     @State private var subnetRootID: String?
@@ -115,11 +112,13 @@ public struct GraphView: View {
         })
     }
 
-    /// On iPhone (compact width) the inspector pane is a poor fit — we
-    /// switch to a sheet with detents. iPad and macOS keep the side panel.
+    /// On iOS (iPhone and iPad both) we lean into touch-first patterns:
+    /// the inspector is a sheet with detents, not a side panel. macOS
+    /// keeps the side-panel inspector since it has the screen for it
+    /// and the interaction model is pointer-driven.
     private var useSheetForInspector: Bool {
         #if os(iOS)
-        return hSizeClass == .compact
+        return true
         #else
         return false
         #endif
