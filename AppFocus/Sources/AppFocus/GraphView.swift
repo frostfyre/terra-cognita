@@ -1,10 +1,12 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 public struct GraphView: View {
     @StateObject private var store: GraphStore
     @State private var selectedNodeID: String?
     @State private var activeLens: Lens = .all
     @State private var showingSearch: Bool = false
+    @State private var showingVaultPicker: Bool = false
     /// When non-nil, the canvas is "inside" this node's subnet: only
     /// that subnet's hub + members are visible.
     @State private var subnetRootID: String?
@@ -38,6 +40,54 @@ public struct GraphView: View {
                     SubnetBadge(label: root.label) { subnetRootID = nil }
                 }
                 Spacer()
+                Menu {
+                    Button {
+                        showingVaultPicker = true
+                    } label: {
+                        Label("Open Vault Folder…", systemImage: "folder")
+                    }
+                    .keyboardShortcut("o", modifiers: .command)
+
+                    if !store.library.entries.isEmpty {
+                        Divider()
+                        Text("Recent")
+                        ForEach(store.library.entries) { entry in
+                            Button {
+                                store.openLibraryEntry(entry.id)
+                            } label: {
+                                let suffix: String = {
+                                    if let n = entry.nodeCount, let e = entry.edgeCount {
+                                        return " — \(n) nodes / \(e) edges"
+                                    }
+                                    return ""
+                                }()
+                                Label(entry.displayName + suffix,
+                                      systemImage: "clock.arrow.circlepath")
+                            }
+                        }
+                        Divider()
+                        Menu("Forget…") {
+                            ForEach(store.library.entries) { entry in
+                                Button("\(entry.displayName)", role: .destructive) {
+                                    store.forgetLibraryEntry(entry.id)
+                                }
+                            }
+                        }
+                    }
+
+                    Divider()
+                    Button {
+                        store.resetToDefaultVault()
+                    } label: {
+                        Label("Use Default (Miyazaki)", systemImage: "sparkles")
+                    }
+                } label: {
+                    Label("Vault", systemImage: "folder")
+                }
+                .menuStyle(.borderlessButton)
+                .fixedSize()
+                .help("Open a markdown vault folder (⌘O)")
+
                 Button {
                     showingSearch = true
                 } label: {
@@ -92,6 +142,27 @@ public struct GraphView: View {
         .onAppear { store.loadDefaultVault() }
         .onChange(of: store.graph.nodes.count) { _, _ in
             subnets = SubnetTopology.compute(from: store.graph)
+        }
+        .fileImporter(
+            isPresented: $showingVaultPicker,
+            allowedContentTypes: [.folder],
+            allowsMultipleSelection: false
+        ) { result in
+            switch result {
+            case .success(let urls):
+                if let url = urls.first {
+                    store.load(from: url)
+                }
+            case .failure:
+                break
+            }
+        }
+        // Drag a folder from Finder (macOS) or Files (iPad) onto the
+        // canvas to load it as a vault. On iOS this is mostly useful
+        // alongside Stage Manager and the system file browser; iPhone
+        // users will keep using the picker.
+        .onDrop(of: [.fileURL], isTargeted: nil) { providers in
+            VaultDropHandler.handle(providers, store: store)
         }
         .modifier(InspectorPresentation(
             isPresented: Binding(
