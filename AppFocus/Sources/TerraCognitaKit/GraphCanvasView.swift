@@ -49,6 +49,11 @@ struct GraphCanvasView: View {
     @State private var ambientHighlightID: String?
     @State private var ambientHighlightStart: TimeInterval?
     private let ambientPuffDuration: Double = 2.4
+
+    /// Selection halo / spark color. Warm gold to echo the app icon's
+    /// "illuminated point" — distinct from the cooler `.accentColor`
+    /// used by the ambient puff so the two states read differently.
+    private let selectionGold = Color(red: 1.00, green: 0.78, blue: 0.30)
     /// Owned by `GraphView` so the inspector panel can drive it too.
     @Binding var selectedNodeID: String?
     /// A node freshly written by `GraphStore.createNode`. The canvas
@@ -175,25 +180,11 @@ struct GraphCanvasView: View {
 
                     let hasSelection = selectedNodeID != nil
 
-                    // --- Atmospheric background ---
-                    // Skip the gradient when the user is zoomed in past
-                    // 1.5× — the volume read mostly comes from the edges
-                    // of the canvas, which fall off-screen at that scale.
-                    if s <= 1.5 {
-                        let bgRect = CGRect(origin: .zero, size: size)
-                        context.fill(
-                            Path(bgRect),
-                            with: .radialGradient(
-                                Gradient(colors: [
-                                    Color(red: 0.10, green: 0.11, blue: 0.18).opacity(0.55),
-                                    Color(red: 0.03, green: 0.03, blue: 0.06).opacity(0.85)
-                                ]),
-                                center: center,
-                                startRadius: 0,
-                                endRadius: max(size.width, size.height) * 0.7
-                            )
-                        )
-                    }
+                    // Background gradient is now a static SwiftUI
+                    // `.background(RadialGradient(...))` underneath the
+                    // Canvas — pulled out of the 20 Hz redraw and made
+                    // unconditional so it still reads when zoomed past
+                    // 1.5×. See the `.background` modifier below.
                     // Deep specks — only the ones that fall on-screen are
                     // drawn (off-screen culling cuts ~70% of the fills).
                     let speckParallax = parallax(0)
@@ -381,7 +372,15 @@ struct GraphCanvasView: View {
                                     .font(.system(size: 10))
                                     .foregroundStyle(.primary.opacity(depthOpacityMul))
                             )
-                            context.draw(resolved, at: p, anchor: .center)
+                            context.drawLayer { ctx in
+                                ctx.addFilter(.shadow(
+                                    color: .black.opacity(0.75),
+                                    radius: 1.2,
+                                    x: 0,
+                                    y: 1
+                                ))
+                                ctx.draw(resolved, at: p, anchor: .center)
+                            }
                         }
                     }
 
@@ -422,7 +421,15 @@ struct GraphCanvasView: View {
                                 .font(.system(size: fontSize).weight(.medium))
                                 .foregroundStyle(.primary)
                         )
-                        context.draw(resolved, at: p, anchor: .center)
+                        context.drawLayer { ctx in
+                            ctx.addFilter(.shadow(
+                                color: .black.opacity(0.8),
+                                radius: 1.6,
+                                x: 0,
+                                y: 1.5
+                            ))
+                            ctx.draw(resolved, at: p, anchor: .center)
+                        }
                     }
 
                     // Second pass — the selected node, drawn last so it sits
@@ -450,7 +457,7 @@ struct GraphCanvasView: View {
                             let glowRect = CGRect(x: p.x - r, y: p.y - r,
                                                   width: r * 2, height: r * 2)
                             context.fill(Path(ellipseIn: glowRect),
-                                         with: .color(.accentColor.opacity(alpha)))
+                                         with: .color(selectionGold.opacity(alpha)))
                         }
 
                         // --- Core ------------------------------------
@@ -488,7 +495,7 @@ struct GraphCanvasView: View {
                             let sparkRect = CGRect(x: sx - sr, y: sy - sr,
                                                    width: sr * 2, height: sr * 2)
                             context.fill(Path(ellipseIn: sparkRect),
-                                         with: .color(.accentColor.opacity(pulse * 0.7)))
+                                         with: .color(selectionGold.opacity(pulse * 0.7)))
                         }
 
                         // --- Label ----------------------------------
@@ -498,11 +505,34 @@ struct GraphCanvasView: View {
                                 .font(.system(size: 11 * labelScale).weight(.semibold))
                                 .foregroundStyle(.primary)
                         )
-                        context.draw(resolved, at: p, anchor: .center)
+                        context.drawLayer { ctx in
+                            ctx.addFilter(.shadow(
+                                color: .black.opacity(0.85),
+                                radius: 2,
+                                x: 0,
+                                y: 2
+                            ))
+                            ctx.draw(resolved, at: p, anchor: .center)
+                        }
                     }
                 }
             }
             .contentShape(Rectangle())
+            .background(
+                // Deep indigo → near-black radial field. Echoes the app
+                // icon's gradient so the runtime reads as the same world
+                // the user tapped to enter.
+                RadialGradient(
+                    colors: [
+                        Color(red: 0.08, green: 0.10, blue: 0.28),
+                        Color(red: 0.02, green: 0.02, blue: 0.05)
+                    ],
+                    center: .center,
+                    startRadius: 0,
+                    endRadius: max(geo.size.width, geo.size.height) * 0.85
+                )
+                .ignoresSafeArea()
+            )
             .background(
                 MouseInputMonitor(
                     onScroll: { delta in
