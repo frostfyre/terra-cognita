@@ -591,10 +591,16 @@ struct GraphCanvasView: View {
         }
         .onChange(of: frameAllPulse) { _, _ in
             // Yield once so the canvasSize binding is current if the
-            // pulse came from a window-resize transient.
+            // pulse came from a window-resize transient. With a
+            // selection we frame the highlighted subnet centered on
+            // it; otherwise we fit the whole visible graph.
             Task { @MainActor in
                 await Task.yield()
-                frameAllVisible()
+                if selectedNodeID != nil {
+                    frameHighlightedSubnet()
+                } else {
+                    frameAllVisible()
+                }
             }
         }
     }
@@ -694,7 +700,8 @@ struct GraphCanvasView: View {
     // MARK: - Auto-framing
 
     /// Animate `scale` and `offset` so the currently highlighted set
-    /// (selected node + 1-hop neighbors) fits the canvas with padding.
+    /// (selected node + 1-hop neighbors) fits the canvas with padding,
+    /// with the selected node placed at the viewport center.
     /// Skipped if the layout or canvas size isn't ready yet.
     private func frameHighlightedSubnet() {
         guard canvasSize.width > 0, canvasSize.height > 0 else { return }
@@ -705,13 +712,25 @@ struct GraphCanvasView: View {
         let xs = points.map(\.x), ys = points.map(\.y)
         let minX = xs.min()!, maxX = xs.max()!
         let minY = ys.min()!, maxY = ys.max()!
-        let centerWorld = CGPoint(x: (minX + maxX) / 2,
-                                  y: (minY + maxY) / 2)
+        // Anchor the camera on the selected node so it lands dead-
+        // center; fall back to bbox midpoint if (somehow) we don't
+        // have a selection position.
+        let centerWorld: CGPoint = {
+            if let sel = selectedNodeID, let p = effectivePosition(for: sel) {
+                return p
+            }
+            return CGPoint(x: (minX + maxX) / 2, y: (minY + maxY) / 2)
+        }()
+        // Symmetric extent around centerWorld — the largest distance
+        // from center to any highlighted point, doubled. Ensures every
+        // neighbor stays in-frame even though we're not bbox-centering.
+        let halfWidthWorld  = max(centerWorld.x - minX, maxX - centerWorld.x)
+        let halfHeightWorld = max(centerWorld.y - minY, maxY - centerWorld.y)
         // Floor the bbox so a singleton (no neighbors) doesn't try to zoom
         // to infinity, and pad the world rect to make room for node radii
         // and a little breathing space.
-        let widthWorld  = max(maxX - minX + 80, 200)
-        let heightWorld = max(maxY - minY + 80, 200)
+        let widthWorld  = max(halfWidthWorld * 2 + 80, 200)
+        let heightWorld = max(halfHeightWorld * 2 + 80, 200)
 
         let chromePadding: CGFloat = 60  // top bar + inspector breathing room
         let availableWidth  = max(canvasSize.width  - chromePadding * 2, 200)
