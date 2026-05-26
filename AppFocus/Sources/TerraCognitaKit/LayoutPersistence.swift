@@ -34,7 +34,9 @@ struct PersistedLayout: Codable, Equatable {
 }
 
 /// File-backed load/save for `PersistedLayout`. Stored at
-/// `~/Library/Application Support/AppFocus/layout.json`.
+/// `~/Library/Application Support/AppFocus/layout.json` — directory
+/// name kept at the original "AppFocus" so existing user layouts
+/// survive the project rename to Terra Cognita.
 enum LayoutPersistence {
     private static var fileURL: URL? {
         let fm = FileManager.default

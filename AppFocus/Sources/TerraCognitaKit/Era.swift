@@ -40,14 +40,45 @@ enum Era: Int, CaseIterable {
         let maxOrdinal = Double(Era.allCases.count - 1)
         return Double(rawValue) / maxOrdinal
     }
+
+    /// The canonical front-matter tag string for this era.
+    var tagValue: String {
+        switch self {
+        case .preConscious:           return "pre-conscious"
+        case .selfChoosingChildhood:  return "self-choosing-childhood"
+        case .preBlizzard:            return "pre-blizzard"
+        case .earlyCareer:            return "early-career"
+        case .blizzardEra:            return "blizzard-era"
+        case .bridge:                 return "bridge"
+        case .postFormation:          return "post-formation"
+        case .postBlizzard:           return "post-blizzard"
+        case .current:                return "current"
+        }
+    }
+
+    /// Every era tag value plus `career-spanning`, in chronological
+    /// order. Used as the choice list in the composer and the
+    /// inspector's era picker.
+    static var allTagValues: [String] {
+        allCases.map(\.tagValue) + ["career-spanning"]
+    }
 }
 
 extension Node {
-    /// A perceptual depth in `[0, 1]`. Oldest era → 0 (back), most recent
-    /// era → 1 (front). Returns ~0.55 for nodes without a recognised era
-    /// so they sit slightly forward of the deep past but behind the
-    /// explicitly-present.
+    /// A perceptual depth in `[0, 1]`. Oldest era → 0 (back), most
+    /// recent → 1 (front). Returns ~0.55 for nodes without a
+    /// recognised era so they sit slightly forward of the deep past
+    /// but behind the explicitly-present. Uses the built-in heritage
+    /// era enum — the canvas calls `depth(in: config)` instead so
+    /// custom vaults get their own taxonomy.
     var depth: Double {
+        depth(in: nil)
+    }
+
+    /// Config-aware depth. When a `VaultConfig` is supplied, era
+    /// resolution uses *its* taxonomy and weights. Without a config,
+    /// falls back to the built-in heritage `Era` enum.
+    func depth(in config: VaultConfig?) -> Double {
         let raw = attributes["era"] ?? attributes["peak-era"] ?? ""
         guard !raw.isEmpty else { return 0.55 }
         // Era values are comma-joined lists like "blizzard-era, ongoing".
@@ -58,6 +89,14 @@ extension Node {
             .replacingOccurrences(of: "]", with: "")
             .split(separator: ",")
             .map { $0.trimmingCharacters(in: .whitespaces) }
+
+        if let config {
+            let weights = pieces.compactMap { config.eraSpec(named: $0)?.weight }
+            guard let latest = weights.max() else { return 0.55 }
+            let maxW = config.maxEraWeight
+            return maxW > 0 ? latest / maxW : 0.55
+        }
+
         let eras = pieces.compactMap(Era.parse)
         guard let latest = eras.map(\.rawValue).max() else { return 0.55 }
         let normalised = Double(latest) / Double(Era.allCases.count - 1)

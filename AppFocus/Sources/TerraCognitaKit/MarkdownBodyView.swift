@@ -1,4 +1,10 @@
 import SwiftUI
+#if canImport(PDFKit)
+import PDFKit
+#endif
+#if canImport(AVKit)
+import AVKit
+#endif
 
 /// Lightweight block-level renderer for the vault's markdown notes.
 ///
@@ -10,11 +16,18 @@ import SwiftUI
 ///
 /// `[[wikilinks]]` are rewritten to `appfocus://node/<slug>` links so
 /// clicks can navigate via the SwiftUI `OpenURLAction` injected by the
-/// inspector. `[[target|alias]]` is supported.
+/// inspector. `[[target|alias]]` is supported. Obsidian-style embeds
+/// (`![[filename.png]]`) are extracted as their own blocks and
+/// rendered via `resolveEmbed` — images inline, PDFs / videos as
+/// type-appropriate previews, anything else as a file chip.
 struct MarkdownBodyView: View {
     let source: String
     /// Called when the user clicks a `[[wikilink]]` rendered inline.
     var onWikilinkClick: ((String) -> Void)?
+    /// Resolve an embed filename (e.g. `sketch_bar.png`) to a file URL.
+    /// `nil` skips rendering. Closure usually searches the node file's
+    /// directory and the vault root.
+    var resolveEmbed: ((String) -> URL?)? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -41,6 +54,8 @@ struct MarkdownBodyView: View {
         case bullet(items: [String])
         case quote(text: String)
         case paragraph(text: String)
+        /// Obsidian embed: `![[filename]]` or `![[filename|alt text]]`.
+        case embed(filename: String, alt: String?)
     }
 
     private var blocks: [Block] {
@@ -80,6 +95,111 @@ struct MarkdownBodyView: View {
             Text(Self.attributed(text))
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
+
+        case .embed(let filename, let alt):
+            embedView(filename: filename, alt: alt)
+        }
+    }
+
+    @ViewBuilder
+    private func embedView(filename: String, alt: String?) -> some View {
+        let url = resolveEmbed?(filename)
+        if let url {
+            let ext = url.pathExtension.lowercased()
+            switch ext {
+            case "png", "jpg", "jpeg", "gif", "heic", "webp", "bmp", "tiff":
+                AsyncImage(url: url) { phase in
+                    switch phase {
+                    case .empty:
+                        ProgressView().controlSize(.small)
+                    case .success(let image):
+                        image
+                            .resizable()
+                            .scaledToFit()
+                            .frame(maxHeight: 280)
+                            .cornerRadius(6)
+                    case .failure:
+                        embedFallback(filename, url: url, alt: alt)
+                    @unknown default:
+                        embedFallback(filename, url: url, alt: alt)
+                    }
+                }
+                if let alt, !alt.isEmpty {
+                    Text(alt).font(.caption2).foregroundStyle(.secondary)
+                }
+
+            #if canImport(PDFKit)
+            case "pdf":
+                PDFThumbView(url: url)
+                    .frame(height: 200)
+                    .cornerRadius(6)
+                    .overlay(alignment: .topTrailing) {
+                        openInDefaultButton(url: url)
+                    }
+            #endif
+
+            #if canImport(AVKit)
+            case "mp4", "mov", "m4v":
+                VideoPlayer(player: AVPlayer(url: url))
+                    .frame(height: 220)
+                    .cornerRadius(6)
+            case "mp3", "m4a", "wav", "aac", "aiff":
+                VideoPlayer(player: AVPlayer(url: url))
+                    .frame(height: 60)
+            #endif
+
+            default:
+                embedFallback(filename, url: url, alt: alt)
+            }
+        } else {
+            // Unresolvable — show a faded chip so it's clear something
+            // was embedded but the file couldn't be located.
+            HStack(spacing: 6) {
+                Image(systemName: "questionmark.square.dashed")
+                Text(filename).font(.caption)
+            }
+            .padding(.horizontal, 8).padding(.vertical, 4)
+            .background(.secondary.opacity(0.12), in: RoundedRectangle(cornerRadius: 4))
+            .foregroundStyle(.secondary)
+        }
+    }
+
+    @ViewBuilder
+    private func embedFallback(_ filename: String, url: URL, alt: String?) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: iconForFile(url))
+                .font(.title3)
+                .foregroundStyle(.secondary)
+            VStack(alignment: .leading) {
+                Text(alt ?? filename).font(.callout)
+                Text(filename).font(.caption2).foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 0)
+            openInDefaultButton(url: url)
+        }
+        .padding(8)
+        .background(.secondary.opacity(0.10), in: RoundedRectangle(cornerRadius: 6))
+    }
+
+    @ViewBuilder
+    private func openInDefaultButton(url: URL) -> some View {
+        Button {
+            _ = openFileURL(url)
+        } label: {
+            Image(systemName: "arrow.up.right.square")
+                .font(.caption)
+        }
+        .buttonStyle(.borderless)
+        .padding(4)
+    }
+
+    private func iconForFile(_ url: URL) -> String {
+        switch url.pathExtension.lowercased() {
+        case "pdf": return "doc.richtext"
+        case "mp4", "mov", "m4v": return "film"
+        case "mp3", "m4a", "wav", "aac", "aiff": return "music.note"
+        case "zip", "tar", "gz": return "archivebox"
+        default: return "doc"
         }
     }
 
@@ -116,12 +236,25 @@ struct MarkdownBodyView: View {
             }
         }
 
-        for line in raw.split(separator: "\n", omittingEmptySubsequences: false) {
+        // Pre-process: split inline `![[...]]` embeds onto their own
+        // lines so they become standalone blocks. Obsidian sometimes
+        // tucks embeds mid-paragraph; this is the cheapest way to keep
+        // them out of paragraph-text rendering.
+        let preprocessed = explodeEmbeds(raw)
+
+        for line in preprocessed.split(separator: "\n", omittingEmptySubsequences: false) {
             let trimmed = line.trimmingCharacters(in: .whitespaces)
 
             if trimmed.isEmpty {
                 flushParagraph()
                 flushBullets()
+                continue
+            }
+
+            // Embed — line containing ONLY an `![[...]]` marker.
+            if let embed = parseEmbedLine(trimmed) {
+                flushParagraph(); flushBullets()
+                blocks.append(.embed(filename: embed.filename, alt: embed.alt))
                 continue
             }
 
@@ -157,6 +290,46 @@ struct MarkdownBodyView: View {
         flushParagraph()
         flushBullets()
         return blocks
+    }
+
+    /// Split any inline `![[…]]` markers onto their own lines so the
+    /// parser can treat them as standalone blocks. Idempotent — running
+    /// it twice produces the same output.
+    private static func explodeEmbeds(_ raw: String) -> String {
+        guard raw.contains("![[") else { return raw }
+        let pattern = #"!\[\[[^\]\n]+\]\]"#
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return raw }
+        let ns = raw as NSString
+        let matches = regex.matches(in: raw, range: NSRange(location: 0, length: ns.length))
+        guard !matches.isEmpty else { return raw }
+        var out = ""
+        var cursor = 0
+        for m in matches {
+            if cursor < m.range.location {
+                let chunk = ns.substring(with: NSRange(location: cursor, length: m.range.location - cursor))
+                out += chunk
+                if !chunk.hasSuffix("\n") { out += "\n" }
+            }
+            out += ns.substring(with: m.range)
+            out += "\n"
+            cursor = m.range.location + m.range.length
+        }
+        if cursor < ns.length {
+            out += ns.substring(with: NSRange(location: cursor, length: ns.length - cursor))
+        }
+        return out
+    }
+
+    private static func parseEmbedLine(_ line: String) -> (filename: String, alt: String?)? {
+        guard line.hasPrefix("![[") && line.hasSuffix("]]") else { return nil }
+        let inner = String(line.dropFirst(3).dropLast(2))
+        let parts = inner.split(separator: "|", maxSplits: 1)
+        let filename = String(parts[0]).trimmingCharacters(in: .whitespaces)
+        let alt = parts.count > 1
+            ? String(parts[1]).trimmingCharacters(in: .whitespaces)
+            : nil
+        guard !filename.isEmpty else { return nil }
+        return (filename, alt)
     }
 
     private static func leadingHashCount(_ s: String) -> Int? {
@@ -246,3 +419,57 @@ struct MarkdownBodyView: View {
         return AttributedString(s)
     }
 }
+
+// MARK: - PDF preview wrapper
+
+#if canImport(PDFKit)
+/// Cross-platform single-page PDF preview. Shows the first page,
+/// scaled to fit. Tap-through to open in default app is the caller's
+/// responsibility (we overlay an arrow button up in `embedView`).
+struct PDFThumbView: View {
+    let url: URL
+    var body: some View {
+        #if os(macOS)
+        PDFThumbNSView(url: url)
+        #else
+        PDFThumbUIView(url: url)
+        #endif
+    }
+}
+
+#if os(macOS)
+private struct PDFThumbNSView: NSViewRepresentable {
+    let url: URL
+    func makeNSView(context: Context) -> PDFView {
+        let v = PDFView()
+        v.autoScales = true
+        v.displayMode = .singlePage
+        v.displaysPageBreaks = false
+        v.document = PDFDocument(url: url)
+        return v
+    }
+    func updateNSView(_ v: PDFView, context: Context) {
+        if v.document?.documentURL != url {
+            v.document = PDFDocument(url: url)
+        }
+    }
+}
+#else
+private struct PDFThumbUIView: UIViewRepresentable {
+    let url: URL
+    func makeUIView(context: Context) -> PDFView {
+        let v = PDFView()
+        v.autoScales = true
+        v.displayMode = .singlePage
+        v.displaysPageBreaks = false
+        v.document = PDFDocument(url: url)
+        return v
+    }
+    func updateUIView(_ v: PDFView, context: Context) {
+        if v.document?.documentURL != url {
+            v.document = PDFDocument(url: url)
+        }
+    }
+}
+#endif
+#endif

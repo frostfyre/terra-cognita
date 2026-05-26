@@ -2,6 +2,9 @@ import SwiftUI
 #if canImport(AppKit)
 import AppKit
 #endif
+#if canImport(UIKit)
+import UIKit
+#endif
 
 struct GraphCanvasView: View {
     @ObservedObject var store: GraphStore
@@ -21,10 +24,24 @@ struct GraphCanvasView: View {
     /// frame can compute the new offset relative to it.
     @State private var panAnchor: CGSize?
 
-    /// Local radial layout used when the user enters a subnet — hub at
-    /// origin (relative to canvas centre), members fanned around it.
-    /// Empty when no subnet is entered.
-    @State private var subnetLocalLayout: [String: CGPoint] = [:]
+
+
+    /// Currently hovered node id (iPad pointer / Mac mouse). Drives the
+    /// soft hover ring drawn in the Canvas pass — gives pointer users
+    /// the same "this is targetable" feedback touch users get via tap.
+    @State private var hoveredNodeID: String?
+
+    /// Cached hero images keyed by node id. Populated lazily when a
+    /// node with a `hero:` attribute first enters the render loop and
+    /// the canvas is zoomed in past `heroImageZoomThreshold`. Drawn
+    /// clipped to the node circle in place of the flat color fill.
+    @State private var heroImages: [String: Image] = [:]
+    /// Tracks which hero loads are in flight so we don't kick off
+    /// duplicate tasks on every frame.
+    @State private var heroLoadInFlight: Set<String> = []
+    /// Below this zoom level we just draw flat node fills. Above it,
+    /// nodes with hero images swap their fill for the image disc.
+    private let heroImageZoomThreshold: CGFloat = 1.3
 
     /// When nothing is selected, the canvas periodically "puffs" a random
     /// node so the graph feels alive and the eye gets surfaced to nodes
@@ -34,16 +51,24 @@ struct GraphCanvasView: View {
     private let ambientPuffDuration: Double = 2.4
     /// Owned by `GraphView` so the inspector panel can drive it too.
     @Binding var selectedNodeID: String?
-    /// When non-nil, the canvas is "inside" this node's subnet. Owned
-    /// by `GraphView` so the top-bar badge can drive exit.
-    @Binding var subnetRootID: String?
+    /// A node freshly written by `GraphStore.createNode`. The canvas
+    /// pins it at its spawn world point, selects it, animates a frame
+    /// onto it, and then clears the binding.
+    @Binding var pendingNewNode: PendingNewNode?
     /// Optional node-visibility filter (lens). `nil` means show everything.
     /// Edges are visible only when both endpoints pass the filter.
     var visibleNodeFilter: ((Node) -> Bool)? = nil
-    /// Subnet decomposition (which nodes belong to which hub). Used to
-    /// compute a local radial layout when the user enters a subnet, so
-    /// the hub anchors the centre and members fan out around it.
-    var topology: SubnetTopology = SubnetTopology()
+    /// Fires when the user long-presses *empty* canvas (no node under
+    /// the press point). The argument is the press point in world
+    /// coordinates so the host can spawn a new node there.
+    var onLongPressEmptyWorld: ((CGPoint) -> Void)?
+    /// Fires when the user long-presses *on a node*. The host opens a
+    /// radial menu anchored to the press point.
+    var onLongPressNode: ((_ nodeID: String, _ screenPoint: CGPoint) -> Void)?
+    /// Trigger for "fit to view" — when this binding's value changes,
+    /// the canvas animates scale + offset to frame every currently-
+    /// visible node. The host increments to request a refit.
+    @Binding var frameAllPulse: Int
     /// Wall-clock time of the most recent selection. Drives the
     /// "selected node briefly doubles in size" pulse.
     @State private var selectionPulseStart: TimeInterval?
@@ -124,7 +149,6 @@ struct GraphCanvasView: View {
                         let pb = Double((h >> 8) & 0xFF) / 255.0 * 6.28318
                         let pc = Double((h >> 16) & 0xFF) / 255.0 * 6.28318
                         let pd = Double((h >> 24) & 0xFF) / 255.0 * 6.28318
-                        // Frequencies: 1.0–2.5 and 1.4–2.9 rad/sec.
                         let fa = 1.0 + Double((h >> 32) & 0xFF) / 255.0 * 1.5
                         let fb = 1.4 + Double((h >> 40) & 0xFF) / 255.0 * 1.5
                         let fc = 1.0 + Double((h >> 48) & 0xFF) / 255.0 * 1.5
@@ -238,7 +262,7 @@ struct GraphCanvasView: View {
                     for node in depthOrderedNodes {
                         if let visibleSet, !visibleSet.contains(node.id) { continue }
                         guard let worldPoint = effectivePosition(for: node.id) else { continue }
-                        let depth = node.depth
+                        let depth = node.depth(in: store.config)
                         let p = toScreen(node.id, worldPoint, depth)
                         let isSelected = selectedNodeID == node.id
                         let isAmbient = !hasSelection
@@ -256,17 +280,89 @@ struct GraphCanvasView: View {
                         }
 
                         let inHighlight = !hasSelection || highlight.contains(node.id)
-                        // Depth cue: nodes from older eras shrink slightly and
-                        // lose a touch of opacity, so the foreground stays
-                        // visually dominant without losing background context.
+                        // Depth cue: nodes from older eras shrink slightly,
+                        // lose opacity, AND lose saturation, so the
+                        // foreground is visually dominant and the past
+                        // reads as "washed out memory" rather than just dim.
                         let depthSizeMul = 0.85 + 0.35 * CGFloat(depth)
                         let depthOpacityMul = 0.55 + 0.45 * depth
                         let drawRadius = baseRadius * depthSizeMul
                         let opacity = (inHighlight ? 1.0 : dimOpacity) * depthOpacityMul
-                        let fill = nodeColor(node).opacity(opacity)
+                        // Up to 55% of saturation drained at maximum depth-back.
+                        let desaturation = CGFloat(1.0 - depth) * 0.55
+                        let fill = nodeColor(node)
+                            .desaturated(by: desaturation)
+                            .opacity(opacity)
                         let rect = CGRect(x: p.x - drawRadius, y: p.y - drawRadius,
                                           width: drawRadius * 2, height: drawRadius * 2)
-                        context.fill(Path(ellipseIn: rect), with: .color(fill))
+
+                        // Hover ring — soft halo under the fill so pointer
+                        // users get the same "this is targetable" feedback
+                        // touch users get via tap.
+                        if hoveredNodeID == node.id {
+                            let hoverR = drawRadius + 5
+                            let hoverRect = CGRect(x: p.x - hoverR, y: p.y - hoverR,
+                                                   width: hoverR * 2, height: hoverR * 2)
+                            context.fill(Path(ellipseIn: hoverRect),
+                                         with: .color(nodeColor(node).opacity(0.18)))
+                            context.stroke(Path(ellipseIn: hoverRect),
+                                           with: .color(.white.opacity(0.45)),
+                                           lineWidth: 1)
+                        }
+
+                        // Hero image disc — only when zoomed in past the
+                        // threshold AND a hero image is cached for this
+                        // node. Replaces the flat fill; depth shadow
+                        // still applied so the hero "lifts" with the
+                        // node.
+                        let useHero = scale > heroImageZoomThreshold
+                            && heroImages[node.id] != nil
+                        let drawNodeFill: (inout GraphicsContext) -> Void = { ctx in
+                            if useHero, let img = heroImages[node.id] {
+                                ctx.clipToLayer { layerCtx in
+                                    layerCtx.fill(Path(ellipseIn: rect),
+                                                  with: .color(.black))
+                                }
+                                ctx.draw(img, in: rect)
+                            } else {
+                                ctx.fill(Path(ellipseIn: rect), with: .color(fill))
+                            }
+                        }
+
+                        // Foreground nodes (depth > 0.5) get a drop shadow that
+                        // sharpens + darkens as they approach the present. The
+                        // back half of the depth axis stays flat — those nodes
+                        // read as "memory," not as objects on a surface.
+                        if depth > 0.5 {
+                            let t = (depth - 0.5) / 0.5
+                            let shadowRadius = 8.0 - 6.0 * t       // 8 → 2
+                            let shadowAlpha  = 0.18 + 0.32 * t     // 0.18 → 0.50
+                            let shadowDy     = 1.0 + 2.5 * t       // 1 → 3.5
+                            context.drawLayer { ctx in
+                                ctx.addFilter(.shadow(
+                                    color: .black.opacity(shadowAlpha),
+                                    radius: shadowRadius,
+                                    x: 0,
+                                    y: shadowDy
+                                ))
+                                var inner = ctx
+                                drawNodeFill(&inner)
+                            }
+                        } else {
+                            var inner = context
+                            drawNodeFill(&inner)
+                        }
+
+                        // Kick off a hero-image load if we haven't yet
+                        // and the canvas is zoomed in enough to actually
+                        // use it. Fire-and-forget; the cache mutation
+                        // will trigger a redraw via @State.
+                        if scale > heroImageZoomThreshold,
+                           heroImages[node.id] == nil,
+                           !heroLoadInFlight.contains(node.id),
+                           node.attributes["hero"]?.isEmpty == false {
+                            triggerHeroLoad(for: node)
+                        }
 
                         // Pinned indicator — small white outline so the pin
                         // status is legible at a glance.
@@ -274,44 +370,6 @@ struct GraphCanvasView: View {
                             context.stroke(Path(ellipseIn: rect),
                                            with: .color(.white.opacity(inHighlight ? 0.95 : dimOpacity)),
                                            lineWidth: 1.5)
-                        }
-
-                        // Seam-walker bridge marker — a thin teal ring on
-                        // nodes whose neighbours span multiple subnets.
-                        // Line width nudged up by extra spans so a 4-subnet
-                        // bridge reads heavier than a 2-subnet one.
-                        if let span = topology.bridgeSpan[node.id] {
-                            let extra = CGFloat(min(span - 2, 3)) * 0.5
-                            let bridgeRadius = drawRadius + 3 + extra
-                            let bridgeRect = CGRect(
-                                x: p.x - bridgeRadius,
-                                y: p.y - bridgeRadius,
-                                width: bridgeRadius * 2,
-                                height: bridgeRadius * 2
-                            )
-                            context.stroke(
-                                Path(ellipseIn: bridgeRect),
-                                with: .color(.teal.opacity((inHighlight ? 0.85 : dimOpacity * 1.5))),
-                                lineWidth: 1.2 + extra
-                            )
-                        }
-
-                        // Subnet rim ports — small satellites slowly orbiting
-                        // hub nodes to signal "has interior to enter".
-                        if isSubnetCandidate(node.id) {
-                            let portCount = min((adjacency[node.id]?.count ?? 0) / 2, 7)
-                            let orbitR = drawRadius + 4
-                            for i in 0..<portCount {
-                                let baseAngle = Double(i) / Double(portCount) * .pi * 2
-                                let angle = baseAngle + t * 0.15
-                                let sx = p.x + orbitR * CGFloat(cos(angle))
-                                let sy = p.y + orbitR * CGFloat(sin(angle))
-                                let portR: CGFloat = 1.6
-                                let portRect = CGRect(x: sx - portR, y: sy - portR,
-                                                      width: portR * 2, height: portR * 2)
-                                context.fill(Path(ellipseIn: portRect),
-                                             with: .color(nodeColor(node).opacity(opacity * 0.75)))
-                            }
                         }
 
                         // Labels for background-pass nodes: only when
@@ -329,12 +387,21 @@ struct GraphCanvasView: View {
 
                     // Foreground pass — the idle-puffed node, drawn above
                     // every other background node so the spotlight reads.
+                    // Hard drop shadow so it physically "lifts" off the canvas.
                     if let (node, p, baseRadius) = deferredAmbient {
                         let drawRadius = baseRadius * (1 + ambientPuff * 0.9)
                         let fill = nodeColor(node)
                         let rect = CGRect(x: p.x - drawRadius, y: p.y - drawRadius,
                                           width: drawRadius * 2, height: drawRadius * 2)
-                        context.fill(Path(ellipseIn: rect), with: .color(fill))
+                        context.drawLayer { ctx in
+                            ctx.addFilter(.shadow(
+                                color: .black.opacity(0.55),
+                                radius: 2.5,
+                                x: 0,
+                                y: 4
+                            ))
+                            ctx.fill(Path(ellipseIn: rect), with: .color(fill))
+                        }
 
                         if pinnedPositions[node.id] != nil {
                             context.stroke(Path(ellipseIn: rect),
@@ -387,10 +454,21 @@ struct GraphCanvasView: View {
                         }
 
                         // --- Core ------------------------------------
+                        // Hardest shadow on the canvas — the selected node
+                        // is conceptually "most foreground" and should
+                        // physically pop above the soft glow halo.
                         let fill = nodeColor(node)
                         let rect = CGRect(x: p.x - nodeRadius, y: p.y - nodeRadius,
                                           width: nodeRadius * 2, height: nodeRadius * 2)
-                        context.fill(Path(ellipseIn: rect), with: .color(fill))
+                        context.drawLayer { ctx in
+                            ctx.addFilter(.shadow(
+                                color: .black.opacity(0.6),
+                                radius: 2,
+                                x: 0,
+                                y: 5
+                            ))
+                            ctx.fill(Path(ellipseIn: rect), with: .color(fill))
+                        }
 
                         // --- Orbital sparks --------------------------
                         // Six small specks orbit the node at ~9 sec/turn,
@@ -448,7 +526,41 @@ struct GraphCanvasView: View {
             .onTapGesture(coordinateSpace: .local) { point in
                 handleTap(at: point, size: geo.size)
             }
+            // Long-press on empty canvas → spatial node creation. The
+            // press location is captured via a simultaneous zero-distance
+            // drag because `LongPressGesture` alone doesn't expose its
+            // location.
+            .simultaneousGesture(
+                LongPressGesture(minimumDuration: 0.55, maximumDistance: 8)
+                    .simultaneously(with: DragGesture(minimumDistance: 0,
+                                                     coordinateSpace: .local))
+                    .onEnded { value in
+                        guard value.first == true,
+                              let drag = value.second else { return }
+                        if let nodeID = nodeAt(screenPoint: drag.startLocation,
+                                               size: geo.size) {
+                            // Long-press on a node → radial menu.
+                            Haptics.tap(.medium)
+                            onLongPressNode?(nodeID, drag.startLocation)
+                            return
+                        }
+                        // Empty canvas → spatial new-node creation.
+                        let world = worldPoint(at: drag.startLocation,
+                                               size: geo.size)
+                        Haptics.tap(.soft)
+                        onLongPressEmptyWorld?(world)
+                    }
+            )
             .contextMenu { selectedNodeMenu() }
+            .onContinuousHover(coordinateSpace: .local) { phase in
+                switch phase {
+                case .active(let point):
+                    let hit = nodeAt(screenPoint: point, size: geo.size)
+                    if hit != hoveredNodeID { hoveredNodeID = hit }
+                case .ended:
+                    if hoveredNodeID != nil { hoveredNodeID = nil }
+                }
+            }
             .onAppear {
                 canvasSize = geo.size
                 seedAtmosphereSpecks()
@@ -470,57 +582,20 @@ struct GraphCanvasView: View {
                 // the user's deliberate selection.
                 ambientHighlightID = nil
                 ambientHighlightStart = nil
+                Haptics.tap(.light)
             }
         }
-        .onChange(of: subnetRootID) { _, newValue in
-            rebuildSubnetLocalLayout(for: newValue)
-            // Auto-frame onto the hub when entering, and back to the
-            // global graph when exiting.
-            if newValue != nil {
-                selectedNodeID = newValue
-            } else {
-                // Exiting subnet — reset view to overview.
-                withAnimation(.easeInOut(duration: 0.5)) {
-                    scale = 1
-                    offset = .zero
-                    lastScaleValue = 1
-                }
+        .onChange(of: pendingNewNode) { _, newValue in
+            guard let pending = newValue else { return }
+            consumePendingNewNode(pending)
+        }
+        .onChange(of: frameAllPulse) { _, _ in
+            // Yield once so the canvasSize binding is current if the
+            // pulse came from a window-resize transient.
+            Task { @MainActor in
+                await Task.yield()
+                frameAllVisible()
             }
-        }
-    }
-
-    /// Compute a clean radial layout when the user enters a subnet: hub
-    /// anchored where it lives in the global layout, members arranged on
-    /// a circle around it with radius scaled to the member count so
-    /// large subnets don't crowd. Empty when no subnet is entered.
-    private func rebuildSubnetLocalLayout(for rootID: String?) {
-        guard let rootID,
-              let hubPos = layout[rootID] else {
-            withAnimation(.easeInOut(duration: 0.45)) {
-                subnetLocalLayout = [:]
-            }
-            return
-        }
-        let members = topology.members[rootID] ?? []
-        let count = max(members.count, 1)
-        // Radius scales gently with member count so small subnets feel
-        // tight and large ones still readable.
-        let radius: CGFloat = 130 + CGFloat(min(count, 40)) * 6
-        var local: [String: CGPoint] = [rootID: hubPos]
-        for (i, memberID) in members.enumerated() {
-            let angle = 2 * .pi * Double(i) / Double(count)
-            // Push higher-degree members a touch outward so the rim has
-            // some visual variation rather than perfectly uniform spacing.
-            let memberDegree = adjacency[memberID]?.count ?? 0
-            let bump = CGFloat(min(memberDegree, 8)) * 4
-            let r = radius + bump
-            local[memberID] = CGPoint(
-                x: hubPos.x + r * CGFloat(cos(angle)),
-                y: hubPos.y + r * CGFloat(sin(angle))
-            )
-        }
-        withAnimation(.easeInOut(duration: 0.55)) {
-            subnetLocalLayout = local
         }
     }
 
@@ -586,9 +661,39 @@ struct GraphCanvasView: View {
         return nodes.last
     }
 
+    // MARK: - Spatial node-creation handoff
+
+    /// Pin the new node at its spawn world point (or near the current
+    /// selection / origin if no point was provided), select it, animate
+    /// a frame onto it, and clear the pending binding.
+    private func consumePendingNewNode(_ pending: PendingNewNode) {
+        let spawn: CGPoint = {
+            if let p = pending.worldPoint { return p }
+            // No explicit point — prefer "near the current selection"
+            // so a `+` press without a long-press still feels spatial.
+            // Fall back to the world origin if nothing's selected.
+            if let sel = selectedNodeID, sel != pending.id,
+               let p = effectivePosition(for: sel) {
+                return CGPoint(x: p.x + 90, y: p.y + 30)
+            }
+            return .zero
+        }()
+        pinnedPositions[pending.id] = spawn
+        layout[pending.id] = spawn          // also seed the global layout
+        selectedNodeID = pending.id
+        persistLayout()
+        // Defer the frame to the next runloop so the new node is in
+        // `effectivePosition` before `frameHighlightedSubnet` reads it.
+        Task { @MainActor in
+            await Task.yield()
+            frameHighlightedSubnet()
+        }
+        pendingNewNode = nil
+    }
+
     // MARK: - Auto-framing
 
-    /// Animate `scale` and `offset` so the currently highlighted subnet
+    /// Animate `scale` and `offset` so the currently highlighted set
     /// (selected node + 1-hop neighbors) fits the canvas with padding.
     /// Skipped if the layout or canvas size isn't ready yet.
     private func frameHighlightedSubnet() {
@@ -619,6 +724,48 @@ struct GraphCanvasView: View {
         // need to.
         let targetScale = max(0.4, min(candidate, 2.2))
 
+        let targetOffset = CGSize(width: -centerWorld.x * targetScale,
+                                  height: -centerWorld.y * targetScale)
+
+        withAnimation(.easeInOut(duration: 0.55)) {
+            scale = targetScale
+            offset = targetOffset
+            lastScaleValue = 1
+        }
+    }
+
+    /// Animate scale + offset so every currently-visible node fits in
+    /// the viewport with padding. Used by the top-bar Fit-to-view
+    /// button and the auto-frame-on-load handler. When node counts are
+    /// small, caps zoom at 2.2× so a cluster of three doesn't look
+    /// like a wall of buttons.
+    private func frameAllVisible() {
+        guard canvasSize.width > 0, canvasSize.height > 0 else { return }
+        let visibleSet: Set<String>? = visibleNodeFilter.map { filter in
+            Set(store.graph.nodes.values.filter(filter).map(\.id))
+        }
+        let candidateIDs: [String] = {
+            if let visibleSet { return Array(visibleSet) }
+            return Array(store.graph.nodes.keys)
+        }()
+        let points = candidateIDs.compactMap { effectivePosition(for: $0) }
+        guard !points.isEmpty else { return }
+
+        let xs = points.map(\.x), ys = points.map(\.y)
+        let minX = xs.min()!, maxX = xs.max()!
+        let minY = ys.min()!, maxY = ys.max()!
+        let centerWorld = CGPoint(x: (minX + maxX) / 2,
+                                  y: (minY + maxY) / 2)
+        let widthWorld  = max(maxX - minX + 80, 200)
+        let heightWorld = max(maxY - minY + 80, 200)
+
+        let chromePadding: CGFloat = 80   // top bar + breathing room
+        let availableWidth  = max(canvasSize.width  - chromePadding * 2, 200)
+        let availableHeight = max(canvasSize.height - chromePadding * 2, 200)
+
+        let candidate = min(availableWidth / widthWorld,
+                            availableHeight / heightWorld)
+        let targetScale = max(0.25, min(candidate, 2.2))
         let targetOffset = CGSize(width: -centerWorld.x * targetScale,
                                   height: -centerWorld.y * targetScale)
 
@@ -730,7 +877,7 @@ struct GraphCanvasView: View {
         }
         adjacency = adj
         depthOrderedNodes = store.graph.nodes.values
-            .sorted { $0.depth < $1.depth }
+            .sorted { $0.depth(in: store.config) < $1.depth(in: store.config) }
     }
 
     // MARK: - Node sizing by degree
@@ -745,12 +892,6 @@ struct GraphCanvasView: View {
         return min(scaled, maxNodeRadius)
     }
 
-    /// Hub-y nodes with enough connections are treated as Houdini-style
-    /// subnet candidates — they're entered to focus on their region.
-    private let subnetDegreeThreshold = 6
-    private func isSubnetCandidate(_ id: String) -> Bool {
-        (adjacency[id]?.count ?? 0) >= subnetDegreeThreshold
-    }
 
     // MARK: - Hit testing
 
@@ -774,32 +915,9 @@ struct GraphCanvasView: View {
         var dimByColor: [String: (Color, Path)] = [:]
         var brightByColor: [String: (Color, Path)] = [:]
 
-        // At the top level (no subnet entered) we *collapse* edges
-        // through their hubs: a wilderness→member edge becomes a
-        // wilderness→hub edge so the wilderness node visibly connects to
-        // the subnet it touches, instead of looking like an orphan.
-        let collapseToHub = subnetRootID == nil && !topology.membership.isEmpty
-        // Dedupe collapsed edges so the same hub→hub bridge doesn't get
-        // drawn dozens of times when many leaves bridge two subnets.
-        var seenCollapsed: Set<String> = []
-
         for edge in store.graph.edges {
-            var sourceID = edge.sourceID
-            var targetID = edge.targetID
-
-            if collapseToHub {
-                // Redirect each endpoint to its hub if it's a hidden member.
-                if let hub = topology.membership[sourceID] { sourceID = hub }
-                if let hub = topology.membership[targetID] { targetID = hub }
-                // Drop self-loops created by both endpoints belonging to
-                // the same subnet.
-                if sourceID == targetID { continue }
-                let key = sourceID < targetID
-                    ? "\(sourceID)|\(targetID)"
-                    : "\(targetID)|\(sourceID)"
-                if seenCollapsed.contains(key) { continue }
-                seenCollapsed.insert(key)
-            }
+            let sourceID = edge.sourceID
+            let targetID = edge.targetID
 
             if let visibleSet,
                !(visibleSet.contains(sourceID) && visibleSet.contains(targetID)) {
@@ -807,8 +925,8 @@ struct GraphCanvasView: View {
             }
             guard let a = effectivePosition(for: sourceID),
                   let b = effectivePosition(for: targetID) else { continue }
-            let dA = store.graph.nodes[sourceID]?.depth ?? 0.55
-            let dB = store.graph.nodes[targetID]?.depth ?? 0.55
+            let dA = store.graph.nodes[sourceID]?.depth(in: store.config) ?? 0.55
+            let dB = store.graph.nodes[targetID]?.depth(in: store.config) ?? 0.55
             let color = edgeColor(edge)
             let key = colorKey(color)
             let isBright = !hasSelection ||
@@ -889,10 +1007,8 @@ struct GraphCanvasView: View {
     }
 
     /// World-space position the canvas should render for a given node.
-    /// Priority: subnet-local layout (when entered) → pinned position →
-    /// global layout.
+    /// Priority: pinned position → global layout.
     private func effectivePosition(for id: String) -> CGPoint? {
-        if subnetRootID != nil, let p = subnetLocalLayout[id] { return p }
         if let pinned = pinnedPositions[id] { return pinned }
         return layout[id]
     }
@@ -922,7 +1038,7 @@ struct GraphCanvasView: View {
             let id = node.id
             if let visibleSet, !visibleSet.contains(id) { continue }
             guard let p = effectivePosition(for: id) else { continue }
-            let pf = CGFloat(0.55 + 0.45 * node.depth)
+            let pf = CGFloat(0.55 + 0.45 * node.depth(in: store.config))
             // Same projection as toScreen, minus the per-frame drift
             // (drift wobble shouldn't disturb hit-testing).
             let sx = centre.x + p.x * scale + offset.width * pf
@@ -953,14 +1069,72 @@ struct GraphCanvasView: View {
     }
 
     private func nodeColor(_ node: Node) -> Color {
-        switch node.type {
-        case "person": return .cyan
-        case "concept": return .yellow
-        case "institution": return .mint
-        case "event": return .orange
-        case "work": return .pink
-        default: return .white.opacity(0.9)
+        if let spec = store.config.typeSpec(named: node.type) {
+            return spec.color
         }
+        return .white.opacity(0.9)
+    }
+
+    // MARK: - Hero image loading
+
+    /// Fire-and-forget background load of a node's hero image. Resolves
+    /// the filename relative to the node's directory, falls back to a
+    /// vault-wide search. Caches the result in `heroImages` so the
+    /// Canvas can draw it next frame.
+    private func triggerHeroLoad(for node: Node) {
+        guard let hero = node.attributes["hero"], !hero.isEmpty,
+              let path = node.filePath else { return }
+        heroLoadInFlight.insert(node.id)
+        let nodeID = node.id
+        let nodeDir = URL(fileURLWithPath: path).deletingLastPathComponent()
+        let vault = store.writableVaultURL
+        Task.detached(priority: .utility) {
+            let image = await Self.loadImage(named: hero, near: nodeDir, vault: vault)
+            await MainActor.run {
+                if let image { heroImages[nodeID] = image }
+                heroLoadInFlight.remove(nodeID)
+            }
+        }
+    }
+
+    /// Resolve + decode an image file. Cross-platform: NSImage on Mac,
+    /// UIImage on iOS. Returns a SwiftUI Image or nil.
+    nonisolated private static func loadImage(named filename: String,
+                                              near nodeDir: URL,
+                                              vault: URL?) async -> Image? {
+        let fm = FileManager.default
+        var candidates: [URL] = [nodeDir.appendingPathComponent(filename)]
+        if let vault {
+            candidates.append(vault.appendingPathComponent(filename))
+            // Recursive basename search — Obsidian doesn't require
+            // a path if the filename is unique. `nextObject()` keeps
+            // us out of the async-unavailable `makeIterator` path.
+            let basename = (filename as NSString).lastPathComponent
+            if let enumerator = fm.enumerator(
+                at: vault,
+                includingPropertiesForKeys: nil,
+                options: [.skipsHiddenFiles]
+            ) {
+                while let next = enumerator.nextObject() as? URL {
+                    if next.lastPathComponent == basename {
+                        candidates.append(next)
+                        break
+                    }
+                }
+            }
+        }
+        for url in candidates where fm.fileExists(atPath: url.path) {
+            #if canImport(AppKit)
+            if let ns = NSImage(contentsOf: url) {
+                return Image(nsImage: ns)
+            }
+            #elseif canImport(UIKit)
+            if let ui = UIImage(contentsOfFile: url.path) {
+                return Image(uiImage: ui)
+            }
+            #endif
+        }
+        return nil
     }
 
     // MARK: - Context menu (operates on currently selected node)
@@ -971,12 +1145,6 @@ struct GraphCanvasView: View {
             Text(node.label)
             Button("Open note") { openSelectedNote(node) }
                 .disabled(noteURL(for: node) == nil)
-            Divider()
-            if subnetRootID == id {
-                Button("Exit subnet") { subnetRootID = nil }
-            } else if isSubnetCandidate(id) {
-                Button("Enter subnet") { subnetRootID = id }
-            }
             Divider()
             if pinnedPositions[id] != nil {
                 Button("Unpin") {
@@ -1142,3 +1310,30 @@ private struct MouseInputMonitor: View {
     }
 }
 #endif
+
+// MARK: - Saturation helper
+
+fileprivate extension Color {
+    /// Returns a copy of this color with its saturation reduced by
+    /// `amount` (0 = unchanged, 1 = fully desaturated to gray). Used by
+    /// the depth-axis renderer to "wash out" background nodes so older
+    /// eras read as memory rather than just dim.
+    func desaturated(by amount: CGFloat) -> Color {
+        guard amount > 0 else { return self }
+        let clamped = max(0, min(1, amount))
+        #if canImport(UIKit)
+        var h: CGFloat = 0, s: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        guard UIColor(self).getHue(&h, saturation: &s, brightness: &b, alpha: &a) else {
+            return self
+        }
+        return Color(hue: h, saturation: s * (1 - clamped), brightness: b, opacity: a)
+        #elseif canImport(AppKit)
+        let nsColor = NSColor(self).usingColorSpace(.sRGB) ?? NSColor(self)
+        var h: CGFloat = 0, s: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        nsColor.getHue(&h, saturation: &s, brightness: &b, alpha: &a)
+        return Color(hue: h, saturation: s * (1 - clamped), brightness: b, opacity: a)
+        #else
+        return self
+        #endif
+    }
+}

@@ -11,7 +11,8 @@ struct NodeInspectorView: View {
     @ObservedObject var store: GraphStore
     /// Called when the user clicks a linked node (either an inbound /
     /// outbound row, or an inline `[[wikilink]]` in the note body).
-    var onSelectNode: (String) -> Void
+    /// `nil` means "clear the current selection" (used after delete).
+    var onSelectNode: (String?) -> Void
 
     @State private var showAI = true
     @State private var showMetadata = false
@@ -20,6 +21,11 @@ struct NodeInspectorView: View {
     @State private var showInbound = false
     @State private var followupDraft: String = ""
     @StateObject private var ai = NodeIntelligence()
+
+    // Delete + merge confirmation state.
+    @State private var showingDeleteConfirm = false
+    @State private var showingMergePicker = false
+    @State private var mergePickerQuery: String = ""
 
     var body: some View {
         Group {
@@ -51,6 +57,9 @@ struct NodeInspectorView: View {
                                         if let resolved = resolveWikilink(slug) {
                                             onSelectNode(resolved)
                                         }
+                                    },
+                                    resolveEmbed: { filename in
+                                        resolveEmbed(filename, for: node)
                                     }
                                 )
                                 .padding(.top, 4)
@@ -105,7 +114,7 @@ struct NodeInspectorView: View {
                 .textSelection(.enabled)
             HStack(spacing: 6) {
                 if let t = node.type { TagPill(text: t, color: typeColor(t)) }
-                if let era = node.era, !era.isEmpty { TagPill(text: era, color: .secondary) }
+                eraPicker(node)
                 if let folder = node.attributes["folder"], folder != node.type.map({ "\($0)s" }) {
                     TagPill(text: folder, color: .secondary)
                 }
@@ -135,8 +144,171 @@ struct NodeInspectorView: View {
                     #endif
                     .font(.caption)
                 }
+
+                Spacer()
+                Menu {
+                    Button {
+                        showingMergePicker = true
+                    } label: {
+                        Label("Merge into…", systemImage: "arrow.triangle.merge")
+                    }
+                    .disabled(!store.canIngest)
+                    Divider()
+                    Button(role: .destructive) {
+                        showingDeleteConfirm = true
+                    } label: {
+                        Label("Delete this node", systemImage: "trash")
+                    }
+                    .disabled(!store.canIngest)
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                        .font(.callout)
+                }
+                .menuStyle(.borderlessButton)
+                .fixedSize()
+                .help("More actions")
             }
         }
+        .alert("Delete \"\(node.label)\"?",
+               isPresented: $showingDeleteConfirm) {
+            Button("Delete", role: .destructive) {
+                if let err = store.deleteNode(node.id) {
+                    print("deleteNode failed: \(err)")
+                } else {
+                    onSelectNode(nil)
+                }
+            }
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            Text("This removes the .md file (a .bak snapshot is kept). Wikilinks in other notes will become dangling.")
+        }
+        .sheet(isPresented: $showingMergePicker) {
+            mergePickerSheet(losingNode: node)
+        }
+    }
+
+    @ViewBuilder
+    private func mergePickerSheet(losingNode: Node) -> some View {
+        NavigationStack {
+            VStack(spacing: 0) {
+                HStack {
+                    Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+                    TextField("Pick a node to merge into…", text: $mergePickerQuery)
+                        .textFieldStyle(.plain)
+                }
+                .padding()
+                Divider()
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 0) {
+                        ForEach(mergeCandidates(for: losingNode), id: \.id) { candidate in
+                            Button {
+                                if let err = store.mergeNode(losingNode.id, into: candidate.id) {
+                                    print("mergeNode failed: \(err)")
+                                } else {
+                                    showingMergePicker = false
+                                    onSelectNode(candidate.id)
+                                }
+                            } label: {
+                                HStack(spacing: 8) {
+                                    if let t = candidate.type {
+                                        Circle().fill(typeColor(t)).frame(width: 8, height: 8)
+                                    } else {
+                                        Circle().fill(.secondary).frame(width: 8, height: 8)
+                                    }
+                                    Text(candidate.label).lineLimit(1)
+                                    Spacer()
+                                    if let t = candidate.type {
+                                        Text(t).font(.caption2).foregroundStyle(.secondary)
+                                    }
+                                }
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 8)
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+            }
+            .navigationTitle("Merge \"\(losingNode.label)\" into…")
+            #if os(iOS)
+            .navigationBarTitleDisplayMode(.inline)
+            #endif
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { showingMergePicker = false }
+                }
+            }
+        }
+        .frame(minWidth: 380, idealWidth: 460, minHeight: 360, idealHeight: 480)
+    }
+
+    private func mergeCandidates(for losingNode: Node) -> [Node] {
+        let q = mergePickerQuery.lowercased()
+        return store.graph.nodes.values
+            .filter { $0.id != losingNode.id }
+            .filter { q.isEmpty || $0.label.lowercased().contains(q) || $0.id.lowercased().contains(q) }
+            .sorted { $0.label.lowercased() < $1.label.lowercased() }
+            .prefix(60)
+            .map { $0 }
+    }
+
+    /// Tappable era pill — opens a menu with every era taxonomy value
+    /// plus a "Clear" affordance. Edits write through to the .md file
+    /// immediately; the depth axis updates on the next render tick.
+    @ViewBuilder
+    private func eraPicker(_ node: Node) -> some View {
+        let current = node.era ?? ""
+        Menu {
+            ForEach(store.config.eraTagValues, id: \.self) { value in
+                Button {
+                    if let err = store.setEra(in: node.id, to: value) {
+                        print("setEra failed: \(err)")
+                    } else {
+                        Haptics.tap(.light)
+                    }
+                } label: {
+                    if value == current {
+                        Label(value, systemImage: "checkmark")
+                    } else {
+                        Text(value)
+                    }
+                }
+            }
+            if !current.isEmpty {
+                Divider()
+                Button(role: .destructive) {
+                    if let err = store.setEra(in: node.id, to: nil) {
+                        print("setEra clear failed: \(err)")
+                    } else {
+                        Haptics.tap(.light)
+                    }
+                } label: {
+                    Label("Clear era", systemImage: "xmark.circle")
+                }
+            }
+        } label: {
+            if current.isEmpty {
+                HStack(spacing: 3) {
+                    Image(systemName: "calendar.badge.plus").font(.caption2)
+                    Text("set era").font(.caption2)
+                }
+                .padding(.horizontal, 6).padding(.vertical, 2)
+                .background(.secondary.opacity(0.15), in: Capsule())
+                .foregroundStyle(.secondary)
+            } else {
+                HStack(spacing: 3) {
+                    Text(current).font(.caption2)
+                    Image(systemName: "chevron.down").font(.caption2.weight(.semibold))
+                }
+                .padding(.horizontal, 6).padding(.vertical, 2)
+                .background(.secondary.opacity(0.25), in: Capsule())
+                .foregroundStyle(.primary)
+            }
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+        .disabled(!store.canIngest)
     }
 
     @ViewBuilder
@@ -277,6 +449,14 @@ struct NodeInspectorView: View {
                     .foregroundStyle(.red)
             }
 
+            // Preset operations + their AI-proposed mutations.
+            if ai.isAvailable && store.canIngest {
+                operationsRow(node)
+                if !ai.proposals.isEmpty {
+                    proposalsList(node)
+                }
+            }
+
             // Free-form follow-up question — bound to the same session.
             if ai.isAvailable {
                 HStack(spacing: 6) {
@@ -330,6 +510,87 @@ struct NodeInspectorView: View {
                 }
             }
         }
+    }
+
+    // MARK: - Operations row + proposal chips
+
+    @ViewBuilder
+    private func operationsRow(_ node: Node) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Operations")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            FlowLayout(spacing: 6) {
+                ForEach(NodeIntelligence.Operation.allCases) { op in
+                    Button {
+                        ai.runOperation(op, node: node, graph: store.graph)
+                    } label: {
+                        Label(op.rawValue, systemImage: op.icon)
+                            .font(.caption)
+                            .lineLimit(1)
+                            .padding(.horizontal, 8).padding(.vertical, 4)
+                            .background(.purple.opacity(0.14), in: Capsule())
+                            .foregroundStyle(.purple)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(ai.activity == .running)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func proposalsList(_ node: Node) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Proposals")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            ForEach(ai.proposals) { proposal in
+                proposalChip(proposal, node: node)
+            }
+        }
+        .padding(.top, 2)
+    }
+
+    private func proposalChip(_ proposal: NodeProposal, node: Node) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(proposal.summary)
+                    .font(.callout)
+                    .lineLimit(2)
+                Text(proposal.reason)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(3)
+            }
+            Spacer(minLength: 0)
+            Button {
+                if let err = store.applyProposal(proposal, to: node.id) {
+                    ai.dismissProposal(proposal.id)
+                    // Re-surface via activity so the user sees it.
+                    // (NodeIntelligence is the source of activity truth.)
+                    print("applyProposal failed: \(err)")
+                } else {
+                    Haptics.tap(.light)
+                    ai.dismissProposal(proposal.id)
+                }
+            } label: {
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.title3)
+                    .foregroundStyle(.green)
+            }
+            .buttonStyle(.plain)
+            Button {
+                ai.dismissProposal(proposal.id)
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.title3)
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(8)
+        .background(.purple.opacity(0.06), in: RoundedRectangle(cornerRadius: 6))
     }
 
     private func sendFollowup() {
@@ -390,6 +651,44 @@ struct NodeInspectorView: View {
         return body
     }
 
+    /// Resolve an Obsidian embed reference (`sketch.png`, `subfolder/x.pdf`,
+    /// etc.) to a file URL the markdown view can render. Searches:
+    ///   1. The node's containing folder + relative path
+    ///   2. The vault root + relative path
+    ///   3. A recursive search by basename across the vault (Obsidian-style)
+    /// Returns `nil` if nothing matches or no writable vault is open.
+    private func resolveEmbed(_ filename: String, for node: Node) -> URL? {
+        let fm = FileManager.default
+        let cleaned = filename.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleaned.isEmpty else { return nil }
+
+        // 1. Relative to the node file's directory.
+        if let nodePath = node.filePath {
+            let nodeDir = URL(fileURLWithPath: nodePath).deletingLastPathComponent()
+            let candidate = nodeDir.appendingPathComponent(cleaned)
+            if fm.fileExists(atPath: candidate.path) { return candidate }
+        }
+        // 2. Relative to the vault root.
+        if let vault = store.writableVaultURL {
+            let candidate = vault.appendingPathComponent(cleaned)
+            if fm.fileExists(atPath: candidate.path) { return candidate }
+            // 3. Recursive basename search (Obsidian doesn't require
+            //    paths if the filename is unique).
+            let basename = (cleaned as NSString).lastPathComponent
+            if let enumerator = fm.enumerator(
+                at: vault,
+                includingPropertiesForKeys: nil,
+                options: [.skipsHiddenFiles]
+            ) {
+                for case let url as URL in enumerator
+                where url.lastPathComponent == basename {
+                    return url
+                }
+            }
+        }
+        return nil
+    }
+
     /// Wikilink target (e.g. `Blizzard Entertainment`) -> node id. Case-
     /// insensitive lookup against existing nodes.
     private func resolveWikilink(_ raw: String) -> String? {
@@ -403,14 +702,7 @@ struct NodeInspectorView: View {
     }
 
     private func typeColor(_ type: String) -> Color {
-        switch type {
-        case "person": return .cyan
-        case "concept": return .yellow
-        case "institution": return .mint
-        case "event": return .orange
-        case "work": return .pink
-        default: return .secondary
-        }
+        store.config.typeSpec(named: type)?.color ?? .secondary
     }
 }
 

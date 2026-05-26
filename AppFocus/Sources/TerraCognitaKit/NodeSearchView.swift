@@ -164,13 +164,6 @@ struct NodeSearchView: View {
     }
 
     private func typeColor(_ type: String) -> Color {
-        switch type {
-        case "person": return .cyan
-        case "concept": return .yellow
-        case "institution": return .mint
-        case "event": return .orange
-        case "work": return .pink
-        default: return .secondary
-        }
+        store.config.typeSpec(named: type)?.color ?? .secondary
     }
 }

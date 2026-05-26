@@ -1,6 +1,6 @@
 import SwiftUI
 import AppKit
-import AppFocusKit
+import TerraCognitaKit
 
 @main
 struct TerraCognitaMacApp: App {
