@@ -1,11 +1,11 @@
 import SwiftUI
-import AppFocusKit
+import TerraCognitaKit
 #if canImport(AppKit)
 import AppKit
 #endif
 
 @main
-struct AppFocusApp: App {
+struct TerraCognitaApp: App {
     init() {
         #if os(macOS)
         // `swift run` produces a bare binary with no Info.plist, so the

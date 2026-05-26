@@ -9,9 +9,13 @@ import Foundation
 /// typed edges (the `key` is stored as `relationshipType`).
 struct VaultLoader {
     let vaultURL: URL
+    /// Per-vault ontology + extractor toggles. Defaults preserve the
+    /// original behavior; the JackalopeJunction-style case (tag- /
+    /// embed-heavy vaults with few wikilinks) wants the extractors on.
+    var config: VaultConfig = .default
 
     /// Resolves a vault directory by trying, in order:
-    ///   1. The Miyazaki demo vault bundled with AppFocusKit (`Bundle.module`)
+    ///   1. The Miyazaki demo vault bundled with TerraCognitaKit (`Bundle.module`)
     ///   2. The current working directory + `Data/heritage-vault/heritage-vault`
     ///      (where the development heritage vault lives on macOS via swift run)
     ///   3. The executable's parent chain (walks up 8 levels)
@@ -49,8 +53,13 @@ struct VaultLoader {
         return nil
     }
 
-    /// Loads the entire vault into a `Graph`. Edges are only added when both
-    /// endpoints resolve to a known node, so dangling wikilinks are dropped.
+    /// Loads the entire vault into a `Graph`. The four extraction
+    /// passes run in order:
+    ///   1. Walk `.md` files → first-class nodes
+    ///   2. Resolve `[[wikilinks]]` → edges between existing nodes
+    ///   3. (extractors.placeholders) Dangling wikilinks → ghost nodes
+    ///   4. (extractors.tags) `#tag` references → tag-nodes + edges
+    ///   5. (extractors.embeds) `![[file.png]]` references → file-nodes + edges
     func load() throws -> Graph {
         let fm = FileManager.default
         guard let enumerator = fm.enumerator(
@@ -64,6 +73,11 @@ struct VaultLoader {
         var nodes: [String: Node] = [:]
         // (sourceID, targetSlug, relationshipType?) — resolved in a second pass.
         var pendingEdges: [(String, String, String?)] = []
+        // (sourceID, tagName) and (sourceID, embedFilename) for the
+        // synthetic-node extractors. Collected during file walk so we
+        // only re-scan each file once.
+        var pendingTagRefs: [(String, String)] = []
+        var pendingEmbedRefs: [(String, String)] = []
 
         for case let url as URL in enumerator
         where url.pathExtension.lowercased() == "md" {
@@ -94,6 +108,16 @@ struct VaultLoader {
             for link in parsed.links {
                 pendingEdges.append((id, link.target, link.relationshipType))
             }
+            if config.extractors.tags {
+                for tag in MarkdownNoteParser.extractTags(parsed.body) {
+                    pendingTagRefs.append((id, tag))
+                }
+            }
+            if config.extractors.embeds {
+                for embed in MarkdownNoteParser.extractEmbeds(parsed.body) {
+                    pendingEmbedRefs.append((id, embed))
+                }
+            }
         }
 
         // Resolve wikilinks to known nodes. Wikilinks point at filenames
@@ -104,17 +128,74 @@ struct VaultLoader {
         }
 
         var edges: [Edge] = []
-        var seen: Set<String> = []
-        for (sourceID, targetSlug, kind) in pendingEdges {
-            guard let targetID = slugIndex[targetSlug.lowercased()] else { continue }
-            if targetID == sourceID { continue }
-            let edgeID = "\(sourceID)->\(targetID)\(kind.map { "::\($0)" } ?? "")"
-            if seen.contains(edgeID) { continue }
-            seen.insert(edgeID)
-
-            var edge = Edge(id: edgeID, sourceID: sourceID, targetID: targetID)
+        var seenEdges: Set<String> = []
+        func addEdge(source: String, target: String, kind: String?) {
+            guard source != target else { return }
+            let edgeID = "\(source)->\(target)\(kind.map { "::\($0)" } ?? "")"
+            if seenEdges.contains(edgeID) { return }
+            seenEdges.insert(edgeID)
+            var edge = Edge(id: edgeID, sourceID: source, targetID: target)
             edge.relationshipType = kind
             edges.append(edge)
+        }
+
+        for (sourceID, targetSlug, kind) in pendingEdges {
+            if let targetID = slugIndex[targetSlug.lowercased()] {
+                addEdge(source: sourceID, target: targetID, kind: kind)
+            } else if config.extractors.placeholders {
+                // Dangling wikilink — surface as a hollow placeholder
+                // node (Obsidian convention). The placeholder uses the
+                // raw target slug as its id; if the user later adds an
+                // `.md` with that basename, a re-load picks up the real
+                // node and the placeholder vanishes.
+                let placeholderID = targetSlug
+                if nodes[placeholderID] == nil {
+                    var p = Node(id: placeholderID, label: targetSlug)
+                    p.attributes = [
+                        "type": "placeholder",
+                        "synthetic": "true",
+                        "placeholder": "true",
+                    ]
+                    nodes[placeholderID] = p
+                    slugIndex[placeholderID.lowercased()] = placeholderID
+                }
+                addEdge(source: sourceID, target: placeholderID, kind: kind)
+            }
+        }
+
+        // Tag extractor — every distinct `#tag` becomes a node, every
+        // referencing file gets an edge.
+        if config.extractors.tags {
+            for (sourceID, tag) in pendingTagRefs {
+                let tagID = "tag:\(tag.lowercased())"
+                if nodes[tagID] == nil {
+                    var t = Node(id: tagID, label: "#\(tag)")
+                    t.attributes = [
+                        "type": "tag",
+                        "synthetic": "true",
+                    ]
+                    nodes[tagID] = t
+                }
+                addEdge(source: sourceID, target: tagID, kind: "tagged")
+            }
+        }
+
+        // Embed extractor — every distinct `![[file]]` becomes a node,
+        // every referencing file gets an edge.
+        if config.extractors.embeds {
+            for (sourceID, embed) in pendingEmbedRefs {
+                let embedID = "embed:\(embed.lowercased())"
+                if nodes[embedID] == nil {
+                    var e = Node(id: embedID, label: embed)
+                    e.attributes = [
+                        "type": "embed",
+                        "synthetic": "true",
+                        "file": embed,
+                    ]
+                    nodes[embedID] = e
+                }
+                addEdge(source: sourceID, target: embedID, kind: "embeds")
+            }
         }
 
         return Graph(nodes: nodes, edges: edges)
@@ -202,6 +283,34 @@ enum MarkdownNoteParser {
             }
         }
         return links
+    }
+
+    /// Extracts every `#tag` from the body — case-preserved bareword
+    /// after a `#`, must start with a letter so URL-fragment links and
+    /// markdown headings (`# heading`) don't match.
+    static func extractTags(_ text: String) -> [String] {
+        let pattern = #"(?:^|\s)#([A-Za-z][\w-]*)"#
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return [] }
+        let ns = text as NSString
+        let matches = regex.matches(in: text, range: NSRange(location: 0, length: ns.length))
+        return matches.compactMap { m -> String? in
+            guard m.numberOfRanges >= 2 else { return nil }
+            return ns.substring(with: m.range(at: 1))
+        }
+    }
+
+    /// Extracts every `![[filename]]` (with optional `|alt`) — only
+    /// the bare filename is returned.
+    static func extractEmbeds(_ text: String) -> [String] {
+        let pattern = #"!\[\[([^\]\n|]+)(?:\|[^\]\n]*)?\]\]"#
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return [] }
+        let ns = text as NSString
+        let matches = regex.matches(in: text, range: NSRange(location: 0, length: ns.length))
+        return matches.compactMap { m -> String? in
+            guard m.numberOfRanges >= 2 else { return nil }
+            return ns.substring(with: m.range(at: 1))
+                .trimmingCharacters(in: .whitespaces)
+        }
     }
 
     /// Minimal YAML front-matter: `key: value` and `key: [a, b]` styles.

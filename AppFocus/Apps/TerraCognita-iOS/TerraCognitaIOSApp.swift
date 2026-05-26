@@ -1,5 +1,5 @@
 import SwiftUI
-import AppFocusKit
+import TerraCognitaKit
 
 @main
 struct TerraCognitaIOSApp: App {

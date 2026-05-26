@@ -2,23 +2,23 @@
 import PackageDescription
 
 let package = Package(
-    name: "AppFocus",
+    name: "TerraCognita",
     platforms: [
         .macOS(.v14),
         .iOS(.v17)
     ],
     products: [
         // Library — cross-platform. Contains every view + model. Both
-        // the macOS executable and a future iOS app target import this.
-        .library(name: "AppFocusKit", targets: ["AppFocusKit"]),
+        // the macOS executable and the iOS app target import this.
+        .library(name: "TerraCognitaKit", targets: ["TerraCognitaKit"]),
         // Executable — macOS only. Thin @main shell that imports the
         // library, sets the activation policy, and shows GraphView.
-        .executable(name: "AppFocus", targets: ["AppFocus"])
+        .executable(name: "TerraCognita", targets: ["TerraCognita"])
     ],
     targets: [
         .target(
-            name: "AppFocusKit",
-            path: "Sources/AppFocus",
+            name: "TerraCognitaKit",
+            path: "Sources/TerraCognitaKit",
             resources: [
                 // "The World of Hayao Miyazaki" demo vault, bundled with
                 // every target so the app launches with content even when
@@ -27,9 +27,9 @@ let package = Package(
             ]
         ),
         .executableTarget(
-            name: "AppFocus",
-            dependencies: ["AppFocusKit"],
-            path: "Sources/AppFocusApp"
+            name: "TerraCognita",
+            dependencies: ["TerraCognitaKit"],
+            path: "Sources/TerraCognita"
         )
     ]
 )
