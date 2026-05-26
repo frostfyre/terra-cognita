@@ -12,7 +12,11 @@ public struct GraphView: View {
     /// Drives the single folder-picker. Distinguishes Open vs Create New
     /// so we can route the result without mounting two `.fileImporter`
     /// modifiers (SwiftUI shadows all but one on the same view).
+    /// `showingFolderPicker` is the SwiftUI-owned presentation flag;
+    /// `folderPickerMode` is the routing tag we read in the completion
+    /// handler.
     @State private var folderPickerMode: FolderPickerMode?
+    @State private var showingFolderPicker: Bool = false
 
     enum FolderPickerMode {
         case openVault
@@ -158,13 +162,13 @@ public struct GraphView: View {
                 Spacer()
                 Menu {
                     Button {
-                        folderPickerMode = .openVault
+                        presentFolderPicker(.openVault)
                     } label: {
                         Label("Open Vault Folder…", systemImage: "folder")
                     }
                     .keyboardShortcut("o", modifiers: .command)
                     Button {
-                        folderPickerMode = .createNewVault
+                        presentFolderPicker(.createNewVault)
                     } label: {
                         Label("Create New Vault…", systemImage: "folder.badge.plus")
                     }
@@ -221,30 +225,32 @@ public struct GraphView: View {
                 .fixedSize()
                 .help("Open a markdown vault folder (⌘O)")
 
-                Button {
-                    composerSpawnWorld = nil   // canvas picks (near selection)
-                    composerSeedID = selectedNodeID
-                    showingComposer = true
-                } label: {
-                    Label("New Node", systemImage: "plus.circle")
-                        .labelStyle(.titleAndIcon)
-                }
-                .keyboardShortcut("n", modifiers: .command)
-                .disabled(!store.canIngest)
-                .help(store.canIngest
-                      ? "Create a new node (⌘N)"
-                      : "Open or create a writable vault first.")
+                Menu {
+                    Button {
+                        showingCapture = true
+                    } label: {
+                        Label("Capture…", systemImage: "text.bubble")
+                    }
+                    .keyboardShortcut("n", modifiers: [.command, .shift])
+                    .disabled(!store.canIngest)
 
-                Button {
-                    showingCapture = true
+                    Button {
+                        composerSpawnWorld = nil   // canvas picks (near selection)
+                        composerSeedID = selectedNodeID
+                        showingComposer = true
+                    } label: {
+                        Label("New Node…", systemImage: "circle.dashed.inset.filled")
+                    }
+                    .keyboardShortcut("n", modifiers: .command)
+                    .disabled(!store.canIngest)
                 } label: {
-                    Label("Capture", systemImage: "text.bubble")
-                        .labelStyle(.titleAndIcon)
+                    Image(systemName: "plus.circle")
                 }
-                .keyboardShortcut("n", modifiers: [.command, .shift])
+                .menuStyle(.borderlessButton)
+                .fixedSize()
                 .disabled(!store.canIngest)
                 .help(store.canIngest
-                      ? "Capture text or voice → AI extracts nodes (⌘⇧N)"
+                      ? "Add to graph — Capture (⌘⇧N) or New Node (⌘N)"
                       : "Open or create a writable vault first.")
 
                 Button {
@@ -382,16 +388,10 @@ public struct GraphView: View {
             }
         }
         .fileImporter(
-            isPresented: Binding(
-                // Setter is intentionally a no-op: SwiftUI flips
-                // isPresented to false *before* the onCompletion handler
-                // fires in some orderings, which would clear
-                // `folderPickerMode` and lose the mode we need to
-                // route on. The completion handler is the sole owner
-                // of when to clear the mode.
-                get: { folderPickerMode != nil },
-                set: { _ in }
-            ),
+            // `folderPickerMode` is captured locally at completion
+            // time before being cleared, so SwiftUI can own the
+            // `isPresented` flag without us losing the routing tag.
+            isPresented: $showingFolderPicker,
             allowedContentTypes: [.folder],
             allowsMultipleSelection: false
         ) { result in
@@ -591,6 +591,18 @@ public struct GraphView: View {
         Task { @MainActor in
             await Task.yield()
             navigation.suppressRecording = false
+        }
+    }
+
+    /// Set the routing mode and present the folder picker. The
+    /// presentation is deferred by one runloop tick so the host
+    /// `Menu` has time to dismiss before the picker mounts — on iOS,
+    /// firing them in the same tick causes the picker to silently
+    /// drop, which is why "Open Vault Folder…" appeared to do nothing.
+    private func presentFolderPicker(_ mode: FolderPickerMode) {
+        folderPickerMode = mode
+        DispatchQueue.main.async {
+            showingFolderPicker = true
         }
     }
 
