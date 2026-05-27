@@ -222,45 +222,31 @@ struct GraphCanvasView: View {
                                      with: .color(.white.opacity(twinkle * 0.45)))
                     }
 
-                    // Edges — dim layer first, bright on top. Each edge
-                    // strokes a quadratic-curve linear gradient from
-                    // source node color to destination node color. The
-                    // curve direction is stable per edge (seeded from
-                    // the edge id) so the layout doesn't shimmer
-                    // between frames. Bright at 50% opacity, dim at
-                    // ~25% so the highlighted subnet still wins.
-                    // TODO: surface lineWidth / opacity / curve amount
+                    // Edges — quadratic-curve linear gradient where
+                    // each endpoint carries the rendered opacity and
+                    // saturation of the node it connects to. The
+                    // edge-wide `edgeAlpha` scales the whole stroke;
+                    // dim layer draws first so bright (highlight-
+                    // subnet) edges sit on top.
+                    // TODO: surface lineWidth / alpha / curve amount
                     // in a Display Settings panel (planned).
                     let groups = edgeGroups(toScreen: toScreen,
                                             highlight: highlight,
                                             hasSelection: hasSelection,
                                             visibleSet: visibleSet)
                     let edgeLineWidth: CGFloat = 0.85
-                    let brightAlpha = 0.50
-                    let dimAlpha = 0.25
-                    for stroke in groups.dim {
+                    let edgeAlpha = 0.50
+                    // Two passes (dim then bright) so highlight-subnet
+                    // edges land on top. Per-endpoint opacity / desat
+                    // is already baked into the gradient colors above.
+                    for stroke in (groups.dim + groups.bright) {
                         let path = edgePath(stroke)
                         context.stroke(
                             path,
                             with: .linearGradient(
                                 Gradient(colors: [
-                                    stroke.colorFrom.opacity(dimAlpha),
-                                    stroke.colorTo.opacity(dimAlpha)
-                                ]),
-                                startPoint: stroke.from,
-                                endPoint: stroke.to
-                            ),
-                            lineWidth: edgeLineWidth
-                        )
-                    }
-                    for stroke in groups.bright {
-                        let path = edgePath(stroke)
-                        context.stroke(
-                            path,
-                            with: .linearGradient(
-                                Gradient(colors: [
-                                    stroke.colorFrom.opacity(brightAlpha),
-                                    stroke.colorTo.opacity(brightAlpha)
+                                    stroke.colorFrom.opacity(edgeAlpha),
+                                    stroke.colorTo.opacity(edgeAlpha)
                                 ]),
                                 startPoint: stroke.from,
                                 endPoint: stroke.to
@@ -1081,6 +1067,25 @@ struct GraphCanvasView: View {
                   let targetNode = store.graph.nodes[targetID] else { continue }
             let dA = sourceNode.depth(in: store.config)
             let dB = targetNode.depth(in: store.config)
+            // Each endpoint inherits its node's effective opacity and
+            // saturation — so an edge connecting a foreground "Star
+            // Trek" to a deep-era "Star Trek franchise" ramps from
+            // saturated/bright at the foreground end to muted/dim at
+            // the background end, mirroring the nodes themselves.
+            let sourceInHighlight = !hasSelection || highlight.contains(sourceID)
+            let targetInHighlight = !hasSelection || highlight.contains(targetID)
+            let sourceOpacity = (sourceInHighlight ? 1.0 : dimOpacity)
+                * (0.55 + 0.45 * dA)
+            let targetOpacity = (targetInHighlight ? 1.0 : dimOpacity)
+                * (0.55 + 0.45 * dB)
+            let sourceDesat = CGFloat(1.0 - dA) * 0.55
+            let targetDesat = CGFloat(1.0 - dB) * 0.55
+            let colorFrom = nodeColor(sourceNode)
+                .desaturated(by: sourceDesat)
+                .opacity(sourceOpacity)
+            let colorTo = nodeColor(targetNode)
+                .desaturated(by: targetDesat)
+                .opacity(targetOpacity)
             // Seed the curve direction from the edge id so reciprocal
             // edges (A→B and B→A) bend opposite ways, and so the
             // same edge always bends the same way between frames.
@@ -1088,10 +1093,14 @@ struct GraphCanvasView: View {
             let stroke = EdgeStroke(
                 from: toScreen(sourceID, a, dA),
                 to: toScreen(targetID, b, dB),
-                colorFrom: nodeColor(sourceNode),
-                colorTo: nodeColor(targetNode),
+                colorFrom: colorFrom,
+                colorTo: colorTo,
                 curveSign: (seed & 1) == 0 ? 1 : -1
             )
+            // Bright (both endpoints in the highlight subnet, or no
+            // selection) draws on top so highlighted edges sit above
+            // background traffic. Per-endpoint opacity already
+            // handles the visual fade — the split is purely Z-order.
             let isBright = !hasSelection ||
                 (highlight.contains(sourceID) && highlight.contains(targetID))
             if isBright {
