@@ -39,13 +39,16 @@ enum LayoutAlgorithm: String, Codable, CaseIterable, Identifiable, Hashable {
         }
     }
 
-    /// Whether Phase 1 ships an implementation for this algorithm.
-    /// `cluster` is gated on Phase 3's community detection landing.
+    /// Whether the canvas can actually run this algorithm today.
+    /// `cluster` is gated on Phase 3's community detection landing;
+    /// everything else is wired in `applyLayout(_:)` and shows up
+    /// in the Layout menu as a tap-able item.
     var isImplemented: Bool {
         switch self {
-        case .forceDirected, .circular: return true   // existing
-        case .radial, .hierarchical, .grid: return false  // Phase 1
-        case .cluster: return false                       // Phase 3
+        case .forceDirected, .circular, .radial, .hierarchical, .grid:
+            return true
+        case .cluster:
+            return false
         }
     }
 }

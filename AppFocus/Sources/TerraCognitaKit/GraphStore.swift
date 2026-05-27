@@ -311,6 +311,12 @@ public final class GraphStore: ObservableObject {
     /// to include the `# Title` heading line if they want one — the
     /// inspector's edit flow stitches the node's display label back in
     /// before calling this so the title stays intact across round-trips.
+    ///
+    /// When the node has no backing file yet (Constellation-created or
+    /// otherwise materialized-in-memory-only), we create one via
+    /// `VaultWriter` first using the node's current type / era / label,
+    /// then write the body into it. The node's `filePath` is patched
+    /// in place so subsequent edits go through the normal path.
     @discardableResult
     func updateNodeBody(_ nodeID: String, body newBody: String) -> String? {
         guard let vaultURL = writableVaultURL else {
@@ -319,14 +325,35 @@ public final class GraphStore: ObservableObject {
         guard var node = graph.nodes[nodeID] else {
             return "Selected node no longer exists."
         }
-        guard let pathString = node.filePath else {
-            return "Selected node has no backing file."
-        }
-        let fileURL = URL(fileURLWithPath: pathString)
         let didStart = vaultURL.startAccessingSecurityScopedResource()
         defer { if didStart { vaultURL.stopAccessingSecurityScopedResource() } }
 
         let editor = VaultEditor(vaultURL: vaultURL)
+        let fileURL: URL
+        if let pathString = node.filePath {
+            fileURL = URL(fileURLWithPath: pathString)
+        } else {
+            // No backing file yet — materialize one. We write an empty
+            // body first so `VaultWriter` sets up the front-matter and
+            // picks the right subfolder for the type; `replaceBody`
+            // below then fills in the user's content.
+            let writer = VaultWriter(vaultURL: vaultURL)
+            do {
+                let created = try writer.createNote(
+                    label: node.label,
+                    type: node.type,
+                    era: node.era,
+                    body: ""
+                )
+                fileURL = created.fileURL
+                node.filePath = created.fileURL.path
+            } catch let err as VaultWriter.WriteError {
+                return err.errorDescription
+            } catch {
+                return error.localizedDescription
+            }
+        }
+
         do {
             let updated = try editor.replaceBody(in: fileURL, newBody: newBody)
             node.markdownContent = updated
