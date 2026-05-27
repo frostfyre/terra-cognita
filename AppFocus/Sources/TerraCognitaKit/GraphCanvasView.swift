@@ -133,12 +133,17 @@ struct GraphCanvasView: View {
     /// per group instead of per edge.
     /// One edge stroke recorded for the render pass. Each edge gets
     /// its own gradient run from source node color → destination node
-    /// color, so we no longer batch by uniform color.
+    /// color, so we no longer batch by uniform color. `curveSign` is
+    /// +1 or -1 (derived from the edge id hash) so the quadratic
+    /// curve always bends the same way for the same edge between
+    /// frames — and A→B vs B→A bend opposite, keeping reciprocal
+    /// edges visually distinct.
     private struct EdgeStroke {
         let from: CGPoint
         let to: CGPoint
         let colorFrom: Color
         let colorTo: Color
+        let curveSign: CGFloat
     }
 
     var body: some View {
@@ -218,20 +223,23 @@ struct GraphCanvasView: View {
                     }
 
                     // Edges — dim layer first, bright on top. Each edge
-                    // strokes a linear gradient from its source node's
-                    // color to its destination node's color, so edges
-                    // read as "type → type" transitions. Bright at 70%
-                    // opacity; dim at ~35% so the highlighted subnet
-                    // still dominates when a node is selected.
+                    // strokes a quadratic-curve linear gradient from
+                    // source node color to destination node color. The
+                    // curve direction is stable per edge (seeded from
+                    // the edge id) so the layout doesn't shimmer
+                    // between frames. Bright at 50% opacity, dim at
+                    // ~25% so the highlighted subnet still wins.
+                    // TODO: surface lineWidth / opacity / curve amount
+                    // in a Display Settings panel (planned).
                     let groups = edgeGroups(toScreen: toScreen,
                                             highlight: highlight,
                                             hasSelection: hasSelection,
                                             visibleSet: visibleSet)
-                    let dimAlpha = 0.35
+                    let edgeLineWidth: CGFloat = 0.85
+                    let brightAlpha = 0.50
+                    let dimAlpha = 0.25
                     for stroke in groups.dim {
-                        var path = Path()
-                        path.move(to: stroke.from)
-                        path.addLine(to: stroke.to)
+                        let path = edgePath(stroke)
                         context.stroke(
                             path,
                             with: .linearGradient(
@@ -242,14 +250,11 @@ struct GraphCanvasView: View {
                                 startPoint: stroke.from,
                                 endPoint: stroke.to
                             ),
-                            lineWidth: 1
+                            lineWidth: edgeLineWidth
                         )
                     }
-                    let brightAlpha = 0.70
                     for stroke in groups.bright {
-                        var path = Path()
-                        path.move(to: stroke.from)
-                        path.addLine(to: stroke.to)
+                        let path = edgePath(stroke)
                         context.stroke(
                             path,
                             with: .linearGradient(
@@ -260,7 +265,7 @@ struct GraphCanvasView: View {
                                 startPoint: stroke.from,
                                 endPoint: stroke.to
                             ),
-                            lineWidth: 1.4
+                            lineWidth: edgeLineWidth
                         )
                     }
 
@@ -1076,11 +1081,16 @@ struct GraphCanvasView: View {
                   let targetNode = store.graph.nodes[targetID] else { continue }
             let dA = sourceNode.depth(in: store.config)
             let dB = targetNode.depth(in: store.config)
+            // Seed the curve direction from the edge id so reciprocal
+            // edges (A→B and B→A) bend opposite ways, and so the
+            // same edge always bends the same way between frames.
+            let seed = abs(edge.id.hashValue)
             let stroke = EdgeStroke(
                 from: toScreen(sourceID, a, dA),
                 to: toScreen(targetID, b, dB),
                 colorFrom: nodeColor(sourceNode),
-                colorTo: nodeColor(targetNode)
+                colorTo: nodeColor(targetNode),
+                curveSign: (seed & 1) == 0 ? 1 : -1
             )
             let isBright = !hasSelection ||
                 (highlight.contains(sourceID) && highlight.contains(targetID))
@@ -1091,6 +1101,33 @@ struct GraphCanvasView: View {
             }
         }
         return batches
+    }
+
+    /// Build the quadratic Bezier path for one edge. The control point
+    /// is offset perpendicular to the line by a fraction of its length
+    /// (so short edges curve subtly, long edges curve more), with the
+    /// stable per-edge sign in `EdgeStroke.curveSign` choosing which
+    /// side of the line the bend lands on.
+    private func edgePath(_ stroke: EdgeStroke) -> Path {
+        let dx = stroke.to.x - stroke.from.x
+        let dy = stroke.to.y - stroke.from.y
+        let length = max(sqrt(dx * dx + dy * dy), 1)
+        // 12% of the line length keeps the curve readable without
+        // overwhelming the layout.
+        let bend = length * 0.12 * stroke.curveSign
+        // Perpendicular unit vector → control point offset from midpoint.
+        let perpX = -dy / length
+        let perpY = dx / length
+        let midX = (stroke.from.x + stroke.to.x) / 2
+        let midY = (stroke.from.y + stroke.to.y) / 2
+        let control = CGPoint(
+            x: midX + perpX * bend,
+            y: midY + perpY * bend
+        )
+        var path = Path()
+        path.move(to: stroke.from)
+        path.addQuadCurve(to: stroke.to, control: control)
+        return path
     }
 
     // MARK: - Gestures

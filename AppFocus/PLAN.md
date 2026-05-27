@@ -47,6 +47,10 @@ The "Terra Cognita is a real workshop" phase.
 
 Risk: medium-high — community detection on large graphs needs a background worker.
 
+## Phase 3.5 — Display Settings panel *(later)*
+
+Surface canvas appearance controls the user has so far set via taste-driven hard-coded constants: edge line width, edge opacity, edge curve amount, label pill opacity, gradient endpoints, ambient puff frequency. A single settings sheet (gear icon in the toolbar) writes preferences to `UserDefaults` and the canvas reads from a `DisplaySettings` observable. Order this against Phase 3 work — likely natural to land after Lens expansion.
+
 ## Phase 4 — Pro Tier *(later)*
 
 Sync (iCloud first), cloud AI augmentation, large-graph background workers, team-shared Staging Layers. Don't start until 1–3 are tight and we have user signal.
