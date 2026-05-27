@@ -1,4 +1,10 @@
 import SwiftUI
+#if canImport(AppKit)
+import AppKit
+#endif
+#if canImport(UIKit)
+import UIKit
+#endif
 #if canImport(PDFKit)
 import PDFKit
 #endif
@@ -522,13 +528,6 @@ private struct ScopedImageView<Fallback: View>: View {
         }
     }
 }
-
-#if canImport(AppKit)
-import AppKit
-#endif
-#if canImport(UIKit)
-import UIKit
-#endif
 
 #if os(macOS)
 private struct PDFThumbNSView: NSViewRepresentable {

@@ -766,22 +766,20 @@ struct NodeInspectorView: View {
     @ViewBuilder
     private func noteSection(_ node: Node) -> some View {
         if isEditingNote {
-            VStack(alignment: .leading, spacing: 6) {
-                TextEditor(text: $noteDraft)
-                    .font(.body)
-                    .frame(minHeight: 160)
-                    .padding(6)
-                    .background(
-                        RoundedRectangle(cornerRadius: 6)
-                            .stroke(Color.secondary.opacity(0.25), lineWidth: 1)
-                    )
-                if let err = noteSaveError {
-                    Text(err)
-                        .font(.caption)
-                        .foregroundStyle(.red)
-                }
-            }
-        } else if let md = node.markdownContent, !md.isEmpty {
+            noteEditPane
+        } else {
+            noteReadPane(node)
+        }
+    }
+
+    /// Read-mode body of the Note disclosure. Split out from
+    /// `noteSection` so the @ViewBuilder doesn't have to juggle a
+    /// `let`-binding inside its outer branch — a structure that's
+    /// been observed to occasionally collapse on iOS into an empty
+    /// branch.
+    @ViewBuilder
+    private func noteReadPane(_ node: Node) -> some View {
+        if let md = node.markdownContent, !md.isEmpty {
             let body = strippedFrontMatterAndTitle(md)
             if hasRenderableProse(body) {
                 MarkdownBodyView(
@@ -797,15 +795,30 @@ struct NodeInspectorView: View {
                     vaultURL: store.writableVaultURL
                 )
             } else {
-                // Body is entirely Dataview edge declarations — those
-                // are surfaced in the Outbound section, so we'd render
-                // a blank gap here without this short-circuit.
                 Text("No prose body — typed edges are shown in Outbound.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
         } else {
             Text("No body").font(.caption).foregroundStyle(.secondary)
+        }
+    }
+
+    private var noteEditPane: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            TextEditor(text: $noteDraft)
+                .font(.body)
+                .frame(minHeight: 160)
+                .padding(6)
+                .background(
+                    RoundedRectangle(cornerRadius: 6)
+                        .stroke(Color.secondary.opacity(0.25), lineWidth: 1)
+                )
+            if let err = noteSaveError {
+                Text(err)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+            }
         }
     }
 
