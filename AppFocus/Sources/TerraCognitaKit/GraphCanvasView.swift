@@ -96,7 +96,11 @@ struct GraphCanvasView: View {
     /// changes (first to a circular seed, then to a force-directed layout
     /// once the background computation finishes).
     @State private var layout: [String: CGPoint] = [:]
-    @State private var layoutKind: LayoutKind = .none
+    /// The algorithm currently applied to `layout`. `nil` before any
+    /// layout pass has run on the current vault. Phase 1 will expose
+    /// this through a Layout menu so the user can switch algorithms;
+    /// today the pipeline only writes `.circular` → `.forceDirected`.
+    @State private var layoutAlgorithm: LayoutAlgorithm? = nil
 
     /// Undirected adjacency, rebuilt when the graph changes. Used for the
     /// "dim everything outside the N-hop neighborhood of the selection".
@@ -119,8 +123,6 @@ struct GraphCanvasView: View {
         var phase: Double    // twinkle phase
     }
 
-
-    private enum LayoutKind { case none, circular, forceDirected }
 
     /// How many BFS hops from the selected node remain at full opacity.
     private let highlightDepth = 1
@@ -935,14 +937,14 @@ struct GraphCanvasView: View {
                 pinnedPositions = persisted.cgPinned
                 scale = max(minScale, min(maxScale, CGFloat(persisted.scale)))
                 offset = CGSize(width: persisted.offsetX, height: persisted.offsetY)
-                layoutKind = .forceDirected
+                layoutAlgorithm = .forceDirected
                 return
             }
         }
 
         // 1. Cheap circular seed so something appears immediately.
         layout = makeCircularLayout(for: nodeIDs)
-        layoutKind = .circular
+        layoutAlgorithm = .circular
 
         // 2. Background force-directed layout, swapped in once it converges.
         let solver = ForceDirectedLayout()
@@ -955,7 +957,7 @@ struct GraphCanvasView: View {
 
         withAnimation(.easeInOut(duration: 0.6)) {
             layout = computed
-            layoutKind = .forceDirected
+            layoutAlgorithm = .forceDirected
         }
         persistLayout()
     }
