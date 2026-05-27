@@ -1367,27 +1367,34 @@ struct GraphCanvasView: View {
         let visibleSet: Set<String>? = visibleNodeFilter.map { filter in
             Set(store.graph.nodes.values.filter(filter).map(\.id))
         }
-        // Walk front-to-back so the topmost (most foreground) node wins
-        // when several stack near the cursor.
-        var bestID: String?
-        var bestDistance: CGFloat = .greatestFiniteMagnitude
+        // Walk strictly front-to-back. The first node whose visual
+        // disk contains the tap wins — even if a backgrounded node
+        // happens to sit closer to the tap point, the foreground
+        // node is what the user can actually see on top. This
+        // matches the rendering Z-order and prevents accidental
+        // selection of faded background nodes "behind" foreground
+        // ones the eye is on.
         for node in depthOrderedNodes.reversed() {
             let id = node.id
             if let visibleSet, !visibleSet.contains(id) { continue }
             guard let p = effectivePosition(for: id) else { continue }
-            let pf = CGFloat(0.55 + 0.45 * node.depth(in: store.config))
+            let depth = node.depth(in: store.config)
+            let pf = CGFloat(0.55 + 0.45 * depth)
             // Same projection as toScreen, minus the per-frame drift
             // (drift wobble shouldn't disturb hit-testing).
             let sx = centre.x + p.x * scale + offset.width * pf
             let sy = centre.y + p.y * scale + offset.height * pf
             let d = hypot(sx - screenPoint.x, sy - screenPoint.y)
-            let tapRadius = radiusFor(nodeID: id) + slack
-            if d < tapRadius && d < bestDistance {
-                bestDistance = d
-                bestID = id
+            // Hit radius mirrors the rendered visual radius: nodes
+            // shrink with depth via `depthSizeMul = 0.85 + 0.35·depth`
+            // in the draw pass, so the hit area follows.
+            let depthSizeMul: CGFloat = 0.85 + 0.35 * CGFloat(depth)
+            let tapRadius = (radiusFor(nodeID: id) * depthSizeMul) + slack
+            if d < tapRadius {
+                return id
             }
         }
-        return bestID
+        return nil
     }
 
     // MARK: - Styling
