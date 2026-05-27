@@ -244,6 +244,18 @@ struct MarkdownBodyView: View {
                 continue
             }
 
+            // Dataview-style edge declarations (`key:: [[target]]`) are
+            // already surfaced as typed edges in the Inspector's
+            // Outbound section — rendering them here too would (a)
+            // duplicate content the user has elsewhere and (b) on iOS
+            // the layout collapses successive single-newline-separated
+            // lines into one run-on paragraph, which looks broken. We
+            // flush any in-flight paragraph and skip the line.
+            if Self.isDataviewEdgeLine(trimmed) {
+                flushParagraph(); flushBullets()
+                continue
+            }
+
             // Embed — line containing ONLY an `![[...]]` marker.
             if let embed = parseEmbedLine(trimmed) {
                 flushParagraph(); flushBullets()
@@ -311,6 +323,26 @@ struct MarkdownBodyView: View {
             out += ns.substring(with: NSRange(location: cursor, length: ns.length - cursor))
         }
         return out
+    }
+
+    /// True if the line is a Dataview-style edge declaration —
+    /// `key:: [[target]]` where `key` is alphanumeric / dash /
+    /// underscore. We only treat it as such when the value side
+    /// contains a wikilink, so prose lines like "ratio:: 3:4" don't
+    /// get filtered. The loader picks these up as typed edges; the
+    /// Inspector renders them in the Outbound list. Rendering them
+    /// in the body too is redundant and breaks layout on iOS where
+    /// consecutive single-newline lines collapse into one paragraph.
+    private static func isDataviewEdgeLine(_ line: String) -> Bool {
+        guard let sepRange = line.range(of: ":: ") else { return false }
+        let key = line[..<sepRange.lowerBound]
+        guard !key.isEmpty,
+              key.allSatisfy({
+                  $0.isLetter || $0.isNumber || $0 == "-" || $0 == "_"
+              })
+        else { return false }
+        let rest = line[sepRange.upperBound...]
+        return rest.contains("[[") && rest.contains("]]")
     }
 
     private static func parseEmbedLine(_ line: String) -> (filename: String, alt: String?)? {
