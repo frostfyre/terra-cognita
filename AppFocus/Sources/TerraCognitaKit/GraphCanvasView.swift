@@ -54,6 +54,12 @@ struct GraphCanvasView: View {
     /// "illuminated point" — distinct from the cooler `.accentColor`
     /// used by the ambient puff so the two states read differently.
     private let selectionGold = Color(red: 1.00, green: 0.78, blue: 0.30)
+
+    /// Zoom clamps. `minScale` is generous enough to fit the largest
+    /// vaults we expect on iPhone — the prior 0.25 floor wasn't far
+    /// enough out to see a multi-hundred-node graph end-to-end.
+    private let minScale: CGFloat = 0.1
+    private let maxScale: CGFloat = 4.0
     /// Owned by `GraphView` so the inspector panel can drive it too.
     @Binding var selectedNodeID: String?
     /// A node freshly written by `GraphStore.createNode`. The canvas
@@ -536,7 +542,7 @@ struct GraphCanvasView: View {
                     onScroll: { delta in
                         let factor = 1.0 + (delta * 0.0035)
                         let newScale = scale * factor
-                        scale = max(0.25, min(4.0, newScale))
+                        scale = max(minScale, min(maxScale, newScale))
                     },
                     onMiddleDrag: { dx, dy in
                         offset = CGSize(width: offset.width + dx,
@@ -812,7 +818,10 @@ struct GraphCanvasView: View {
 
         let candidate = min(availableWidth / widthWorld,
                             availableHeight / heightWorld)
-        let targetScale = max(0.25, min(candidate, 2.2))
+        // Frame-all gets the same generous floor as direct manipulation,
+        // capped above at 2.2× so a sparse cluster doesn't fill the
+        // viewport with a wall of nodes.
+        let targetScale = max(minScale, min(candidate, 2.2))
         let targetOffset = CGSize(width: -centerWorld.x * targetScale,
                                   height: -centerWorld.y * targetScale)
 
@@ -886,7 +895,7 @@ struct GraphCanvasView: View {
             if Set(nodeIDs).isSubset(of: Set(saved.keys)) {
                 layout = saved
                 pinnedPositions = persisted.cgPinned
-                scale = max(0.25, min(4.0, CGFloat(persisted.scale)))
+                scale = max(minScale, min(maxScale, CGFloat(persisted.scale)))
                 offset = CGSize(width: persisted.offsetX, height: persisted.offsetY)
                 layoutKind = .forceDirected
                 return
@@ -1051,7 +1060,7 @@ struct GraphCanvasView: View {
             .onChanged { value in
                 let delta = value.magnification / lastScaleValue
                 let newScale = scale * delta
-                scale = max(0.25, min(4.0, newScale))
+                scale = max(minScale, min(maxScale, newScale))
                 lastScaleValue = value.magnification
             }
             .onEnded { _ in

@@ -95,6 +95,14 @@ struct GEXFImporter {
         var written = 0
         var usedFilenames: Set<String> = []
 
+        // Seed `usedFilenames` with any `.md` slugs already present at
+        // the destination so a re-import doesn't silently overwrite the
+        // existing vault. Walk the top-level folder plus the recognised
+        // subfolders (concepts/, events/, …) since that's where the
+        // importer writes.
+        let existingSlugs = collectExistingSlugs(under: destination)
+        usedFilenames.formUnion(existingSlugs)
+
         for node in document.nodes {
             // Build the slug: based on label, filesystem-safe, unique.
             let baseSlug = VaultWriter.makeSlug(from: node.label.isEmpty ? node.id : node.label)
@@ -126,6 +134,36 @@ struct GEXFImporter {
             }
         }
         return written
+    }
+
+    /// Collect lowercased slugs (filenames without `.md`) already
+    /// present at `destination` or any of its first-level subfolders.
+    /// Used to make re-imports additive instead of destructive.
+    private static func collectExistingSlugs(under destination: URL) -> Set<String> {
+        let fm = FileManager.default
+        var slugs: Set<String> = []
+        guard let topLevel = try? fm.contentsOfDirectory(
+            at: destination,
+            includingPropertiesForKeys: [.isDirectoryKey],
+            options: [.skipsHiddenFiles]
+        ) else { return slugs }
+
+        for url in topLevel {
+            if url.pathExtension.lowercased() == "md" {
+                slugs.insert(url.deletingPathExtension().lastPathComponent.lowercased())
+            } else if (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true {
+                if let children = try? fm.contentsOfDirectory(
+                    at: url,
+                    includingPropertiesForKeys: nil,
+                    options: [.skipsHiddenFiles]
+                ) {
+                    for child in children where child.pathExtension.lowercased() == "md" {
+                        slugs.insert(child.deletingPathExtension().lastPathComponent.lowercased())
+                    }
+                }
+            }
+        }
+        return slugs
     }
 
     // MARK: - Note rendering
