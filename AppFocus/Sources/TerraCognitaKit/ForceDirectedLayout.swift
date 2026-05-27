@@ -9,7 +9,10 @@ import CoreGraphics
 /// Pure value-typed inputs and outputs so it's safe to run on a background
 /// `Task` and hand the result back to the main actor.
 struct ForceDirectedLayout: Sendable {
-    var iterations: Int = 260
+    /// Iteration count. The simulation converges visibly by ~120 on
+    /// the vault scale we ship at; the rest of the runs just refine
+    /// the look. 160 strikes the balance between snappy and pretty.
+    var iterations: Int = 160
     /// Ideal edge length. Bigger value = more spread.
     var idealEdgeLength: Double = 140
     /// Multiplier on the cooling temperature curve. Bigger = larger steps.

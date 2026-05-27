@@ -160,13 +160,18 @@ enum LayoutEngine {
     /// (idempotent when there's nothing to fix). Runs in O(n² · iters)
     /// — fine for vault scale.
     ///
+    /// Default `minDistance` of 130 is calibrated to clear the label
+    /// pills (≈120pt wide at default zoom) rather than just the node
+    /// disks (≈30pt) — what the user perceives as "overlap" is
+    /// dominated by label collisions, not disk collisions.
+    ///
     /// `pinned` ids are anchors: they never move. When a pinned node
     /// collides with a free node, the free node absorbs the full
     /// displacement.
     static func enforceNoOverlap(_ positions: [String: CGPoint],
                                  pinned: Set<String> = [],
-                                 minDistance: CGFloat = 56,
-                                 iterations: Int = 8) -> [String: CGPoint] {
+                                 minDistance: CGFloat = 130,
+                                 iterations: Int = 14) -> [String: CGPoint] {
         guard positions.count > 1 else { return positions }
         var out = positions
         let ids = Array(positions.keys)
