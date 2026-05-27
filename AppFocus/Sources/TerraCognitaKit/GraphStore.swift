@@ -366,6 +366,99 @@ public final class GraphStore: ObservableObject {
         }
     }
 
+    /// Promote a synthetic placeholder node (created by the loader's
+    /// dangling-wikilink extractor) to a real, typed node backed by
+    /// a fresh `.md` file. The new file lands in the subfolder
+    /// implied by `typeName` (per `VaultWriter.subfolder(for:)`) with
+    /// the placeholder's label as the title. Edges that pointed at
+    /// the placeholder id are re-targeted to the new slug.
+    ///
+    /// Returns the new node id on success, or a user-readable error
+    /// string on failure. The caller (the inspector) re-selects the
+    /// new node so focus is preserved across the slug rename.
+    func promoteNode(_ placeholderID: String,
+                     to typeName: String) -> Result<String, NodeError> {
+        guard let vaultURL = writableVaultURL else {
+            return .failure(.message("Open or create a writable vault first."))
+        }
+        guard let placeholder = graph.nodes[placeholderID] else {
+            return .failure(.message("Node no longer exists."))
+        }
+        let didStart = vaultURL.startAccessingSecurityScopedResource()
+        defer { if didStart { vaultURL.stopAccessingSecurityScopedResource() } }
+
+        let writer = VaultWriter(vaultURL: vaultURL)
+        let created: (fileURL: URL, slug: String)
+        do {
+            created = try writer.createNote(
+                label: placeholder.label,
+                type: typeName.lowercased(),
+                era: nil,
+                body: ""
+            )
+        } catch let err as VaultWriter.WriteError {
+            return .failure(.message(err.errorDescription
+                                     ?? "Couldn't create note."))
+        } catch {
+            return .failure(.message(error.localizedDescription))
+        }
+        let newID = created.slug
+
+        // Build the new node — inherit the placeholder's label and
+        // any user-set attributes the loader may have stashed
+        // alongside the synthetic markers (we drop the placeholder /
+        // synthetic flags since this is now a real node).
+        var newNode = Node(id: newID, label: placeholder.label)
+        var attrs = placeholder.attributes
+        attrs["type"] = typeName.lowercased()
+        attrs.removeValue(forKey: "placeholder")
+        attrs.removeValue(forKey: "synthetic")
+        newNode.attributes = attrs
+        newNode.filePath = created.fileURL.path
+
+        // Re-target edges if the slug changed. Edge.id is derived
+        // from `source->target::relationshipType` so a renamed
+        // endpoint also needs a new id.
+        if newID != placeholderID {
+            graph.nodes[newID] = newNode
+            graph.nodes.removeValue(forKey: placeholderID)
+            for i in 0..<graph.edges.count {
+                let e = graph.edges[i]
+                let needsSrc = e.sourceID == placeholderID
+                let needsTgt = e.targetID == placeholderID
+                guard needsSrc || needsTgt else { continue }
+                let newSrc = needsSrc ? newID : e.sourceID
+                let newTgt = needsTgt ? newID : e.targetID
+                let relSuffix = e.relationshipType.map { "::\($0)" } ?? ""
+                var rewritten = Edge(
+                    id: "\(newSrc)->\(newTgt)\(relSuffix)",
+                    sourceID: newSrc,
+                    targetID: newTgt
+                )
+                rewritten.relationshipType = e.relationshipType
+                rewritten.confidence = e.confidence
+                rewritten.provenance = e.provenance
+                rewritten.evidence = e.evidence
+                rewritten.era = e.era
+                rewritten.date = e.date
+                graph.edges[i] = rewritten
+            }
+        } else {
+            graph.nodes[newID] = newNode
+        }
+        return .success(newID)
+    }
+
+    /// Generic node-mutation error type. Wraps a user-readable
+    /// message so callers can display it inline. Used by
+    /// `promoteNode` today; older paths return `String?` directly.
+    enum NodeError: LocalizedError {
+        case message(String)
+        var errorDescription: String? {
+            switch self { case .message(let m): return m }
+        }
+    }
+
     /// Update (or clear) the `era:` front-matter on an existing node.
     /// Passing `nil` or an empty string removes the key. Returns `nil`
     /// on success or a user-readable error.

@@ -45,6 +45,7 @@ struct NodeInspectorView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 14) {
                         header(node)
+                        placeholderPromotionBanner(node)
 
                         // AI sits right under the header so it's the first
                         // affordance a user sees after selecting a node.
@@ -637,6 +638,80 @@ struct NodeInspectorView: View {
             Text(message.content)
                 .font(.caption)
                 .foregroundStyle(.secondary)
+        }
+    }
+
+    // MARK: - Placeholder promotion
+
+    /// Banner shown only for synthetic placeholder nodes (created by
+    /// the loader's dangling-wikilink extractor). Lets the user
+    /// promote the placeholder to one of the vault's configured
+    /// real types — materializes a fresh `.md` file and re-targets
+    /// edges in-memory so focus survives the transition.
+    @ViewBuilder
+    private func placeholderPromotionBanner(_ node: Node) -> some View {
+        if node.attributes["placeholder"] == "true"
+           || node.type?.lowercased() == "placeholder" {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: "questionmark.circle")
+                    .foregroundStyle(.orange)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("This is a placeholder")
+                        .font(.callout.weight(.medium))
+                    Text("A wikilink pointed here but no file exists yet. Promote it to a real node to start editing.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Menu {
+                        ForEach(promotableTypes(), id: \.name) { spec in
+                            Button {
+                                promoteCurrent(to: spec.name, for: node)
+                            } label: {
+                                Label(spec.displayName ?? spec.name.capitalized,
+                                      systemImage: spec.icon)
+                            }
+                        }
+                    } label: {
+                        Label("Promote to…", systemImage: "arrow.up.right.square")
+                    }
+                    .menuStyle(.borderlessButton)
+                    .fixedSize()
+                    .disabled(!store.canIngest)
+                    .padding(.top, 2)
+                }
+            }
+            .padding(10)
+            .background(
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(Color.orange.opacity(0.12))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(Color.orange.opacity(0.45), lineWidth: 1)
+            )
+        }
+    }
+
+    /// User-visible types (excludes the synthetic tag / embed /
+    /// placeholder entries the config carries for the loader).
+    private func promotableTypes() -> [VaultConfig.TypeSpec] {
+        let synthetic: Set<String> = ["tag", "embed", "placeholder"]
+        return store.config.types.filter {
+            !synthetic.contains($0.name.lowercased())
+        }
+    }
+
+    private func promoteCurrent(to typeName: String, for node: Node) {
+        switch store.promoteNode(node.id, to: typeName) {
+        case .success(let newID):
+            // The slug may have changed (e.g. "Frank Frazetta" →
+            // "frank-frazetta"); re-select the new id so the
+            // inspector follows the promoted node and the canvas
+            // re-frames onto it.
+            onSelectNode(newID)
+        case .failure(let err):
+            // Surface the error in the AI status pill — the
+            // simplest existing affordance for transient messaging.
+            store.loadStatus = err.localizedDescription
         }
     }
 
