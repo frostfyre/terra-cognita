@@ -481,9 +481,14 @@ extension NodeIntelligence {
 
         // Build the platform-neutral Constellation. Filter external
         // links down to those that actually resolve in the graph (case
-        // insensitive on label or id).
+        // insensitive on label or id). Two nodes can legitimately share
+        // a lowercased label (e.g. GEXF imports that contain both a
+        // "Star Trek (franchise)" and a "Star Trek (1979 film)" node)
+        // — `Dictionary(uniqueKeysWithValues:)` traps on those, so
+        // we keep the first encountered label as the display form.
         let existingLookup: [String: String] = Dictionary(
-            uniqueKeysWithValues: graph.nodes.values.map { ($0.label.lowercased(), $0.label) }
+            graph.nodes.values.map { ($0.label.lowercased(), $0.label) },
+            uniquingKeysWith: { first, _ in first }
         )
         let newLabelSet = Set(response.content.nodes.map { $0.label.lowercased() })
         let constellationNodes: [Constellation.NewNode] = response.content.nodes.map { n in
@@ -518,7 +523,8 @@ extension NodeIntelligence {
             return node.label
         }
         let existingLookup: [String: String] = Dictionary(
-            uniqueKeysWithValues: graph.nodes.values.map { ($0.label.lowercased(), $0.label) }
+            graph.nodes.values.map { ($0.label.lowercased(), $0.label) },
+            uniquingKeysWith: { first, _ in first }
         )
 
         let additions: [UUID: (body: String, title: String, url: URL?, extraLinks: [String])]
@@ -705,8 +711,12 @@ extension NodeIntelligence {
         """
         let response = try await session.respond(to: prompt, generating: GenLinkBatch.self)
         // Strip the optional [type] suffix we added to disambiguate.
-        let lookup: [String: String] = Dictionary(uniqueKeysWithValues:
-            graph.nodes.values.map { ($0.label.lowercased(), $0.label) })
+        // Same trap-on-duplicate-keys concern as `extractConstellation`
+        // — keep the first encountered display label on collision.
+        let lookup: [String: String] = Dictionary(
+            graph.nodes.values.map { ($0.label.lowercased(), $0.label) },
+            uniquingKeysWith: { first, _ in first }
+        )
         return response.content.proposals.compactMap { p in
             let bareLabel = lookup[p.target.lowercased()] ?? p.target
             guard lookup[bareLabel.lowercased()] != nil else { return nil }

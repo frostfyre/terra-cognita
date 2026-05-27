@@ -1,5 +1,25 @@
 # Known Issues
 
+## Capture / AI ops crashed on graphs with duplicate-labelled nodes
+**Status:** fixed, awaiting confirmation
+**Reported:** 2026-05-27
+
+Three iOS crash reports pulled from device, all the same root cause:
+`Dictionary(uniqueKeysWithValues:)` traps on duplicate keys. The
+crash sites were the label → display-name lookup tables in
+`NodeIntelligence.extractConstellation` (Capture), `enrich`
+(Capture's web pass), and `suggestConnections` (AI links on a
+selected node). Any graph containing two nodes whose
+lowercased labels collided (typical after a GEXF import that
+includes e.g. both "Star Trek (franchise)" and "Star Trek (1979
+film)" → `star-trek.md` + `star-trek-2.md`, both with the heading
+"Star Trek") would crash the moment the user invoked Capture or AI
+suggestions.
+
+Switched all three to `Dictionary(_:uniquingKeysWith:)` keeping the
+first encountered display label on collision.
+
+
 ## Vault browser — "Open Vault Folder…" inert on iOS
 **Status:** fix shipped, awaiting confirmation on device
 **Reported:** 2026-05-26
