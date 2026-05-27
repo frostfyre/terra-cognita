@@ -986,11 +986,26 @@ struct NodeInspectorView: View {
                 if body.hasPrefix("\n") { body.removeFirst() }
             }
         }
+        // Drop any leading blank lines BEFORE looking for the title.
+        // GEXF-imported bodies arrive with a `\n# Title…` prefix (the
+        // VaultLoader's frontmatter strip only consumes one leading
+        // `\n`), and without this skip the title-strip below sees an
+        // empty first line and bails — leaving `# Title` to render as
+        // a duplicate H1 inside the Note pane.
+        while body.hasPrefix("\n") { body.removeFirst() }
         if let nl = body.firstIndex(of: "\n") {
             let first = body[..<nl].trimmingCharacters(in: .whitespaces)
             if first.hasPrefix("# ") {
                 body = String(body[body.index(after: nl)...])
                 while body.hasPrefix("\n") { body.removeFirst() }
+            }
+        } else {
+            // Single-line body that is JUST a title — strip it too so
+            // the placeholder kicks in rather than rendering a
+            // duplicate H1.
+            let trimmed = body.trimmingCharacters(in: .whitespaces)
+            if trimmed.hasPrefix("# ") {
+                body = ""
             }
         }
         return body
