@@ -60,6 +60,11 @@ public struct GraphView: View {
     /// The template the user chose in the picker; carried across the
     /// folder-picker round-trip and consumed by `handleFolderPick`.
     @State private var pendingTemplate: Template? = nil
+
+    /// Bridge nodes for the Systems lens — non-empty only when that
+    /// lens is active. Recomputed when the graph mutates or the
+    /// lens switches; cleared otherwise.
+    @State private var bridgeNodeIDs: Set<String> = []
     #if os(iOS)
     @Environment(\.horizontalSizeClass) private var hSizeClass
     #endif
@@ -144,7 +149,8 @@ public struct GraphView: View {
                 frameAllPulse: $frameAllPulse,
                 layoutAlgorithm: $layoutAlgorithm,
                 noOverlap: $noOverlap,
-                layoutRequest: $layoutRequest
+                layoutRequest: $layoutRequest,
+                bridgeNodeIDs: bridgeNodeIDs
             )
 
             // Radial action wheel anchored at the long-press point.
@@ -610,6 +616,34 @@ public struct GraphView: View {
             }
             recordNavIfNeeded()
         }
+        .onChange(of: activeLens) { _, _ in
+            refreshBridgeNodesIfNeeded()
+        }
+        .onChange(of: store.graph.nodes.count) { _, _ in
+            refreshBridgeNodesIfNeeded()
+        }
+        .onChange(of: store.graph.edges.count) { _, _ in
+            refreshBridgeNodesIfNeeded()
+        }
+    }
+
+    /// Recompute `bridgeNodeIDs` when the Systems lens is active.
+    /// Cleared (empty set) when any other lens is in use so the
+    /// canvas doesn't render bridge halos.
+    private func refreshBridgeNodesIfNeeded() {
+        guard activeLens.isSystems else {
+            if !bridgeNodeIDs.isEmpty { bridgeNodeIDs = [] }
+            return
+        }
+        // Snapshot so the background partition pass doesn't see
+        // mid-mutation state. Graph is value-typed so this is cheap.
+        let graphSnapshot = store.graph
+        Task.detached(priority: .userInitiated) {
+            let partition = GraphAnalysis.communityPartition(of: graphSnapshot)
+            let bridges = GraphAnalysis.bridgeNodes(of: graphSnapshot,
+                                                     partition: partition)
+            await MainActor.run { bridgeNodeIDs = bridges }
+        }
     }
 
     /// Inspector presentation rule:
@@ -989,6 +1023,10 @@ struct Lens: Hashable, Identifiable {
     enum Kind: Hashable {
         case all
         case type(String)   // type name from VaultConfig.types
+        /// Systems lens: doesn't filter nodes, but signals to the
+        /// canvas that bridge nodes (members of one community with
+        /// edges into another) should be visually emphasized.
+        case systems
     }
 
     var kind: Kind
@@ -1000,9 +1038,13 @@ struct Lens: Hashable, Identifiable {
     static let all = Lens(kind: .all,
                           label: "All",
                           icon: "circle.grid.3x3.fill")
+    static let systems = Lens(kind: .systems,
+                              label: "Systems",
+                              icon: "network")
 
     /// All lenses available for the active vault: `all`, then one per
-    /// declared type. Order matters for the picker.
+    /// declared type, then `Systems` as the topology view. Order
+    /// matters for the picker.
     static func all(for config: VaultConfig) -> [Lens] {
         var list: [Lens] = [.all]
         for t in config.types {
@@ -1012,16 +1054,24 @@ struct Lens: Hashable, Identifiable {
                 icon: t.icon
             ))
         }
+        list.append(.systems)
         return list
     }
 
     /// Pure type-based filter. `nil` means "include everything".
+    /// Systems doesn't filter — it returns nil and lets the canvas
+    /// drive emphasis instead.
     func makeTypeFilter() -> ((Node) -> Bool)? {
         switch kind {
-        case .all: return nil
+        case .all, .systems: return nil
         case .type(let typeName):
             return { ($0.type ?? "").lowercased() == typeName.lowercased() }
         }
+    }
+
+    var isSystems: Bool {
+        if case .systems = kind { return true }
+        return false
     }
 }
 

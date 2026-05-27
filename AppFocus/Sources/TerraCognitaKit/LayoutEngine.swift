@@ -153,6 +153,91 @@ enum LayoutEngine {
         return out
     }
 
+    // MARK: - Cluster (community-grouped force-directed)
+
+    /// Layout nodes grouped by community. Cluster centroids are
+    /// arranged on an outer ring (or a single point for a single
+    /// cluster); within each cluster a small force-directed pass
+    /// settles the members. Bridge nodes (members of one cluster
+    /// with edges to others) get pulled slightly toward the centroid
+    /// of their target clusters so they visually sit at the seams.
+    ///
+    /// `partition` is expected from `GraphAnalysis.communityPartition`.
+    /// If empty (no graph data), returns empty.
+    static func cluster(nodeIDs: [String],
+                        edges: [(String, String)],
+                        partition: [String: Int]) -> [String: CGPoint] {
+        guard !nodeIDs.isEmpty else { return [:] }
+
+        // Group nodes by community.
+        var members: [Int: [String]] = [:]
+        for id in nodeIDs {
+            let c = partition[id, default: 0]
+            members[c, default: []].append(id)
+        }
+        let communityCount = members.count
+
+        // Position community centroids on a ring (or at origin for k=1).
+        var centroids: [Int: CGPoint] = [:]
+        if communityCount == 1, let only = members.keys.first {
+            centroids[only] = .zero
+        } else {
+            let ringR: CGFloat = 600
+            var i = 0
+            for cluster in members.keys.sorted() {
+                let angle = 2 * .pi * Double(i) / Double(communityCount)
+                centroids[cluster] = CGPoint(
+                    x: ringR * CGFloat(cos(angle)),
+                    y: ringR * CGFloat(sin(angle))
+                )
+                i += 1
+            }
+        }
+
+        // Within each cluster, run a quick force-directed pass on
+        // just the intra-cluster edges, then translate the result so
+        // the cluster's center of mass sits at the assigned centroid.
+        var out: [String: CGPoint] = [:]
+        out.reserveCapacity(nodeIDs.count)
+        let clusterByID: [String: Int] = nodeIDs.reduce(into: [:]) {
+            $0[$1] = partition[$1, default: 0]
+        }
+        for (clusterIdx, ids) in members {
+            let centroid = centroids[clusterIdx] ?? .zero
+            // Pull just the edges that live inside this cluster.
+            let intraEdges = edges.filter {
+                clusterByID[$0.0] == clusterIdx && clusterByID[$0.1] == clusterIdx
+            }
+            // Skip FA2 for trivially small clusters — cheaper grid.
+            let positions: [String: CGPoint]
+            if ids.count <= 3 {
+                positions = LayoutEngine.grid(nodeIDs: ids)
+            } else {
+                var solver = ForceDirectedLayout()
+                solver.iterations = 80
+                solver.idealEdgeLength = 90
+                positions = solver.compute(nodeIDs: ids, edges: intraEdges)
+            }
+            // Translate so the cluster's centroid lands on the ring.
+            let avg = averagePoint(positions.values)
+            for (id, p) in positions {
+                out[id] = CGPoint(
+                    x: p.x - avg.x + centroid.x,
+                    y: p.y - avg.y + centroid.y
+                )
+            }
+        }
+        return out
+    }
+
+    private static func averagePoint(_ points: Dictionary<String, CGPoint>.Values) -> CGPoint {
+        guard !points.isEmpty else { return .zero }
+        var sx: CGFloat = 0, sy: CGFloat = 0
+        for p in points { sx += p.x; sy += p.y }
+        let n = CGFloat(points.count)
+        return CGPoint(x: sx / n, y: sy / n)
+    }
+
     // MARK: - No-overlap post-pass
 
     /// Iteratively push colliding nodes apart until no pair sits closer

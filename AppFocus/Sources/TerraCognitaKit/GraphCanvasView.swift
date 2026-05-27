@@ -108,6 +108,10 @@ struct GraphCanvasView: View {
     /// this flips non-nil, the canvas runs `applyLayout(_:)` and
     /// resets it back to nil.
     @Binding var layoutRequest: LayoutAlgorithm?
+    /// Node ids that should be highlighted as topology bridges
+    /// (Systems lens). Non-empty only when the Systems lens is
+    /// active; rendered as a dashed gold ring outside the node fill.
+    var bridgeNodeIDs: Set<String> = []
 
     /// Undirected adjacency, rebuilt when the graph changes. Used for the
     /// "dim everything outside the N-hop neighborhood of the selection".
@@ -409,6 +413,24 @@ struct GraphCanvasView: View {
                             context.stroke(Path(ellipseIn: rect),
                                            with: .color(.white.opacity(inHighlight ? 0.95 : dimOpacity)),
                                            lineWidth: 1.5)
+                        }
+
+                        // Bridge ring — dashed gold halo for nodes the
+                        // Systems lens has flagged as topology
+                        // bridges. Only painted when the Systems lens
+                        // populated `bridgeNodeIDs`.
+                        if bridgeNodeIDs.contains(node.id) {
+                            let ringR = drawRadius + 4
+                            let ringRect = CGRect(
+                                x: p.x - ringR, y: p.y - ringR,
+                                width: ringR * 2, height: ringR * 2
+                            )
+                            context.stroke(
+                                Path(ellipseIn: ringRect),
+                                with: .color(selectionGold.opacity(0.85)),
+                                style: StrokeStyle(lineWidth: 1.2,
+                                                   dash: [3, 3])
+                            )
                         }
 
                         // Labels for background-pass nodes: only when
@@ -1037,9 +1059,20 @@ struct GraphCanvasView: View {
                 root: selectedNodeID
             )
         case .cluster:
-            // Phase 3: needs community detection. Bail so the menu
-            // item being mis-tapped doesn't blank the canvas.
-            return
+            // Community detection (Label Propagation) groups nodes
+            // into clusters; centroids on an outer ring, intra-
+            // cluster FA2 settles members. Snapshot the graph here
+            // (on the MainActor) so the background pass works on a
+            // pure value.
+            let graphSnapshot = store.graph
+            computed = await Task.detached(priority: .userInitiated) {
+                let partition = GraphAnalysis.communityPartition(of: graphSnapshot)
+                return LayoutEngine.cluster(
+                    nodeIDs: nodeIDs,
+                    edges: edgePairs,
+                    partition: partition
+                )
+            }.value
         }
 
         guard store.graph.nodes.count == nodeIDs.count else { return }
