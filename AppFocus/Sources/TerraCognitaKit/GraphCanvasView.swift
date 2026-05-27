@@ -96,11 +96,18 @@ struct GraphCanvasView: View {
     /// changes (first to a circular seed, then to a force-directed layout
     /// once the background computation finishes).
     @State private var layout: [String: CGPoint] = [:]
-    /// The algorithm currently applied to `layout`. `nil` before any
-    /// layout pass has run on the current vault. Phase 1 will expose
-    /// this through a Layout menu so the user can switch algorithms;
-    /// today the pipeline only writes `.circular` → `.forceDirected`.
-    @State private var layoutAlgorithm: LayoutAlgorithm? = nil
+    /// The algorithm currently applied to `layout`. Surfaced upward
+    /// so the toolbar Layout menu can show a checkmark next to the
+    /// active row. `nil` before any layout pass has run.
+    @Binding var layoutAlgorithm: LayoutAlgorithm?
+    /// When true, every layout pass runs the iterative push-apart
+    /// post-pass so no nodes overlap. Surfaced upward so the toolbar
+    /// can drive the toggle directly.
+    @Binding var noOverlap: Bool
+    /// Pulse channel for "user picked a layout from the menu" — when
+    /// this flips non-nil, the canvas runs `applyLayout(_:)` and
+    /// resets it back to nil.
+    @Binding var layoutRequest: LayoutAlgorithm?
 
     /// Undirected adjacency, rebuilt when the graph changes. Used for the
     /// "dim everything outside the N-hop neighborhood of the selection".
@@ -677,6 +684,31 @@ struct GraphCanvasView: View {
                 }
             }
         }
+        // Toolbar-driven layout switch.
+        .onChange(of: layoutRequest) { _, newValue in
+            guard let algorithm = newValue else { return }
+            Task { @MainActor in
+                await applyLayout(algorithm)
+                layoutRequest = nil
+            }
+        }
+        // Toolbar-driven no-overlap toggle. We only run the heavy
+        // push-apart pass when turning ON — turning OFF just stops
+        // future re-applies and leaves the canvas where it sits.
+        .onChange(of: noOverlap) { oldValue, newValue in
+            guard oldValue != newValue, newValue else {
+                if oldValue != newValue { persistLayout() }
+                return
+            }
+            let fixed = LayoutEngine.enforceNoOverlap(
+                layout,
+                pinned: Set(pinnedPositions.keys)
+            )
+            withAnimation(.easeInOut(duration: 0.6)) {
+                layout = fixed
+            }
+            persistLayout()
+        }
     }
 
     // MARK: - Idle / ambient animation
@@ -928,7 +960,7 @@ struct GraphCanvasView: View {
         }
 
         // Try to restore a saved layout for the same node set. If every
-        // current node has a saved position we skip FA2 entirely — the
+        // current node has a saved position we skip recomputation — the
         // user's persistent placements stay put across launches.
         if let persisted = LayoutPersistence.load() {
             let saved = persisted.cgPositions
@@ -937,7 +969,14 @@ struct GraphCanvasView: View {
                 pinnedPositions = persisted.cgPinned
                 scale = max(minScale, min(maxScale, CGFloat(persisted.scale)))
                 offset = CGSize(width: persisted.offsetX, height: persisted.offsetY)
-                layoutAlgorithm = .forceDirected
+                layoutAlgorithm = persisted.algorithm ?? .forceDirected
+                noOverlap = persisted.noOverlap ?? false
+                if noOverlap {
+                    layout = LayoutEngine.enforceNoOverlap(
+                        layout,
+                        pinned: Set(pinnedPositions.keys)
+                    )
+                }
                 return
             }
         }
@@ -956,8 +995,66 @@ struct GraphCanvasView: View {
         guard store.graph.nodes.count == nodeIDs.count else { return }
 
         withAnimation(.easeInOut(duration: 0.6)) {
-            layout = computed
+            layout = noOverlap
+                ? LayoutEngine.enforceNoOverlap(computed,
+                                                pinned: Set(pinnedPositions.keys))
+                : computed
             layoutAlgorithm = .forceDirected
+        }
+        persistLayout()
+    }
+
+    /// Switch to a specific layout algorithm. Animates the camera over
+    /// ~600ms so the user keeps spatial memory through the transition.
+    /// Pinned positions survive — the layout only moves nodes the user
+    /// hasn't manually placed.
+    func applyLayout(_ algorithm: LayoutAlgorithm) async {
+        let nodeIDs = Array(store.graph.nodes.keys)
+        guard !nodeIDs.isEmpty else { return }
+        let edgePairs = store.graph.edges.map { ($0.sourceID, $0.targetID) }
+
+        let computed: [String: CGPoint]
+        switch algorithm {
+        case .forceDirected:
+            let solver = ForceDirectedLayout()
+            computed = await Task.detached(priority: .userInitiated) {
+                solver.compute(nodeIDs: nodeIDs, edges: edgePairs)
+            }.value
+        case .circular:
+            computed = makeCircularLayout(for: nodeIDs)
+        case .grid:
+            computed = LayoutEngine.grid(nodeIDs: nodeIDs)
+        case .radial:
+            computed = LayoutEngine.radial(
+                nodeIDs: nodeIDs,
+                adjacency: adjacency,
+                root: selectedNodeID
+            )
+        case .hierarchical:
+            computed = LayoutEngine.hierarchical(
+                nodeIDs: nodeIDs,
+                adjacency: adjacency,
+                root: selectedNodeID
+            )
+        case .cluster:
+            // Phase 3: needs community detection. Bail so the menu
+            // item being mis-tapped doesn't blank the canvas.
+            return
+        }
+
+        guard store.graph.nodes.count == nodeIDs.count else { return }
+        // Pinned nodes are sacred — keep their user-set positions.
+        var next = computed
+        for (id, p) in pinnedPositions { next[id] = p }
+        if noOverlap {
+            next = LayoutEngine.enforceNoOverlap(
+                next,
+                pinned: Set(pinnedPositions.keys)
+            )
+        }
+        withAnimation(.easeInOut(duration: 0.6)) {
+            layout = next
+            layoutAlgorithm = algorithm
         }
         persistLayout()
     }
@@ -970,6 +1067,8 @@ struct GraphCanvasView: View {
         snapshot.scale = Double(scale)
         snapshot.offsetX = Double(offset.width)
         snapshot.offsetY = Double(offset.height)
+        snapshot.algorithm = layoutAlgorithm
+        snapshot.noOverlap = noOverlap
         Task.detached { LayoutPersistence.save(snapshot) }
     }
 

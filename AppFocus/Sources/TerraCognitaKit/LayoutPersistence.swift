@@ -14,6 +14,13 @@ struct PersistedLayout: Codable, Equatable {
     var scale: Double = 1
     var offsetX: Double = 0
     var offsetY: Double = 0
+    /// Which layout algorithm produced `positions`. Optional so older
+    /// `layout.json` files (which predate this field) still decode —
+    /// the canvas defaults to `.forceDirected` when it's nil.
+    var algorithm: LayoutAlgorithm? = nil
+    /// Whether the no-overlap post-pass is enabled for this vault.
+    /// Optional for forward compatibility with older snapshots.
+    var noOverlap: Bool? = nil
 
     struct Point: Codable, Equatable {
         var x: Double

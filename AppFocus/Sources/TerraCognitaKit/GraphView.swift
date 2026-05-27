@@ -42,6 +42,17 @@ public struct GraphView: View {
     /// Was the graph empty on the previous load tick? Used to detect
     /// the "first content arrived" transition and auto-frame.
     @State private var graphWasEmpty: Bool = true
+
+    /// Currently-applied layout. Canvas writes (on restore / settle /
+    /// user pick); the toolbar Layout menu reads to show a checkmark
+    /// next to the active row.
+    @State private var layoutAlgorithm: LayoutAlgorithm? = nil
+    /// No-overlap toggle — two-way binding between the Layout menu
+    /// and the canvas's post-pass.
+    @State private var noOverlap: Bool = false
+    /// Pulse channel for "user picked this layout from the menu".
+    /// Flips non-nil → canvas applies → canvas resets to nil.
+    @State private var layoutRequest: LayoutAlgorithm? = nil
     #if os(iOS)
     @Environment(\.horizontalSizeClass) private var hSizeClass
     #endif
@@ -123,7 +134,10 @@ public struct GraphView: View {
                 onLongPressNode: { nodeID, screenPoint in
                     radialTarget = RadialTarget(nodeID: nodeID, point: screenPoint)
                 },
-                frameAllPulse: $frameAllPulse
+                frameAllPulse: $frameAllPulse,
+                layoutAlgorithm: $layoutAlgorithm,
+                noOverlap: $noOverlap,
+                layoutRequest: $layoutRequest
             )
 
             // Radial action wheel anchored at the long-press point.
@@ -269,6 +283,41 @@ public struct GraphView: View {
                 }
                 .keyboardShortcut("0", modifiers: .command)
                 .help("Fit graph to window (⌘0)")
+
+                Menu {
+                    ForEach(LayoutAlgorithm.allCases) { algorithm in
+                        Button {
+                            layoutRequest = algorithm
+                        } label: {
+                            // Checkmark on the active algorithm; suffix
+                            // the un-shipped ones ("Soon") so the menu
+                            // honestly reflects what's wired up.
+                            Label {
+                                HStack {
+                                    Text(algorithm.displayName)
+                                    if !algorithm.isImplemented {
+                                        Text("(soon)").foregroundStyle(.secondary)
+                                    }
+                                }
+                            } icon: {
+                                Image(systemName: layoutAlgorithm == algorithm
+                                      ? "checkmark"
+                                      : algorithm.systemImage)
+                            }
+                        }
+                        .disabled(!algorithm.isImplemented)
+                    }
+                    Divider()
+                    Toggle(isOn: $noOverlap) {
+                        Label("No overlap", systemImage: "rectangle.dashed")
+                    }
+                } label: {
+                    Image(systemName: layoutAlgorithm?.systemImage
+                          ?? "point.3.connected.trianglepath.dotted")
+                }
+                .menuStyle(.borderlessButton)
+                .fixedSize()
+                .help("Layout — pick how nodes are arranged")
 
                 Button {
                     showPrivate.toggle()
