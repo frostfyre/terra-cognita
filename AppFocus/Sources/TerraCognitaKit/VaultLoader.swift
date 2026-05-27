@@ -221,7 +221,18 @@ enum MarkdownNoteParser {
 
     static func parse(_ raw: String) -> Parsed {
         var result = Parsed()
+        // Normalize line endings up front. GEXF imports frequently
+        // carry `\r\n` (or, rarely, lone `\r`) through from their
+        // source — Gephi on Windows, AI-generated XML, etc. SwiftUI's
+        // AttributedString markdown parser on iOS silently produces
+        // an empty render when fed text with embedded `\r`; macOS is
+        // more lenient and the divergence reads as "iOS broke".
+        // Normalizing here means every downstream consumer
+        // (frontmatter strip, body parser, hasRenderableProse) sees
+        // pure `\n`.
         var body = raw
+            .replacingOccurrences(of: "\r\n", with: "\n")
+            .replacingOccurrences(of: "\r", with: "\n")
 
         // --- Front matter ---
         if body.hasPrefix("---\n") || body.hasPrefix("---\r\n") {
