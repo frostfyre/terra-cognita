@@ -85,7 +85,19 @@ struct VaultLoader {
             // Skip README and top-level vault docs.
             if id.uppercased() == "README" { continue }
 
-            let raw = (try? String(contentsOf: url, encoding: .utf8)) ?? ""
+            // Encoding fallback chain. UTF-8 is the expected case;
+            // legacy / GEXF-imported files occasionally land as
+            // UTF-16 or Latin-1 and we want them to still render.
+            let raw: String = {
+                for enc in [String.Encoding.utf8,
+                            .utf16, .utf16LittleEndian, .utf16BigEndian,
+                            .isoLatin1, .windowsCP1252] {
+                    if let s = try? String(contentsOf: url, encoding: enc) {
+                        return s
+                    }
+                }
+                return ""
+            }()
             let parsed = MarkdownNoteParser.parse(raw)
 
             var attributes = parsed.frontMatter
@@ -219,20 +231,45 @@ enum MarkdownNoteParser {
         let relationshipType: String?  // The key of a `key:: [[target]]` line, if any
     }
 
+    /// Normalize input text before parsing:
+    ///   - Strip a leading UTF-8 / UTF-16 BOM if present.
+    ///   - Collapse `\r\n` and lone `\r` to `\n`.
+    ///   - Drop all C0 control characters except `\n` and `\t`.
+    /// Defensive against GEXF / Windows / legacy-tool inputs that
+    /// otherwise produce empty renders on iOS via SwiftUI's
+    /// AttributedString markdown parser.
+    static func sanitize(_ raw: String) -> String {
+        var s = raw
+        // Strip UTF-8 BOM (U+FEFF) at the very start, if present.
+        if s.hasPrefix("\u{FEFF}") {
+            s.removeFirst()
+        }
+        // Normalize newlines.
+        s = s.replacingOccurrences(of: "\r\n", with: "\n")
+             .replacingOccurrences(of: "\r", with: "\n")
+        // Drop disallowed control characters. C0 range is 0x00..0x1F;
+        // we keep `\n` (0x0A) and `\t` (0x09), drop the rest. Also
+        // drop the lone DEL (0x7F) which slips in sometimes.
+        let out = s.unicodeScalars.compactMap { scalar -> Unicode.Scalar? in
+            let v = scalar.value
+            if v == 0x0A || v == 0x09 { return scalar }
+            if v < 0x20 || v == 0x7F { return nil }
+            return scalar
+        }
+        return String(String.UnicodeScalarView(out))
+    }
+
     static func parse(_ raw: String) -> Parsed {
         var result = Parsed()
-        // Normalize line endings up front. GEXF imports frequently
-        // carry `\r\n` (or, rarely, lone `\r`) through from their
-        // source — Gephi on Windows, AI-generated XML, etc. SwiftUI's
-        // AttributedString markdown parser on iOS silently produces
-        // an empty render when fed text with embedded `\r`; macOS is
-        // more lenient and the divergence reads as "iOS broke".
-        // Normalizing here means every downstream consumer
-        // (frontmatter strip, body parser, hasRenderableProse) sees
-        // pure `\n`.
-        var body = raw
-            .replacingOccurrences(of: "\r\n", with: "\n")
-            .replacingOccurrences(of: "\r", with: "\n")
+        // Normalize whitespace and strip stray control characters.
+        // GEXF imports frequently carry `\r\n` (Windows) or lone `\r`
+        // from their source. Even rarer sources (Claude-generated GEXF,
+        // legacy tools) sneak in NULLs, vertical tabs, form feeds, or
+        // BOMs. macOS's text renderer shrugs these off; iOS's
+        // `AttributedString` markdown parser silently produces an
+        // empty render when fed text with embedded control chars,
+        // which reads externally as "iOS broke the body."
+        var body = sanitize(raw)
 
         // --- Front matter ---
         if body.hasPrefix("---\n") || body.hasPrefix("---\r\n") {

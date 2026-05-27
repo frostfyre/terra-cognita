@@ -795,12 +795,46 @@ struct NodeInspectorView: View {
                     vaultURL: store.writableVaultURL
                 )
             } else {
-                Text("No prose body — typed edges are shown in Outbound.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("No prose body — typed edges are shown in Outbound.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    diagnosticInfo(body: body, raw: md)
+                }
             }
         } else {
-            Text("No body").font(.caption).foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 4) {
+                Text("No body").font(.caption).foregroundStyle(.secondary)
+                diagnosticInfo(body: nil, raw: node.markdownContent ?? "")
+            }
+        }
+    }
+
+    /// Tiny debug strip showing what we actually have in the
+    /// markdownContent / post-strip body. Helps diagnose the
+    /// "renders on macOS, blank on iOS" class of bug when content
+    /// arrives via GEXF / unusual encodings. Tap to expand the raw
+    /// body for a deeper look.
+    @ViewBuilder
+    private func diagnosticInfo(body: String?, raw: String) -> some View {
+        let summary = "raw \(raw.count) chars · stripped \(body?.count ?? 0) chars"
+        DisclosureGroup {
+            ScrollView {
+                Text(raw.isEmpty ? "(empty)" : raw)
+                    .font(.system(.caption2, design: .monospaced))
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(6)
+                    .background(
+                        RoundedRectangle(cornerRadius: 4)
+                            .fill(Color.secondary.opacity(0.08))
+                    )
+            }
+            .frame(maxHeight: 200)
+        } label: {
+            Text(summary)
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
         }
     }
 
