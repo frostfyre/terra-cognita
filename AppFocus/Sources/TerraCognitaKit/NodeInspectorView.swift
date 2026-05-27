@@ -670,7 +670,8 @@ struct NodeInspectorView: View {
                 },
                 resolveEmbed: { filename in
                     resolveEmbed(filename, for: node)
-                }
+                },
+                vaultURL: store.writableVaultURL
             )
         } else {
             Text("No body").font(.caption).foregroundStyle(.secondary)

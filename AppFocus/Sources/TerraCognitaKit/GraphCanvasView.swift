@@ -1433,6 +1433,15 @@ struct GraphCanvasView: View {
     nonisolated private static func loadImage(named filename: String,
                                               near nodeDir: URL,
                                               vault: URL?) async -> Image? {
+        // iOS sandboxes file access through security-scoped resources.
+        // The vault URL came from the document picker / bookmark and
+        // must be bracketed before any file inside it is readable.
+        // macOS treats this as a no-op for non-sandboxed apps, so
+        // the same code path is safe across both platforms.
+        let didStart = vault?.startAccessingSecurityScopedResource() ?? false
+        defer {
+            if didStart { vault?.stopAccessingSecurityScopedResource() }
+        }
         let fm = FileManager.default
         var candidates: [URL] = [nodeDir.appendingPathComponent(filename)]
         if let vault {

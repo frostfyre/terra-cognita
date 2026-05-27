@@ -28,6 +28,12 @@ struct MarkdownBodyView: View {
     /// `nil` skips rendering. Closure usually searches the node file's
     /// directory and the vault root.
     var resolveEmbed: ((String) -> URL?)? = nil
+    /// The currently-open vault URL, when available. Used to bracket
+    /// security-scoped access around image embed loads — without
+    /// this, iOS silently fails to read files inside the vault even
+    /// though the URL is correct. macOS treats the bracket as a
+    /// no-op for non-sandboxed apps, so it's safe across platforms.
+    var vaultURL: URL? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -108,22 +114,9 @@ struct MarkdownBodyView: View {
             let ext = url.pathExtension.lowercased()
             switch ext {
             case "png", "jpg", "jpeg", "gif", "heic", "webp", "bmp", "tiff":
-                AsyncImage(url: url) { phase in
-                    switch phase {
-                    case .empty:
-                        ProgressView().controlSize(.small)
-                    case .success(let image):
-                        image
-                            .resizable()
-                            .scaledToFit()
-                            .frame(maxHeight: 280)
-                            .cornerRadius(6)
-                    case .failure:
-                        embedFallback(filename, url: url, alt: alt)
-                    @unknown default:
-                        embedFallback(filename, url: url, alt: alt)
-                    }
-                }
+                ScopedImageView(url: url,
+                                vaultURL: vaultURL,
+                                fallback: { embedFallback(filename, url: url, alt: alt) })
                 if let alt, !alt.isEmpty {
                     Text(alt).font(.caption2).foregroundStyle(.secondary)
                 }
@@ -436,6 +429,74 @@ struct PDFThumbView: View {
         #endif
     }
 }
+
+/// Inline image embed that handles iOS security-scoped resource
+/// access. SwiftUI's `AsyncImage(url:)` uses `URLSession.shared`
+/// under the hood, which cannot read from sandboxed vault folders
+/// on iOS — the load silently fails. This view brackets
+/// `startAccessingSecurityScopedResource()` on the vault URL,
+/// reads the bytes, builds a platform image, and renders.
+private struct ScopedImageView<Fallback: View>: View {
+    let url: URL
+    let vaultURL: URL?
+    let fallback: () -> Fallback
+
+    @State private var image: Image?
+    @State private var failed = false
+
+    var body: some View {
+        Group {
+            if let image {
+                image
+                    .resizable()
+                    .scaledToFit()
+                    .frame(maxHeight: 280)
+                    .cornerRadius(6)
+            } else if failed {
+                fallback()
+            } else {
+                ProgressView()
+                    .controlSize(.small)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .task { await loadImage() }
+            }
+        }
+    }
+
+    private func loadImage() async {
+        let target = url
+        let vault = vaultURL
+        let loaded: Image? = await Task.detached(priority: .userInitiated) {
+            let didStart = vault?.startAccessingSecurityScopedResource() ?? false
+            defer {
+                if didStart { vault?.stopAccessingSecurityScopedResource() }
+            }
+            guard let data = try? Data(contentsOf: target) else { return nil }
+            #if canImport(AppKit)
+            if let ns = NSImage(data: data) {
+                return Image(nsImage: ns)
+            }
+            #elseif canImport(UIKit)
+            if let ui = UIImage(data: data) {
+                return Image(uiImage: ui)
+            }
+            #endif
+            return nil
+        }.value
+        if let loaded {
+            self.image = loaded
+        } else {
+            self.failed = true
+        }
+    }
+}
+
+#if canImport(AppKit)
+import AppKit
+#endif
+#if canImport(UIKit)
+import UIKit
+#endif
 
 #if os(macOS)
 private struct PDFThumbNSView: NSViewRepresentable {
