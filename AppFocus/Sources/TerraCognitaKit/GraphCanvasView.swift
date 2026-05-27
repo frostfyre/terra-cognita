@@ -1073,6 +1073,18 @@ struct GraphCanvasView: View {
                     partition: partition
                 )
             }.value
+        case .timeline:
+            // Era-weighted timeline — node era → column, members
+            // distributed vertically. Nodes without an era land in
+            // a "no era" column on the right.
+            let allNodes = Array(store.graph.nodes.values)
+            let eraTable: [String: Double] = store.config.eras.reduce(into: [:]) {
+                $0[$1.name.lowercased()] = $1.weight
+            }
+            computed = LayoutEngine.timeline(
+                nodes: allNodes,
+                eraWeights: eraTable
+            )
         }
 
         guard store.graph.nodes.count == nodeIDs.count else { return }

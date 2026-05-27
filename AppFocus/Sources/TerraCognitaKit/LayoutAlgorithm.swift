@@ -12,6 +12,7 @@ enum LayoutAlgorithm: String, Codable, CaseIterable, Identifiable, Hashable {
     case hierarchical
     case grid
     case cluster
+    case timeline
 
     var id: String { rawValue }
 
@@ -24,6 +25,7 @@ enum LayoutAlgorithm: String, Codable, CaseIterable, Identifiable, Hashable {
         case .hierarchical:  return "Hierarchical"
         case .grid:          return "Grid"
         case .cluster:       return "Cluster"
+        case .timeline:      return "Timeline"
         }
     }
 
@@ -36,16 +38,15 @@ enum LayoutAlgorithm: String, Codable, CaseIterable, Identifiable, Hashable {
         case .hierarchical:  return "arrow.triangle.branch"
         case .grid:          return "square.grid.3x3"
         case .cluster:       return "circle.grid.hex"
+        case .timeline:      return "calendar.day.timeline.left"
         }
     }
 
     /// Whether the canvas can actually run this algorithm today.
-    /// All six algorithms ship in Phase 3 once community detection
-    /// arrives.
     var isImplemented: Bool {
         switch self {
         case .forceDirected, .circular, .radial,
-             .hierarchical, .grid, .cluster:
+             .hierarchical, .grid, .cluster, .timeline:
             return true
         }
     }

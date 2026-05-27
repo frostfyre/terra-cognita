@@ -238,6 +238,55 @@ enum LayoutEngine {
         return CGPoint(x: sx / n, y: sy / n)
     }
 
+    // MARK: - Timeline
+
+    /// Arrange nodes left-to-right by era weight. Within each era
+    /// column, nodes spread vertically (deterministic by id) so dense
+    /// eras don't pile up. Nodes without an era land in a final "no
+    /// era" column on the far right.
+    ///
+    /// `eraWeights` should be the same `(name → weight)` mapping the
+    /// canvas uses for depth — pass `VaultConfig.eras` flattened.
+    /// Nodes whose era isn't in the table fall through to the "no
+    /// era" column too.
+    static func timeline(nodes: [Node],
+                         eraWeights: [String: Double]) -> [String: CGPoint] {
+        guard !nodes.isEmpty else { return [:] }
+
+        // Group nodes by era (lowercased for case-insensitive match).
+        var bucketByWeight: [Double: [Node]] = [:]
+        let unknownKey: Double = .greatestFiniteMagnitude
+        for node in nodes {
+            let key: Double = {
+                if let era = node.era?.lowercased(),
+                   let w = eraWeights[era] {
+                    return w
+                }
+                return unknownKey
+            }()
+            bucketByWeight[key, default: []].append(node)
+        }
+
+        // Sort the era columns by weight ascending; unknown last.
+        let columns = bucketByWeight.keys.sorted()
+        let columnSpacing: CGFloat = 220
+        let rowSpacing: CGFloat = 70
+        let originX: CGFloat = -CGFloat(columns.count - 1) * columnSpacing / 2
+
+        var out: [String: CGPoint] = [:]
+        out.reserveCapacity(nodes.count)
+        for (i, w) in columns.enumerated() {
+            let members = bucketByWeight[w]?.sorted { $0.id < $1.id } ?? []
+            let count = members.count
+            let originY = -CGFloat(count - 1) * rowSpacing / 2
+            let x = originX + CGFloat(i) * columnSpacing
+            for (j, node) in members.enumerated() {
+                out[node.id] = CGPoint(x: x, y: originY + CGFloat(j) * rowSpacing)
+            }
+        }
+        return out
+    }
+
     // MARK: - No-overlap post-pass
 
     /// Iteratively push colliding nodes apart until no pair sits closer
