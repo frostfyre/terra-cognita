@@ -387,6 +387,14 @@ public struct GraphView: View {
                 }
             }
         }
+        // Folder-picker presentation differs by platform:
+        //   - macOS uses SwiftUI's `.fileImporter` (NSOpenPanel under
+        //     the hood), which handles `.folder` cleanly.
+        //   - iOS / iPadOS uses a `UIDocumentPickerViewController`
+        //     via `FolderPicker` — SwiftUI's `.fileImporter` for
+        //     `.folder` was observed to silently no-op when presented
+        //     from inside a `Menu` button on iOS.
+        #if os(macOS)
         .fileImporter(
             // `folderPickerMode` is captured locally at completion
             // time before being cleared, so SwiftUI can own the
@@ -395,36 +403,21 @@ public struct GraphView: View {
             allowedContentTypes: [.folder],
             allowsMultipleSelection: false
         ) { result in
-            let mode = folderPickerMode
-            folderPickerMode = nil
-            switch (mode, result) {
-            case (.openVault, .success(let urls)):
-                if let url = urls.first {
-                    store.load(from: url)
-                }
-            case (.createNewVault, .success(let urls)):
-                // "Create New Vault" picks a parent folder; we
-                // materialize a child folder named "Terra Cognita Vault"
-                // inside it (or use the chosen folder directly if it's
-                // already empty).
-                guard let parent = urls.first else { break }
-                let didStart = parent.startAccessingSecurityScopedResource()
-                defer { if didStart { parent.stopAccessingSecurityScopedResource() } }
-                let target: URL = {
-                    let fm = FileManager.default
-                    if let items = try? fm.contentsOfDirectory(at: parent,
-                                                               includingPropertiesForKeys: nil,
-                                                               options: [.skipsHiddenFiles]),
-                       items.isEmpty {
-                        return parent
-                    }
-                    return parent.appendingPathComponent("Terra Cognita Vault")
-                }()
-                store.createNewVault(at: target)
-            default:
-                break
+            switch result {
+            case .success(let urls):
+                handleFolderPick(urls.first)
+            case .failure:
+                folderPickerMode = nil
             }
         }
+        #else
+        .sheet(isPresented: $showingFolderPicker) {
+            FolderPicker(isPresented: $showingFolderPicker) { url in
+                handleFolderPick(url)
+            }
+            .ignoresSafeArea()
+        }
+        #endif
         .fileImporter(
             isPresented: $showingGEXFPicker,
             // `.gexf` files aren't registered as `.xml` on macOS, so
@@ -603,6 +596,38 @@ public struct GraphView: View {
         folderPickerMode = mode
         DispatchQueue.main.async {
             showingFolderPicker = true
+        }
+    }
+
+    /// Route a picked folder URL based on the currently-active
+    /// `folderPickerMode`. Shared between the macOS `.fileImporter`
+    /// path and the iOS `FolderPicker` (UIDocumentPicker) path.
+    private func handleFolderPick(_ url: URL?) {
+        let mode = folderPickerMode
+        folderPickerMode = nil
+        guard let url else { return }
+        switch mode {
+        case .openVault:
+            store.load(from: url)
+        case .createNewVault:
+            // The user picked a parent folder; materialize a child
+            // named "Terra Cognita Vault" inside it (or use the chosen
+            // folder directly if it's already empty).
+            let didStart = url.startAccessingSecurityScopedResource()
+            defer { if didStart { url.stopAccessingSecurityScopedResource() } }
+            let target: URL = {
+                let fm = FileManager.default
+                if let items = try? fm.contentsOfDirectory(at: url,
+                                                           includingPropertiesForKeys: nil,
+                                                           options: [.skipsHiddenFiles]),
+                   items.isEmpty {
+                    return url
+                }
+                return url.appendingPathComponent("Terra Cognita Vault")
+            }()
+            store.createNewVault(at: target)
+        case .none:
+            break
         }
     }
 

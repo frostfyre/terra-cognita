@@ -611,18 +611,20 @@ public final class GraphStore: ObservableObject {
     /// Find clusters of nodes whose normalized slugs match. Used by the
     /// duplicate-detection banner on vault load. Each cluster contains
     /// two or more node ids.
+    ///
+    /// We bucket by id-normalized form only (e.g. "Usenet job posting"
+    /// and "usenet-job-posting" share a key). Earlier versions also
+    /// bucketed by label-normalized form, but that produced false
+    /// positives for *legitimately distinct* same-label nodes — GEXF
+    /// imports that contain, e.g., a "Star Trek (franchise)" node and
+    /// a "Star Trek (1979 film)" node end up as `star-trek.md` and
+    /// `star-trek-2.md` (id-distinct), both with the heading "Star
+    /// Trek". Those shouldn't be flagged for review.
     func duplicateClusters() -> [[String]] {
         var buckets: [String: [String]] = [:]
-        for (id, node) in graph.nodes {
-            let key = Self.normalizedSlug(id) // id-based norm catches the
-            // common case (Usenet job posting / usenet-job-posting).
+        for (id, _) in graph.nodes {
+            let key = Self.normalizedSlug(id)
             buckets[key, default: []].append(id)
-            // Also bucket by label-normalized form so different ids with
-            // the same label (rare) cluster too.
-            let labelKey = Self.normalizedSlug(node.label)
-            if labelKey != key {
-                buckets[labelKey, default: []].append(id)
-            }
         }
         return buckets.values
             .map { Array(Set($0)) }
