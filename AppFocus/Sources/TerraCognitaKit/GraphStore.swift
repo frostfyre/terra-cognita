@@ -306,6 +306,39 @@ public final class GraphStore: ObservableObject {
         }
     }
 
+    /// Replace the body of an existing node with `newBody`. Frontmatter
+    /// is preserved by `VaultEditor.replaceBody`. The caller is expected
+    /// to include the `# Title` heading line if they want one — the
+    /// inspector's edit flow stitches the node's display label back in
+    /// before calling this so the title stays intact across round-trips.
+    @discardableResult
+    func updateNodeBody(_ nodeID: String, body newBody: String) -> String? {
+        guard let vaultURL = writableVaultURL else {
+            return "Open or create a writable vault first."
+        }
+        guard var node = graph.nodes[nodeID] else {
+            return "Selected node no longer exists."
+        }
+        guard let pathString = node.filePath else {
+            return "Selected node has no backing file."
+        }
+        let fileURL = URL(fileURLWithPath: pathString)
+        let didStart = vaultURL.startAccessingSecurityScopedResource()
+        defer { if didStart { vaultURL.stopAccessingSecurityScopedResource() } }
+
+        let editor = VaultEditor(vaultURL: vaultURL)
+        do {
+            let updated = try editor.replaceBody(in: fileURL, newBody: newBody)
+            node.markdownContent = updated
+            graph.nodes[nodeID] = node
+            return nil
+        } catch let err as VaultEditor.EditError {
+            return err.errorDescription
+        } catch {
+            return error.localizedDescription
+        }
+    }
+
     /// Update (or clear) the `era:` front-matter on an existing node.
     /// Passing `nil` or an empty string removes the key. Returns `nil`
     /// on success or a user-readable error.

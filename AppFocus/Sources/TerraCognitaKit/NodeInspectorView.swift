@@ -27,6 +27,18 @@ struct NodeInspectorView: View {
     @State private var showingMergePicker = false
     @State private var mergePickerQuery: String = ""
 
+    // Note editing state. `isEditingNote` toggles the Note disclosure
+    // between MarkdownBodyView (read) and a TextEditor (write).
+    // `noteDraft` is seeded from the stripped body on entry and written
+    // back via `store.updateNodeBody` on Save. `noteSpeech` provides
+    // optional mic-driven dictation that appends to whatever the user
+    // has already typed.
+    @State private var isEditingNote = false
+    @State private var noteDraft: String = ""
+    @State private var noteSaveError: String?
+    @State private var noteSpeechPrefix: String = ""
+    @StateObject private var noteSpeech = SpeechRecognizer()
+
     var body: some View {
         Group {
             if let node = store.graph.nodes[nodeID] {
@@ -50,24 +62,9 @@ struct NodeInspectorView: View {
                         }
 
                         DisclosureGroup(isExpanded: $showNote) {
-                            if let md = node.markdownContent, !md.isEmpty {
-                                MarkdownBodyView(
-                                    source: strippedFrontMatterAndTitle(md),
-                                    onWikilinkClick: { slug in
-                                        if let resolved = resolveWikilink(slug) {
-                                            onSelectNode(resolved)
-                                        }
-                                    },
-                                    resolveEmbed: { filename in
-                                        resolveEmbed(filename, for: node)
-                                    }
-                                )
-                                .padding(.top, 4)
-                            } else {
-                                Text("No body").font(.caption).foregroundStyle(.secondary)
-                            }
+                            noteSection(node).padding(.top, 4)
                         } label: {
-                            sectionLabel("Note")
+                            noteSectionLabel(node)
                         }
 
                         DisclosureGroup(isExpanded: $showMetadata) {
@@ -94,6 +91,20 @@ struct NodeInspectorView: View {
                 .onAppear { ai.prepare(for: node) }
                 .onChange(of: nodeID) { _, _ in
                     if let n = store.graph.nodes[nodeID] { ai.prepare(for: n) }
+                    // If we're swapping nodes mid-edit, drop the draft —
+                    // the user is now looking at a different note.
+                    if isEditingNote { cancelNoteEdit() }
+                }
+                // Mirror dictated speech into the editor while recording.
+                // We append to a snapshot taken at session start so the
+                // user's typing isn't blown away.
+                .onChange(of: noteSpeech.transcript) { _, newValue in
+                    guard noteSpeech.isRecording else { return }
+                    let separator = noteSpeechPrefix.isEmpty
+                        || noteSpeechPrefix.hasSuffix("\n")
+                        || noteSpeechPrefix.hasSuffix(" ")
+                        ? "" : " "
+                    noteDraft = noteSpeechPrefix + separator + newValue
                 }
             } else {
                 ContentUnavailableView(
@@ -626,6 +637,133 @@ struct NodeInspectorView: View {
             Text(message.content)
                 .font(.caption)
                 .foregroundStyle(.secondary)
+        }
+    }
+
+    // MARK: - Note section (read + edit)
+
+    @ViewBuilder
+    private func noteSection(_ node: Node) -> some View {
+        if isEditingNote {
+            VStack(alignment: .leading, spacing: 6) {
+                TextEditor(text: $noteDraft)
+                    .font(.body)
+                    .frame(minHeight: 160)
+                    .padding(6)
+                    .background(
+                        RoundedRectangle(cornerRadius: 6)
+                            .stroke(Color.secondary.opacity(0.25), lineWidth: 1)
+                    )
+                if let err = noteSaveError {
+                    Text(err)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                }
+            }
+        } else if let md = node.markdownContent, !md.isEmpty {
+            MarkdownBodyView(
+                source: strippedFrontMatterAndTitle(md),
+                onWikilinkClick: { slug in
+                    if let resolved = resolveWikilink(slug) {
+                        onSelectNode(resolved)
+                    }
+                },
+                resolveEmbed: { filename in
+                    resolveEmbed(filename, for: node)
+                }
+            )
+        } else {
+            Text("No body").font(.caption).foregroundStyle(.secondary)
+        }
+    }
+
+    @ViewBuilder
+    private func noteSectionLabel(_ node: Node) -> some View {
+        HStack(spacing: 6) {
+            sectionLabel("Note")
+            Spacer(minLength: 8)
+            if isEditingNote {
+                // Mic toggle — appends dictated text to whatever the
+                // user has already typed. We snapshot the editor's
+                // current text on each session start so transcript
+                // updates extend it rather than replacing it.
+                Button {
+                    toggleNoteDictation()
+                } label: {
+                    Image(systemName: noteSpeech.isRecording
+                          ? "mic.fill"
+                          : "mic")
+                        .foregroundStyle(noteSpeech.isRecording ? .red : .accentColor)
+                }
+                .buttonStyle(.borderless)
+                .disabled(noteSpeech.availability != .ready)
+                .help(noteSpeech.isRecording ? "Stop dictation" : "Dictate")
+
+                Button("Cancel") { cancelNoteEdit() }
+                    .buttonStyle(.borderless)
+                Button("Save") { saveNoteEdit(for: node) }
+                    .buttonStyle(.borderless)
+                    .keyboardShortcut("s", modifiers: .command)
+                    .disabled(!store.canIngest)
+            } else {
+                Button {
+                    beginNoteEdit(for: node)
+                } label: {
+                    Label("Edit", systemImage: "pencil")
+                        .labelStyle(.iconOnly)
+                }
+                .buttonStyle(.borderless)
+                .disabled(!store.canIngest)
+                .help(store.canIngest
+                      ? "Edit note"
+                      : "Open or create a writable vault to edit.")
+            }
+        }
+    }
+
+    private func beginNoteEdit(for node: Node) {
+        noteDraft = strippedFrontMatterAndTitle(node.markdownContent ?? "")
+        noteSaveError = nil
+        isEditingNote = true
+        showNote = true
+        Task { await noteSpeech.prepare() }
+    }
+
+    private func cancelNoteEdit() {
+        if noteSpeech.isRecording { noteSpeech.stop() }
+        noteSpeech.clear()
+        noteSpeechPrefix = ""
+        noteDraft = ""
+        noteSaveError = nil
+        isEditingNote = false
+    }
+
+    private func saveNoteEdit(for node: Node) {
+        if noteSpeech.isRecording { noteSpeech.stop() }
+        // Stitch the `# Title` heading back in so it round-trips —
+        // the user is editing post-title body, but the file format
+        // expects the heading after the front-matter.
+        let trimmed = noteDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        let bodyWithTitle = "# \(node.label)\n\n\(trimmed)\n"
+        if let err = store.updateNodeBody(node.id, body: bodyWithTitle) {
+            noteSaveError = err
+            return
+        }
+        cancelNoteEdit()
+    }
+
+    /// Toggle dictation. On start we snapshot the editor's current
+    /// text so transcripts append rather than replace. On stop we
+    /// commit whatever was transcribed into `noteDraft` and clear
+    /// the recognizer.
+    private func toggleNoteDictation() {
+        if noteSpeech.isRecording {
+            noteSpeech.stop()
+            noteSpeech.clear()
+        } else {
+            noteSpeechPrefix = noteDraft
+            noteSpeech.clear()
+            noteSpeech.start()
         }
     }
 
