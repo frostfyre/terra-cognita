@@ -125,7 +125,7 @@ struct NodeInspectorView: View {
                 .font(.title2).bold()
                 .textSelection(.enabled)
             HStack(spacing: 6) {
-                if let t = node.type { TagPill(text: t, color: typeColor(t)) }
+                typePicker(node)
                 eraPicker(node)
                 if let folder = node.attributes["folder"], folder != node.type.map({ "\($0)s" }) {
                     TagPill(text: folder, color: .secondary)
@@ -267,6 +267,52 @@ struct NodeInspectorView: View {
 
     /// Tappable era pill — opens a menu with every era taxonomy value
     /// plus a "Clear" affordance. Edits write through to the .md file
+    /// Tappable type pill — opens a menu of the vault's configured
+    /// types so the user can reclassify a node without leaving the
+    /// inspector. The physical file does NOT move between subfolders
+    /// (would invalidate every wikilink pointing at it); only the
+    /// `type:` front-matter is rewritten via
+    /// `GraphStore.setType(in:to:)`. For nodes with no backing file
+    /// yet, one is materialized on first set.
+    @ViewBuilder
+    private func typePicker(_ node: Node) -> some View {
+        let current = node.type?.lowercased() ?? ""
+        Menu {
+            ForEach(promotableTypes(), id: \.name) { spec in
+                Button {
+                    if let err = store.setType(in: node.id, to: spec.name) {
+                        store.loadStatus = err
+                    } else {
+                        Haptics.tap(.light)
+                    }
+                } label: {
+                    if spec.name.lowercased() == current {
+                        Label(spec.displayName ?? spec.name.capitalized,
+                              systemImage: "checkmark")
+                    } else {
+                        Label(spec.displayName ?? spec.name.capitalized,
+                              systemImage: spec.icon)
+                    }
+                }
+            }
+        } label: {
+            if let t = node.type, !t.isEmpty {
+                TagPill(text: t, color: typeColor(t))
+            } else {
+                HStack(spacing: 3) {
+                    Image(systemName: "tag").font(.caption2)
+                    Text("set type").font(.caption2)
+                }
+                .padding(.horizontal, 6).padding(.vertical, 2)
+                .background(.secondary.opacity(0.15), in: Capsule())
+                .foregroundStyle(.secondary)
+            }
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+        .disabled(!store.canIngest)
+    }
+
     /// immediately; the depth axis updates on the next render tick.
     @ViewBuilder
     private func eraPicker(_ node: Node) -> some View {

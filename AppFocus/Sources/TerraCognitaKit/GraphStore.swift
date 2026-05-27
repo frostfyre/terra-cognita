@@ -501,6 +501,64 @@ public final class GraphStore: ObservableObject {
         }
     }
 
+    /// Update the `type:` front-matter on an existing node. The
+    /// physical file does NOT move between subfolders — that would
+    /// invalidate every wikilink pointing at it and break the
+    /// loader's path-based id derivation. Type is just a metadata
+    /// reclassification; the file stays put. If the node has no
+    /// backing file yet (Constellation-created), one is materialized
+    /// via `VaultWriter.createNote` first, same pattern as
+    /// `updateNodeBody`.
+    @discardableResult
+    func setType(in nodeID: String, to typeName: String) -> String? {
+        guard let vaultURL = writableVaultURL else {
+            return "Open or create a writable vault first."
+        }
+        guard var node = graph.nodes[nodeID] else {
+            return "Selected node no longer exists."
+        }
+        let didStart = vaultURL.startAccessingSecurityScopedResource()
+        defer { if didStart { vaultURL.stopAccessingSecurityScopedResource() } }
+
+        let editor = VaultEditor(vaultURL: vaultURL)
+        let fileURL: URL
+        if let pathString = node.filePath {
+            fileURL = URL(fileURLWithPath: pathString)
+        } else {
+            let writer = VaultWriter(vaultURL: vaultURL)
+            do {
+                let created = try writer.createNote(
+                    label: node.label,
+                    type: typeName.lowercased(),
+                    era: node.era,
+                    body: ""
+                )
+                fileURL = created.fileURL
+                node.filePath = created.fileURL.path
+            } catch let err as VaultWriter.WriteError {
+                return err.errorDescription
+            } catch {
+                return error.localizedDescription
+            }
+        }
+        do {
+            let updated = try editor.setFrontMatter(in: fileURL,
+                                                    key: "type",
+                                                    value: typeName.lowercased())
+            node.markdownContent = updated
+            node.attributes["type"] = typeName.lowercased()
+            // If this was a synthetic placeholder, the markers are now stale.
+            node.attributes.removeValue(forKey: "placeholder")
+            node.attributes.removeValue(forKey: "synthetic")
+            graph.nodes[nodeID] = node
+            return nil
+        } catch let err as VaultEditor.EditError {
+            return err.errorDescription
+        } catch {
+            return error.localizedDescription
+        }
+    }
+
     /// Materialize a Capture proposal: creates each accepted node, then
     /// wires the wikilinks (internal between new nodes + external to
     /// existing graph nodes) by appending them to each new node's body.
