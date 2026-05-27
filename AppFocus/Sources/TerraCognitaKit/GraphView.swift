@@ -57,6 +57,9 @@ public struct GraphView: View {
     /// Drives the template picker sheet that appears before the
     /// folder picker on Create New Vault.
     @State private var showingTemplatePicker: Bool = false
+    /// Drives the Import Recipe sheet (NL → typed schema →
+    /// deterministic file-system → vault).
+    @State private var showingImportRecipe: Bool = false
     /// The template the user chose in the picker; carried across the
     /// folder-picker round-trip and consumed by `handleFolderPick`.
     @State private var pendingTemplate: Template? = nil
@@ -204,6 +207,11 @@ public struct GraphView: View {
                         showingGEXFPicker = true
                     } label: {
                         Label("Import GEXF…", systemImage: "square.and.arrow.down.on.square")
+                    }
+                    Button {
+                        showingImportRecipe = true
+                    } label: {
+                        Label("Import from Recipe…", systemImage: "wand.and.stars")
                     }
                     Divider()
                     Button {
@@ -529,6 +537,9 @@ public struct GraphView: View {
         }
         .sheet(isPresented: $showingVaultSettings) {
             VaultSettingsSheet(store: store, isPresented: $showingVaultSettings)
+        }
+        .sheet(isPresented: $showingImportRecipe) {
+            ImportRecipeSheet(store: store, isPresented: $showingImportRecipe)
         }
         .sheet(isPresented: $showingTemplatePicker) {
             TemplatePickerSheet(
