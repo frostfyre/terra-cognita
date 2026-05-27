@@ -782,18 +782,28 @@ struct NodeInspectorView: View {
                 }
             }
         } else if let md = node.markdownContent, !md.isEmpty {
-            MarkdownBodyView(
-                source: strippedFrontMatterAndTitle(md),
-                onWikilinkClick: { slug in
-                    if let resolved = resolveWikilink(slug) {
-                        onSelectNode(resolved)
-                    }
-                },
-                resolveEmbed: { filename in
-                    resolveEmbed(filename, for: node)
-                },
-                vaultURL: store.writableVaultURL
-            )
+            let body = strippedFrontMatterAndTitle(md)
+            if hasRenderableProse(body) {
+                MarkdownBodyView(
+                    source: body,
+                    onWikilinkClick: { slug in
+                        if let resolved = resolveWikilink(slug) {
+                            onSelectNode(resolved)
+                        }
+                    },
+                    resolveEmbed: { filename in
+                        resolveEmbed(filename, for: node)
+                    },
+                    vaultURL: store.writableVaultURL
+                )
+            } else {
+                // Body is entirely Dataview edge declarations — those
+                // are surfaced in the Outbound section, so we'd render
+                // a blank gap here without this short-circuit.
+                Text("No prose body — typed edges are shown in Outbound.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
         } else {
             Text("No body").font(.caption).foregroundStyle(.secondary)
         }
@@ -890,6 +900,34 @@ struct NodeInspectorView: View {
     }
 
     // MARK: - Helpers
+
+    /// Returns true if the post-title body has at least one line that
+    /// `MarkdownBodyView` would actually render — i.e. anything other
+    /// than blank lines and Dataview edge declarations (which we
+    /// filter out of the rendered body since they're surfaced in
+    /// Outbound). Used to short-circuit the Note section to a small
+    /// placeholder rather than rendering an empty space when a
+    /// node's only "body" is its typed edges.
+    private func hasRenderableProse(_ body: String) -> Bool {
+        for raw in body.split(separator: "\n", omittingEmptySubsequences: false) {
+            let line = raw.trimmingCharacters(in: .whitespaces)
+            if line.isEmpty { continue }
+            // Match the parser's Dataview-detection: `key:: <…[[…]]…>`.
+            if let sep = line.range(of: ":: ") {
+                let key = line[..<sep.lowerBound]
+                let rest = line[sep.upperBound...]
+                if !key.isEmpty,
+                   key.allSatisfy({
+                       $0.isLetter || $0.isNumber || $0 == "-" || $0 == "_"
+                   }),
+                   rest.contains("[[") && rest.contains("]]") {
+                    continue
+                }
+            }
+            return true
+        }
+        return false
+    }
 
     /// Strip the YAML front-matter and the first `# heading` so the note body
     /// reads cleanly in the panel (the title is already in `header(_:)`).
