@@ -60,6 +60,12 @@ struct GraphCanvasView: View {
     /// enough out to see a multi-hundred-node graph end-to-end.
     private let minScale: CGFloat = 0.1
     private let maxScale: CGFloat = 4.0
+
+    /// Label text color — a warm-ish ~80% white. Pure `.primary`
+    /// (full white) felt harsh on the indigo gradient; this sits
+    /// slightly off-white so titles read as warm rather than clinical
+    /// while still popping off the ~30–40% grey pills behind them.
+    private let labelText = Color(white: 0.82)
     /// Owned by `GraphView` so the inspector panel can drive it too.
     @Binding var selectedNodeID: String?
     /// A node freshly written by `GraphStore.createNode`. The canvas
@@ -376,7 +382,7 @@ struct GraphCanvasView: View {
                             let resolved = context.resolve(
                                 Text(node.label)
                                     .font(.system(size: 10))
-                                    .foregroundStyle(.primary.opacity(depthOpacityMul))
+                                    .foregroundStyle(labelText.opacity(max(0.85, depthOpacityMul)))
                             )
                             drawLabelPill(
                                 in: context,
@@ -424,7 +430,7 @@ struct GraphCanvasView: View {
                         let resolved = context.resolve(
                             Text(node.label)
                                 .font(.system(size: fontSize).weight(.medium))
-                                .foregroundStyle(.primary)
+                                .foregroundStyle(labelText)
                         )
                         drawLabelPill(
                             in: context,
@@ -507,7 +513,7 @@ struct GraphCanvasView: View {
                         let resolved = context.resolve(
                             Text(node.label)
                                 .font(.system(size: 11 * labelScale).weight(.semibold))
-                                .foregroundStyle(.primary)
+                                .foregroundStyle(labelText)
                         )
                         drawLabelPill(
                             in: context,
@@ -556,7 +562,12 @@ struct GraphCanvasView: View {
             // iPad; `.simultaneousGesture` alone wasn't enough — the
             // drag would still latch onto the first finger.
             .highPriorityGesture(pinchGesture())
-            .gesture(nodeDragGesture(size: geo.size))
+            // `.simultaneousGesture` (instead of plain `.gesture`) so
+            // pan doesn't have to outlast arbitration against the tap,
+            // long-press, and contextMenu recognizers — that wait was
+            // the residual iOS "delayed pan" feel even after the
+            // minimumDistance drop to 1.
+            .simultaneousGesture(nodeDragGesture(size: geo.size))
             .onTapGesture(coordinateSpace: .local) { point in
                 handleTap(at: point, size: geo.size)
             }
