@@ -372,15 +372,14 @@ struct GraphCanvasView: View {
                                     .font(.system(size: 10))
                                     .foregroundStyle(.primary.opacity(depthOpacityMul))
                             )
-                            context.drawLayer { ctx in
-                                ctx.addFilter(.shadow(
-                                    color: .black.opacity(0.75),
-                                    radius: 1.2,
-                                    x: 0,
-                                    y: 1
-                                ))
-                                ctx.draw(resolved, at: p, anchor: .center)
-                            }
+                            drawLabelPill(
+                                in: context,
+                                text: resolved,
+                                at: p,
+                                fill: Color.black.opacity(0.40),
+                                shadow: (color: .black.opacity(0.75),
+                                         radius: 1.2, y: 1)
+                            )
                         }
                     }
 
@@ -421,15 +420,14 @@ struct GraphCanvasView: View {
                                 .font(.system(size: fontSize).weight(.medium))
                                 .foregroundStyle(.primary)
                         )
-                        context.drawLayer { ctx in
-                            ctx.addFilter(.shadow(
-                                color: .black.opacity(0.8),
-                                radius: 1.6,
-                                x: 0,
-                                y: 1.5
-                            ))
-                            ctx.draw(resolved, at: p, anchor: .center)
-                        }
+                        drawLabelPill(
+                            in: context,
+                            text: resolved,
+                            at: p,
+                            fill: Color.black.opacity(0.45),
+                            shadow: (color: .black.opacity(0.8),
+                                     radius: 1.6, y: 1.5)
+                        )
                     }
 
                     // Second pass — the selected node, drawn last so it sits
@@ -505,15 +503,15 @@ struct GraphCanvasView: View {
                                 .font(.system(size: 11 * labelScale).weight(.semibold))
                                 .foregroundStyle(.primary)
                         )
-                        context.drawLayer { ctx in
-                            ctx.addFilter(.shadow(
-                                color: .black.opacity(0.85),
-                                radius: 2,
-                                x: 0,
-                                y: 2
-                            ))
-                            ctx.draw(resolved, at: p, anchor: .center)
-                        }
+                        drawLabelPill(
+                            in: context,
+                            text: resolved,
+                            at: p,
+                            fill: selectionGold.opacity(0.32),
+                            stroke: selectionGold.opacity(0.75),
+                            shadow: (color: .black.opacity(0.85),
+                                     radius: 2, y: 2)
+                        )
                     }
                 }
             }
@@ -825,6 +823,47 @@ struct GraphCanvasView: View {
         }
     }
 
+    // MARK: - Label pill
+
+    /// Draw a resolved text label inside a capsule pill so titles read
+    /// over the gradient and over other nodes. Pill + text share a single
+    /// shadow layer for a unified "card lifted off the canvas" feel.
+    private func drawLabelPill(
+        in context: GraphicsContext,
+        text resolved: GraphicsContext.ResolvedText,
+        at center: CGPoint,
+        fill: Color,
+        stroke: Color? = nil,
+        shadow: (color: Color, radius: CGFloat, y: CGFloat)
+    ) {
+        let textSize = resolved.measure(in: CGSize(width: 600, height: 100))
+        let padH: CGFloat = 6
+        let padV: CGFloat = 2
+        let pillRect = CGRect(
+            x: center.x - textSize.width / 2 - padH,
+            y: center.y - textSize.height / 2 - padV,
+            width: textSize.width + padH * 2,
+            height: textSize.height + padV * 2
+        )
+        let pillPath = Path(
+            roundedRect: pillRect,
+            cornerRadius: pillRect.height / 2
+        )
+        context.drawLayer { ctx in
+            ctx.addFilter(.shadow(
+                color: shadow.color,
+                radius: shadow.radius,
+                x: 0,
+                y: shadow.y
+            ))
+            ctx.fill(pillPath, with: .color(fill))
+            if let stroke {
+                ctx.stroke(pillPath, with: .color(stroke), lineWidth: 1)
+            }
+            ctx.draw(resolved, at: center, anchor: .center)
+        }
+    }
+
     // MARK: - Layout pipeline (circular seed → background force-directed)
 
     private func rebuildLayoutPipeline() async {
@@ -1025,7 +1064,12 @@ struct GraphCanvasView: View {
     /// MouseInputMonitor NSEvent layer) — both paths coexist. On iOS /
     /// iPadOS, this gesture is the only pan affordance.
     private func nodeDragGesture(size: CGSize) -> some Gesture {
-        DragGesture(minimumDistance: 3, coordinateSpace: .local)
+        // `minimumDistance: 1` so pan engages on the first move event
+        // instead of waiting for ~3pt of travel. The earlier 3pt floor
+        // was the dominant cause of the iOS "delayed pan" feel —
+        // arbitration against the tap / long-press recognizers held
+        // the touch in suspense until the threshold cleared.
+        DragGesture(minimumDistance: 1, coordinateSpace: .local)
             .onChanged { value in
                 if draggingNodeID == nil && panAnchor == nil {
                     if let hit = nodeAt(screenPoint: value.startLocation, size: size) {
