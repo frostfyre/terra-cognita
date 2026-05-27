@@ -6,8 +6,14 @@ works, and concepts — as the primary work surface. Navigable,
 queryable, AI-augmented, and meant to feel like *moving through a
 place* rather than reading a document.
 
-See [`Design/DESIGN.md`](Design/DESIGN.md) for the original design /
-vision document.
+See [`DESIGN.md`](DESIGN.md) for the unified design document
+(modes, lenses, layouts, vocabulary, product direction),
+[`PLAN.md`](PLAN.md) for the phased implementation roadmap, and
+[`BUGS.md`](BUGS.md) for the open / recently-fixed issue log.
+[`Design/DESIGN.md`](Design/DESIGN.md) is the older original vision
+document and is kept for historical context.
+
+**Anchors:** `mvp-1.0` tag = stable feature baseline; `visual-milestone-1.0` tag = the indigo-gradient + gold-selection + curved-gradient-edges aesthetic lock-in.
 
 ---
 
@@ -27,16 +33,37 @@ require macOS 26 / iOS 26.
 
 **Canvas & rendering**
 - SwiftUI `Canvas` renderer (~300 nodes / ~1000 edges idle-smooth at 20 Hz)
-- Force-directed layout (Fruchterman-Reingold variant, tuned toward
-  Force Atlas 2), computed off the main actor and crossfaded in over a
-  circular seed
+- **Five layout algorithms** selectable from a toolbar menu:
+  Force-directed (background FA2 solver), Circular, Radial
+  (concentric BFS from selection), Hierarchical (BFS layers),
+  Grid (deterministic √N × √N). Cluster is reserved for Phase 3
+  (community detection).
+- **No-overlap toggle** — optional iterative push-apart post-pass
+  on any layout; pinned nodes stay anchored.
+- Layout choice + no-overlap preference persist per-vault.
 - Era-driven **depth axis** with parallax-on-pan: older eras drift in
   the background, current era sits forward
 - **Ambient drift** + **idle puff** so the field feels alive even when
   the user isn't interacting
 - **Hover ring** (iPad pointer + Mac mouse) on the targeted node
-- Persistent layout: pinned positions + scale + offset survive relaunch
+- Persistent layout: pinned positions + scale + offset + algorithm
+  + no-overlap survive relaunch
 - Performance: smooth to ~1,500 nodes (see `scripts/stress_test.swift`)
+
+**Aesthetic**
+- Deep-indigo → near-black radial gradient field, persistent across
+  zoom levels
+- **Type-color gradient edges** — each edge strokes a quadratic
+  Bezier from source node color to destination node color. Endpoint
+  opacity + saturation mirror the connected node so background-era
+  endpoints fade like the nodes themselves. Curve direction is
+  stable per edge (seeded by edge id) so reciprocal edges land on
+  opposite sides.
+- **Gold selection halo + orbital sparks + breath** distinct from
+  the cooler ambient idle puff.
+- **Capsule label pills** — dark grey universal, gold-tinted on the
+  selected node. Text at ~82% warm white.
+- Depth-aware drop shadows on nodes.
 
 **Vault I/O**
 - Loads any Obsidian-style markdown vault — YAML front-matter as node
@@ -63,11 +90,18 @@ require macOS 26 / iOS 26.
   screenshots
 
 **Node ingestion / authoring**
-- **+ New Node** (⌘N) — composer sheet with type / label / era /
-  body / private toggle; pre-fills wikilink to current selection
+- **+ menu** (⌘N New Node, ⌘⇧N Capture) — composer sheet with type
+  / label / era / body / private toggle; pre-fills wikilink to
+  current selection
 - **Long-press empty canvas → "Create node here"** — spatial drop-in
   creation with the spawn point captured in world coordinates,
   auto-pinned, auto-framed
+- **Inline note editing** — pencil icon in the Inspector's Note
+  section opens a TextEditor seeded with the current body. Save
+  (⌘S) writes through `VaultEditor.replaceBody`; Cancel discards.
+  Materializes a fresh file if the node is in-memory-only.
+- **Mic-driven dictation** in the inspector edit mode — same
+  `SpeechRecognizer` as Capture, appends to whatever's already typed.
 - Compose-time dedup — normalized-slug collisions block the write and
   offer "Open existing / Rename"
 - **Inspector ⋯ menu** — Delete this node (with `.bak` snapshot) and
@@ -116,12 +150,27 @@ require macOS 26 / iOS 26.
 
 ### What's still missing / rough
 
-- **Layout** is O(n²) — comfortable to ~1,500 nodes; ~5,000 takes ~11 s.
-  Barnes-Hut would be the unblock if/when needed.
-- **No live vault watch** — external edits to .md files don't show
+See [`PLAN.md`](PLAN.md) for the phased roadmap. Headline gaps:
+
+- **Modes & launch templates** (Phase 2) — currently the app is
+  Continuity-only; Worldbuild + Project Archaeology and their
+  templates (Heritage / Reflective Journal / Career Map / Story
+  Bible / World Bible / Concept Explorer / Code Repo / etc.) are
+  the next push.
+- **Timeline / Radial / Systems lenses** (Phase 3) — Lens system
+  ships type-filter today; visual treatments and the topology
+  (community / bridge) lens land in Phase 3.
+- **Cluster layout** (Phase 3) — gated on community detection
+  landing in `GraphAnalysis.swift`.
+- **Import Recipes** (Phase 3) — NL → schema → deterministic
+  executor for Markdown Vault + Code Repo importers.
+- **Display Settings panel** (Phase 3.5) — surface edge / pill /
+  gradient constants the user has been driving via taste.
+- **Live vault watch** — external edits to .md files don't show
   until next vault load.
 - **No edge editing UI** — the `Provenance` model exists (7 categories)
-  but isn't surfaced.
+  but isn't surfaced. Edges now carry `era` / `date` fields ready
+  for the Phase 3 Timeline lens; UI to set them is still TODO.
 - **No 3D mode** — DESIGN.md's time-as-depth idea is hinted at via
   the parallax axis but not realized as a separate mode.
 - **Capture review is modal** — a *spatial preview* (proposed nodes
@@ -129,6 +178,8 @@ require macOS 26 / iOS 26.
   more like dive-in.
 - **No graph-wide AI** — operations are all per-node; "Ask Terra
   Cognita" across the whole graph would be the next step.
+- **Layout is O(n²)** for force-directed — Barnes-Hut would be the
+  unblock past ~2,000 nodes.
 
 ---
 
@@ -166,16 +217,17 @@ require macOS 26 / iOS 26 (Foundation Models).
 ## Interaction
 
 ### Top bar
-| Action               | Affordance                       |
-|----------------------|----------------------------------|
-| Back / Forward       | Chevrons · ⌘[ / ⌘]               |
-| Lens picker          | Dropdown                         |
-| Vault menu           | Folder icon → Open / Create New / Recent |
-| New Node             | + · ⌘N                           |
-| Capture (text/voice) | Bubble · ⌘⇧N                     |
-| Find                 | Magnifier · ⌘F                   |
-| Show/hide private    | Eye toggle                       |
-| Show/hide info panel | Sidebar · ⌘I                     |
+| Action                   | Affordance                                        |
+|--------------------------|---------------------------------------------------|
+| Back / Forward           | Chevrons · ⌘[ / ⌘]                                |
+| Lens picker              | Dropdown                                          |
+| Vault menu               | Folder icon → Open / Create New / Recent          |
+| Add to graph (+ menu)    | Capture (⌘⇧N) / New Node (⌘N)                     |
+| Find                     | Magnifier · ⌘F                                    |
+| Fit to window            | Viewfinder · ⌘0                                   |
+| Layout menu              | Force-directed / Circular / Radial / Hierarchical / Grid + No-overlap toggle |
+| Show/hide private        | Eye toggle                                        |
+| Show/hide info panel     | Sidebar · ⌘I                                      |
 
 ### Canvas
 | Action                          | Pointer            | Touch                  |
@@ -222,7 +274,12 @@ AppFocus/
 │   │   ├── NavigationHistory.swift      — Back/forward stack
 │   │   ├── RadialMenu.swift             — Long-press action wheel
 │   │   ├── ForceDirectedLayout.swift    — Background FA2-ish solver
+│   │   ├── LayoutEngine.swift           — Radial / Hierarchical / Grid + no-overlap
+│   │   ├── LayoutAlgorithm.swift        — Enum of layout choices (+ SF symbols)
 │   │   ├── LayoutPersistence.swift      — Per-vault layout snapshots
+│   │   ├── Mode.swift                   — Mode enum (Phase 0 — single .continuity)
+│   │   ├── GraphAnalysis.swift          — Stub for Phase 3 topology utils
+│   │   ├── FolderPicker.swift           — iOS UIDocumentPickerViewController wrapper
 │   │   ├── Era.swift                    — Era taxonomy + depth derivation
 │   │   ├── VaultLoader.swift            — Markdown vault → Graph
 │   │   ├── VaultWriter.swift            — New-note creation + slug
@@ -281,19 +338,24 @@ saved lenses, agentic AI) is the next horizon.
 
 ## Roadmap
 
-Approximate priority for the next push:
+See [`PLAN.md`](PLAN.md) for the phased plan. Short version:
 
-1. **Live vault watch** — `FileManager` change notifications so
-   external edits show up immediately.
-2. **Edge editing UI** — surface `Provenance` and `relationshipType`
-   in the inspector; let the user re-classify existing edges.
-3. **Spatial Capture preview** — proposed nodes materialize translucently
-   on the canvas before commit, instead of in a modal review pane.
-4. **Graph-wide AI** — "Ask Terra Cognita" — RAG-style query against
-   the whole vault, with cited node sources.
-5. **Saved lenses** — user-defined semantic views beyond the built-in
-   six.
-6. **Barnes-Hut layout** — O(n log n) repulsion to push the snappy
-   ceiling past 5,000 nodes.
-7. **3D / time-axis mode** — DESIGN.md's "time as depth" as a separate
-   render mode (SceneKit or RealityKit).
+- **Phase 0** *(landed)* — foundations: `Mode` enum, `LayoutAlgorithm`,
+  era/date metadata on `Edge`, `GraphAnalysis` placeholder.
+- **Phase 1** *(landed)* — Layout selector with five algorithms +
+  No-overlap toggle. Cluster reserved for Phase 3.
+- **Phase 2** *(next)* — Modes + launch templates. Promotes `Mode`
+  enum to its three real cases, adds the mode picker on vault
+  creation + a discreet toolbar pill, wires the template registry.
+- **Phase 3** — Lens expansion (Timeline, Radial, Systems) + Import
+  Recipes (NL → typed schema → deterministic executor). Backs the
+  deferred Cluster layout.
+- **Phase 3.5** — Display Settings panel — surface edge / pill /
+  gradient constants as user-controllable.
+- **Phase 4** *(later)* — Pro tier: sync, cloud AI augmentation,
+  large-graph background workers. Pro never gates data access.
+
+Cross-cutting follow-ups regardless of phase: live vault watch,
+edge editing UI (surface `era` / `date` / `Provenance`), spatial
+Capture preview, graph-wide AI, Barnes-Hut layout, 3D time-axis
+mode.
