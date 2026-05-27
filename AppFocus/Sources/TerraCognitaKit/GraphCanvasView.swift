@@ -131,9 +131,14 @@ struct GraphCanvasView: View {
 
     /// Edges grouped by stroke color so the Canvas can issue one stroke
     /// per group instead of per edge.
-    private struct EdgeGroup {
-        let color: Color
-        let path: Path
+    /// One edge stroke recorded for the render pass. Each edge gets
+    /// its own gradient run from source node color → destination node
+    /// color, so we no longer batch by uniform color.
+    private struct EdgeStroke {
+        let from: CGPoint
+        let to: CGPoint
+        let colorFrom: Color
+        let colorTo: Color
     }
 
     var body: some View {
@@ -212,20 +217,51 @@ struct GraphCanvasView: View {
                                      with: .color(.white.opacity(twinkle * 0.45)))
                     }
 
-                    // Edges — dim layer first, bright on top.
+                    // Edges — dim layer first, bright on top. Each edge
+                    // strokes a linear gradient from its source node's
+                    // color to its destination node's color, so edges
+                    // read as "type → type" transitions. Bright at 70%
+                    // opacity; dim at ~35% so the highlighted subnet
+                    // still dominates when a node is selected.
                     let groups = edgeGroups(toScreen: toScreen,
                                             highlight: highlight,
                                             hasSelection: hasSelection,
                                             visibleSet: visibleSet)
-                    for group in groups.dim {
-                        context.stroke(group.path,
-                                       with: .color(group.color.opacity(dimOpacity * 0.6)),
-                                       lineWidth: 1)
+                    let dimAlpha = 0.35
+                    for stroke in groups.dim {
+                        var path = Path()
+                        path.move(to: stroke.from)
+                        path.addLine(to: stroke.to)
+                        context.stroke(
+                            path,
+                            with: .linearGradient(
+                                Gradient(colors: [
+                                    stroke.colorFrom.opacity(dimAlpha),
+                                    stroke.colorTo.opacity(dimAlpha)
+                                ]),
+                                startPoint: stroke.from,
+                                endPoint: stroke.to
+                            ),
+                            lineWidth: 1
+                        )
                     }
-                    for group in groups.bright {
-                        context.stroke(group.path,
-                                       with: .color(group.color.opacity(0.7)),
-                                       lineWidth: 1.2)
+                    let brightAlpha = 0.70
+                    for stroke in groups.bright {
+                        var path = Path()
+                        path.move(to: stroke.from)
+                        path.addLine(to: stroke.to)
+                        context.stroke(
+                            path,
+                            with: .linearGradient(
+                                Gradient(colors: [
+                                    stroke.colorFrom.opacity(brightAlpha),
+                                    stroke.colorTo.opacity(brightAlpha)
+                                ]),
+                                startPoint: stroke.from,
+                                endPoint: stroke.to
+                            ),
+                            lineWidth: 1.4
+                        )
                     }
 
                     // Nodes — radius scales with degree (min 10, sqrt curve so
@@ -1012,16 +1048,19 @@ struct GraphCanvasView: View {
     // MARK: - Edge batching
 
     private struct EdgeBatches {
-        var dim: [EdgeGroup] = []
-        var bright: [EdgeGroup] = []
+        var dim: [EdgeStroke] = []
+        var bright: [EdgeStroke] = []
     }
 
+    /// Build the per-edge stroke list. Each edge carries the source
+    /// node's color and the destination node's color so the render
+    /// pass can stroke a linear gradient — making edges read as
+    /// "type → type" transitions rather than uniform lines.
     private func edgeGroups(toScreen: (String, CGPoint, Double) -> CGPoint,
                             highlight: Set<String>,
                             hasSelection: Bool,
                             visibleSet: Set<String>?) -> EdgeBatches {
-        var dimByColor: [String: (Color, Path)] = [:]
-        var brightByColor: [String: (Color, Path)] = [:]
+        var batches = EdgeBatches()
 
         for edge in store.graph.edges {
             let sourceID = edge.sourceID
@@ -1032,34 +1071,27 @@ struct GraphCanvasView: View {
                 continue
             }
             guard let a = effectivePosition(for: sourceID),
-                  let b = effectivePosition(for: targetID) else { continue }
-            let dA = store.graph.nodes[sourceID]?.depth(in: store.config) ?? 0.55
-            let dB = store.graph.nodes[targetID]?.depth(in: store.config) ?? 0.55
-            let color = edgeColor(edge)
-            let key = colorKey(color)
+                  let b = effectivePosition(for: targetID),
+                  let sourceNode = store.graph.nodes[sourceID],
+                  let targetNode = store.graph.nodes[targetID] else { continue }
+            let dA = sourceNode.depth(in: store.config)
+            let dB = targetNode.depth(in: store.config)
+            let stroke = EdgeStroke(
+                from: toScreen(sourceID, a, dA),
+                to: toScreen(targetID, b, dB),
+                colorFrom: nodeColor(sourceNode),
+                colorTo: nodeColor(targetNode)
+            )
             let isBright = !hasSelection ||
                 (highlight.contains(sourceID) && highlight.contains(targetID))
-
             if isBright {
-                var entry = brightByColor[key] ?? (color, Path())
-                entry.1.move(to: toScreen(sourceID, a, dA))
-                entry.1.addLine(to: toScreen(targetID, b, dB))
-                brightByColor[key] = entry
+                batches.bright.append(stroke)
             } else {
-                var entry = dimByColor[key] ?? (color, Path())
-                entry.1.move(to: toScreen(sourceID, a, dA))
-                entry.1.addLine(to: toScreen(targetID, b, dB))
-                dimByColor[key] = entry
+                batches.dim.append(stroke)
             }
         }
-
-        return EdgeBatches(
-            dim: dimByColor.values.map { EdgeGroup(color: $0.0, path: $0.1) },
-            bright: brightByColor.values.map { EdgeGroup(color: $0.0, path: $0.1) }
-        )
+        return batches
     }
-
-    private func colorKey(_ c: Color) -> String { String(describing: c) }
 
     // MARK: - Gestures
 
@@ -1167,19 +1199,6 @@ struct GraphCanvasView: View {
     }
 
     // MARK: - Styling
-
-    private func edgeColor(_ edge: Edge) -> Color {
-        switch edge.provenance {
-        case .some(.directInfluence): return .blue
-        case .some(.verifiedLineage): return .green
-        case .some(.institutionalConnection): return .teal
-        case .some(.inferredAffinity): return .purple
-        case .some(.recommendation): return .orange
-        case .some(.adjacency): return .gray
-        case .some(.speculation): return .pink
-        case .none: return .secondary
-        }
-    }
 
     private func nodeColor(_ node: Node) -> Color {
         if let spec = store.config.typeSpec(named: node.type) {
