@@ -729,18 +729,22 @@ public final class GraphStore: ObservableObject {
     /// Initialize an empty vault at `url` (creates folder + subfolders +
     /// stub README) and load it. Caller is responsible for having
     /// started the security scope on `url` if it came from a picker.
-    func createNewVault(at url: URL) {
+    func createNewVault(at url: URL, template: Template? = nil) {
         let didStart = url.startAccessingSecurityScopedResource()
         Task {
             defer { if didStart { url.stopAccessingSecurityScopedResource() } }
             do {
-                try VaultWriter.initializeEmptyVault(at: url)
+                try VaultWriter.initializeEmptyVault(at: url, template: template)
             } catch {
                 loadStatus = "Couldn't create vault: \(error.localizedDescription)"
                 return
             }
             // Hand off to the normal load path so we pick up the new
             // empty graph + register the bookmark + library entry.
+            // The template's mode + types are already in
+            // `.terracognita/config.yaml`, so `load(from:)` reads them
+            // through `VaultConfig.load` and the toolbar mode pill
+            // updates automatically.
             load(from: url)
         }
     }

@@ -58,26 +58,49 @@ struct VaultWriter {
 
     // MARK: - Vault creation
 
-    /// Initialize an empty vault in `url`. Creates the standard subfolders
-    /// (`people/`, `concepts/`, `institutions/`, `events/`, `works/`) and a
-    /// minimal `README.md`. Idempotent — existing folders/files are left alone.
-    static func initializeEmptyVault(at url: URL) throws {
+    /// Initialize an empty vault in `url`. When a `template` is given,
+    /// uses its mode + types + eras to (a) materialize the appropriate
+    /// subfolders, and (b) write `.terracognita/config.yaml` so the
+    /// vault loads with the template's ontology on first open. When
+    /// `template` is nil the historical behavior is preserved —
+    /// hardcoded Continuity subfolders, no config file.
+    /// Idempotent — existing folders/files are left alone.
+    static func initializeEmptyVault(at url: URL,
+                                     template: Template? = nil) throws {
         let fm = FileManager.default
         try fm.createDirectory(at: url, withIntermediateDirectories: true)
-        for sub in ["people", "concepts", "institutions", "events", "works"] {
+        let subfolders = template?.subfolders
+            ?? ["people", "concepts", "institutions", "events", "works"]
+        for sub in subfolders {
             try fm.createDirectory(at: url.appendingPathComponent(sub),
                                    withIntermediateDirectories: true)
         }
         let readme = url.appendingPathComponent("README.md")
         if !fm.fileExists(atPath: readme.path) {
+            let modeLabel = template?.mode.displayName ?? "Continuity"
+            let templateLabel = template?.name ?? "default"
             let body = """
             # \(url.lastPathComponent)
 
-            Terra Cognita vault. Each `.md` file in a typed subfolder
-            (`people/`, `concepts/`, …) is a node; `[[wikilinks]]` in note
-            bodies become edges.
+            Terra Cognita vault — \(modeLabel) mode, \(templateLabel) template.
+            Each `.md` file in a typed subfolder is a node; `[[wikilinks]]`
+            in note bodies become edges.
             """
             try? body.write(to: readme, atomically: true, encoding: .utf8)
+        }
+        // Materialize `.terracognita/config.yaml` only when a template
+        // is provided. Untagged vaults stay backward-compatible: no
+        // config file means `VaultConfig.default` (Continuity) on load.
+        if let template {
+            let config = VaultConfig(
+                mode: template.mode,
+                types: template.types,
+                eras: template.eras.isEmpty
+                    ? VaultConfig.default.eras
+                    : template.eras,
+                extractors: VaultConfig.Extractors()
+            )
+            try? config.save(to: url)
         }
     }
 

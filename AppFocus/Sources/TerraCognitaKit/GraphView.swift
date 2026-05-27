@@ -53,6 +53,13 @@ public struct GraphView: View {
     /// Pulse channel for "user picked this layout from the menu".
     /// Flips non-nil → canvas applies → canvas resets to nil.
     @State private var layoutRequest: LayoutAlgorithm? = nil
+
+    /// Drives the template picker sheet that appears before the
+    /// folder picker on Create New Vault.
+    @State private var showingTemplatePicker: Bool = false
+    /// The template the user chose in the picker; carried across the
+    /// folder-picker round-trip and consumed by `handleFolderPick`.
+    @State private var pendingTemplate: Template? = nil
     #if os(iOS)
     @Environment(\.horizontalSizeClass) private var hSizeClass
     #endif
@@ -173,6 +180,7 @@ public struct GraphView: View {
                     .help("Forward (⌘])")
                 }
                 LensPicker(active: $activeLens, store: store)
+                modePill
                 Spacer()
                 Menu {
                     Button {
@@ -182,7 +190,7 @@ public struct GraphView: View {
                     }
                     .keyboardShortcut("o", modifiers: .command)
                     Button {
-                        presentFolderPicker(.createNewVault)
+                        showingTemplatePicker = true
                     } label: {
                         Label("Create New Vault…", systemImage: "folder.badge.plus")
                     }
@@ -516,6 +524,22 @@ public struct GraphView: View {
         .sheet(isPresented: $showingVaultSettings) {
             VaultSettingsSheet(store: store, isPresented: $showingVaultSettings)
         }
+        .sheet(isPresented: $showingTemplatePicker) {
+            TemplatePickerSheet(
+                isPresented: $showingTemplatePicker,
+                onPick: { template in
+                    pendingTemplate = template
+                    showingTemplatePicker = false
+                    // Defer the folder picker one tick so the sheet
+                    // dismiss animation isn't fighting the picker
+                    // present animation — same Menu/sheet race we
+                    // handled in `presentFolderPicker`.
+                    DispatchQueue.main.async {
+                        presentFolderPicker(.createNewVault)
+                    }
+                }
+            )
+        }
         .sheet(isPresented: $showingDuplicateReview) {
             DuplicateReviewSheet(
                 clusters: duplicateClusters,
@@ -595,6 +619,28 @@ public struct GraphView: View {
     ///     too much of the canvas
     ///   - iPad compact (split view / Slide Over) + iPhone: sheet
     ///     with detents
+    /// Compact pill in the toolbar showing the vault's current mode.
+    /// Pure display today — mode is set at vault creation via the
+    /// template picker; switching modes mid-vault is out of scope for
+    /// Phase 2.
+    @ViewBuilder
+    private var modePill: some View {
+        let mode = store.config.mode
+        HStack(spacing: 4) {
+            Image(systemName: mode.systemImage)
+                .imageScale(.small)
+            Text(mode.displayName)
+                .font(.caption)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 3)
+        .background(
+            Capsule().fill(Color.secondary.opacity(0.15))
+        )
+        .foregroundStyle(.secondary)
+        .help("This vault is in \(mode.displayName) mode.")
+    }
+
     private var useSheetForInspector: Bool {
         #if os(iOS)
         return hSizeClass == .compact
@@ -660,10 +706,16 @@ public struct GraphView: View {
             store.load(from: url)
         case .createNewVault:
             // The user picked a parent folder; materialize a child
-            // named "Terra Cognita Vault" inside it (or use the chosen
-            // folder directly if it's already empty).
+            // named after the chosen template inside it (or use the
+            // chosen folder directly if it's already empty). Template
+            // was selected earlier in `TemplatePickerSheet` and
+            // stashed on `pendingTemplate`.
             let didStart = url.startAccessingSecurityScopedResource()
             defer { if didStart { url.stopAccessingSecurityScopedResource() } }
+            let template = pendingTemplate
+            pendingTemplate = nil
+            let folderName = template.map { "\($0.name) Vault" }
+                ?? "Terra Cognita Vault"
             let target: URL = {
                 let fm = FileManager.default
                 if let items = try? fm.contentsOfDirectory(at: url,
@@ -672,9 +724,9 @@ public struct GraphView: View {
                    items.isEmpty {
                     return url
                 }
-                return url.appendingPathComponent("Terra Cognita Vault")
+                return url.appendingPathComponent(folderName)
             }()
-            store.createNewVault(at: target)
+            store.createNewVault(at: target, template: template)
         case .none:
             break
         }
