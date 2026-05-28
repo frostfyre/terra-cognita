@@ -51,6 +51,65 @@ Risk: medium-high — community detection on large graphs needs a background wor
 
 Surface canvas appearance controls the user has so far set via taste-driven hard-coded constants: edge line width, edge opacity, edge curve amount, label pill opacity, gradient endpoints, ambient puff frequency. A single settings sheet (gear icon in the toolbar) writes preferences to `UserDefaults` and the canvas reads from a `DisplaySettings` observable. Order this against Phase 3 work — likely natural to land after Lens expansion.
 
+## Phase 3.7 — Radial menus expansion *(in progress)*
+
+Toolbar real estate is saturated (10+ controls). The existing per-node
+`RadialMenu` already proves the spatial-context pattern works on
+canvas; extend it to a complete app-control surface and collapse the
+toolbar to just the genuinely-high-frequency items.
+
+**Foundation** — `RadialMenu.Action` gains an optional `children:
+[Action]?`. Wedges with children push the wheel to a sub-menu;
+center button becomes a back-arrow + parent label. Sub-menu state
+lives inside the menu view, so callers still pass a single flat
+top-level `[Action]` plus nested children.
+
+**Global radial** (long-press empty canvas — extends the current
+"create node here" affordance):
+
+- **Add** → Capture, New Node here, Import Recipe
+- **Layout** → Force / Circular / Radial / Hierarchical / Grid /
+  Cluster / Timeline / [✓ No-overlap]
+- **Lens** → All / [each type] / Systems (with count badges)
+- **View** → Toggle inspector, Toggle private, Fit to window,
+  **Hops** sub-radial (1 / 2 / 3 / 4)
+- Cancel (center)
+
+**Per-node radial** (long-press a node — extends the current wheel):
+
+- **Open / Inspect**
+- **AI** → Suggest connections, Find links, Suggest era, Summarize,
+  Rewrite
+- **Edit** → Type, Era, Body, Delete, Merge into…
+- **Center / Frame**
+- **Hops** → 1 / 2 / 3 / 4 (same dial as global View → Hops; touch
+  the current selection's highlight depth immediately)
+- Cancel (center)
+
+**Hop-distance dial**: promotes today's hard-coded
+`private let highlightDepth = 1` to per-vault state persisted in
+`LayoutPersistence`. Reachable from BOTH the per-node radial
+(immediate apply) and the global View radial (default for future
+selections). Different vault densities want different hops.
+
+**Toolbar after collapse** (4–5 items, all high-frequency):
+Back / Forward · Mode pill · Vault menu · Find · Inspector toggle.
+
+Wonky things to settle as we land each piece:
+
+- Toggle wedges (No-overlap, Privacy) need a visible checked state —
+  ✓ badge on the wedge fill.
+- Lens count badges ("Concepts (45)") — preserve from the existing
+  Menu in the radial layout.
+- Mode pill stays in the toolbar (pure-display, fits chrome).
+- Two entry points for Hops is intentional: per-node = "this one
+  expanded", global = "default for future selections".
+
+Risk: medium. The nesting refactor is mechanical; the gesture-
+arbitration for long-press on canvas-empty vs canvas-with-node
+already works today. Largest risk is animation polish between
+sub-menu transitions.
+
 ## Phase 4 — Pro Tier *(later)*
 
 Sync (iCloud first), cloud AI augmentation, large-graph background workers, team-shared Staging Layers. Don't start until 1–3 are tight and we have user signal.
