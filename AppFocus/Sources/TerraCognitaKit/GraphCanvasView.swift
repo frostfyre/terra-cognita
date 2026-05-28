@@ -1373,6 +1373,16 @@ struct GraphCanvasView: View {
         let visibleSet: Set<String>? = visibleNodeFilter.map { filter in
             Set(store.graph.nodes.values.filter(filter).map(\.id))
         }
+        // When a node is selected, dimmed nodes outside the N-hop
+        // highlight neighborhood are visually receding and should
+        // not be tappable — taps in their region should fall through
+        // to "empty canvas" so the user can deselect. The highlight
+        // set always includes the seed itself, so re-tapping the
+        // selection still works.
+        let highlightFilter: Set<String>? = {
+            guard selectedNodeID != nil else { return nil }
+            return highlightedNodeIDs()
+        }()
         // Walk strictly front-to-back. The first node whose visual
         // disk contains the tap wins — even if a backgrounded node
         // happens to sit closer to the tap point, the foreground
@@ -1383,6 +1393,7 @@ struct GraphCanvasView: View {
         for node in depthOrderedNodes.reversed() {
             let id = node.id
             if let visibleSet, !visibleSet.contains(id) { continue }
+            if let highlightFilter, !highlightFilter.contains(id) { continue }
             guard let p = effectivePosition(for: id) else { continue }
             let depth = node.depth(in: store.config)
             let pf = CGFloat(0.55 + 0.45 * depth)
