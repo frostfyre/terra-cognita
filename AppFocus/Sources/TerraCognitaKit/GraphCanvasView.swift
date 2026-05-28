@@ -1246,8 +1246,17 @@ struct GraphCanvasView: View {
 
     private func radiusFor(nodeID: String) -> CGFloat {
         let degree = adjacency[nodeID]?.count ?? 0
-        let scaled = minNodeRadius + degreeRadiusFactor * CGFloat(sqrt(Double(degree)))
-        return min(scaled, maxNodeRadius)
+        let base = minNodeRadius
+            + degreeRadiusFactor * CGFloat(sqrt(Double(degree)))
+        let clampedBase = min(base, maxNodeRadius)
+        // Soft zoom-coupling so the canvas reads as a spatial field
+        // rather than an abstract flat graph. sqrt() curve damps the
+        // extremes; the clamp keeps the smallest details legible when
+        // zoomed all the way out and prevents nodes from dominating
+        // the canvas when zoomed all the way in. Hit-testing reuses
+        // this value, so taps continue to land where the eye expects.
+        let zoomFactor = min(1.9, max(0.55, sqrt(scale)))
+        return clampedBase * zoomFactor
     }
 
 
