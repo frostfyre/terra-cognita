@@ -11,13 +11,21 @@ import SwiftUI
 struct LoadingScreen: View {
     let caption: String
 
+    /// Shared deep-midnight value used by the LoadingScreen gradient
+    /// top stop and `canvasStack`'s root background. Painting the
+    /// same color underneath the whole view tree guarantees no
+    /// white-substrate flash between the platform launch surface
+    /// (iOS LaunchBackground colorset on iOS, NSWindow default on
+    /// macOS) and SwiftUI's first body render. Match this in
+    /// `Apps/TerraCognita-iOS/Assets.xcassets/LaunchBackground.colorset`
+    /// so iOS's launch screen color is identical too.
+    static let substrate = Color(red: 0.04, green: 0.06, blue: 0.16)
+    static let substrateBottom = Color(red: 0.09, green: 0.12, blue: 0.30)
+
     var body: some View {
         ZStack {
             LinearGradient(
-                colors: [
-                    Color(red: 0.04, green: 0.06, blue: 0.16),
-                    Color(red: 0.09, green: 0.12, blue: 0.30),
-                ],
+                colors: [Self.substrate, Self.substrateBottom],
                 startPoint: .top,
                 endPoint: .bottom
             )

@@ -17,6 +17,16 @@ extension GraphView {
     @ViewBuilder
     var canvasStack: some View {
         ZStack(alignment: .top) {
+            // Root substrate. Without this, the very first SwiftUI
+            // frame on macOS shows the NSWindow's default light
+            // background, and on iOS there's a perceptible white
+            // gap between the launch storyboard ending and the
+            // SwiftUI scene rendering. Painting the same deep
+            // midnight that `LoadingScreen` uses as its gradient
+            // top means the substrate is dark from frame zero.
+            LoadingScreen.substrate
+                .ignoresSafeArea()
+
             GraphCanvasView(
                 store: store,
                 selectedNodeID: $selectedNodeID,
