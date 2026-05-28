@@ -61,19 +61,22 @@ struct RadialMenu: View {
     private let satelliteSize: CGFloat = 56
 
     /// Breadcrumb stack of menu levels we've descended into. Each
-    /// entry is `(parentLabel, parentActions)` — the parent label
-    /// renders in the center button while we're inside, and the
-    /// parent's actions are what we restore on back. The top of the
-    /// stack is the *current* visible level via `currentActions`.
+    /// entry stores the **children** of the wedge we just tapped (so
+    /// they render here) plus that wedge's label (so the center
+    /// button can show a back-arrow + name). Storing children
+    /// directly on the crumb supports arbitrarily deep nesting —
+    /// popping just removes the top crumb and `visibleActions`
+    /// falls back to the next level (or root `actions`).
     @State private var crumbs: [Crumb] = []
 
-    private struct Crumb {
+    private struct Crumb: Equatable {
         let label: String
-        let parentActions: [Action]
-    }
+        let children: [Action]
 
-    private var currentActions: [Action] {
-        crumbs.last?.parentActions ?? actions
+        static func == (lhs: Crumb, rhs: Crumb) -> Bool {
+            lhs.label == rhs.label &&
+            lhs.children.map(\.id) == rhs.children.map(\.id)
+        }
     }
 
     private var atRoot: Bool { crumbs.isEmpty }
@@ -104,24 +107,11 @@ struct RadialMenu: View {
     }
 
     /// The list of actions to display right now. When inside a sub-
-    /// menu, this is the child list of the last-tapped parent; at
+    /// menu, this is the child list stored on the top crumb; at
     /// root, it's the top-level `actions`.
     private var visibleActions: [Action] {
-        if let last = crumbs.last,
-           // The crumb stores the PARENT's full action list; we need
-           // the CHILDREN of the wedge we descended through. To find
-           // those we'd need a separate ref. Simpler: store the
-           // children directly on the crumb. See Crumb refactor below.
-           // For now, derive from the most-recently-pushed children.
-           let lastChildren = lastChildren {
-            return lastChildren
-        }
-        return actions
+        crumbs.last?.children ?? actions
     }
-
-    /// Tracks the children of the currently-shown sub-menu. Mirrors
-    /// `crumbs` 1:1.
-    @State private var lastChildren: [Action]?
 
     // MARK: - Center button
 
@@ -198,26 +188,12 @@ struct RadialMenu: View {
     // MARK: - Navigation
 
     private func pushLevel(label: String, children: [Action]) {
-        crumbs.append(Crumb(label: label, parentActions: currentActions))
-        lastChildren = children
+        crumbs.append(Crumb(label: label, children: children))
     }
 
     private func popLevel() {
         guard !crumbs.isEmpty else { return }
         crumbs.removeLast()
-        // Restore the previous level. If we just popped to root,
-        // `lastChildren` clears.
-        if crumbs.isEmpty {
-            lastChildren = nil
-        } else {
-            // We can't reconstruct the parent's children easily from
-            // here — instead, the breadcrumb-driven nav only goes one
-            // level deep in practice. For deeper nests we'd carry
-            // each level's children alongside its label.
-            // Phase 3.7 first cut: keep depth ≤ 2; revisit when we
-            // need depth 3+.
-            lastChildren = nil
-        }
     }
 
     /// Lay actions evenly around the wheel, with the first action at

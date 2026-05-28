@@ -112,6 +112,17 @@ public struct GraphView: View {
     /// while letting the radial be the entry point.
     @State private var pendingInspectorIntent: InspectorIntent? = nil
 
+    /// Global (canvas-level) radial state — set when the user
+    /// long-presses empty canvas. The world point lets "New Node
+    /// here" spawn at the press point; the screen point anchors
+    /// the wheel.
+    @State private var globalRadial: GlobalRadialTarget?
+
+    private struct GlobalRadialTarget: Equatable {
+        let world: CGPoint
+        let screen: CGPoint
+    }
+
     /// Duplicate clusters surfaced by the vault-load review banner.
     @State private var duplicateClusters: [[String]] = []
     /// Set to true once the user has dismissed the banner this session
@@ -543,10 +554,9 @@ public struct GraphView: View {
                 selectedNodeID: $selectedNodeID,
                 pendingNewNode: $pendingNewNode,
                 visibleNodeFilter: visibleFilter,
-                onLongPressEmptyWorld: { worldPoint in
-                    composerSpawnWorld = worldPoint
-                    composerSeedID = selectedNodeID
-                    showingComposer = true
+                onLongPressEmptyWorld: { worldPoint, screenPoint in
+                    globalRadial = GlobalRadialTarget(
+                        world: worldPoint, screen: screenPoint)
                 },
                 onLongPressNode: { nodeID, screenPoint in
                     radialTarget = RadialTarget(nodeID: nodeID, point: screenPoint)
@@ -565,6 +575,15 @@ public struct GraphView: View {
                     center: target.point,
                     actions: radialActions(for: node),
                     onCancel: { radialTarget = nil }
+                )
+                .transition(.opacity)
+            }
+
+            if let target = globalRadial {
+                RadialMenu(
+                    center: target.screen,
+                    actions: globalRadialActions(at: target),
+                    onCancel: { globalRadial = nil }
                 )
                 .transition(.opacity)
             }
@@ -937,7 +956,7 @@ public struct GraphView: View {
             label: "Hops",
             systemImage: "dot.radiowaves.left.and.right",
             tint: .pink,
-            children: hopsSubActions()
+            children: hopsSubActions(onPick: { radialTarget = nil })
         ))
 
         return actions
@@ -1045,8 +1064,11 @@ public struct GraphView: View {
     }
 
     /// Four hop-distance wedges. The active value shows a ✓ badge
-    /// so the user can read the current state at a glance.
-    private func hopsSubActions() -> [RadialMenu.Action] {
+    /// so the user can read the current state at a glance. The
+    /// `onPick` callback runs *after* the depth is updated, so the
+    /// caller can dismiss whichever radial it lives inside (per-node
+    /// vs global).
+    private func hopsSubActions(onPick: @escaping () -> Void) -> [RadialMenu.Action] {
         (1...4).map { depth in
             RadialMenu.Action(
                 id: "hops-\(depth)",
@@ -1056,9 +1078,181 @@ public struct GraphView: View {
                 isChecked: highlightDepth == depth
             ) {
                 highlightDepth = depth
-                radialTarget = nil
+                onPick()
             }
         }
+    }
+
+    // MARK: - Global radial (long-press empty canvas)
+
+    /// Top-level wedges for the canvas-level radial.
+    ///   Add ▸  · Layout ▸ · Lens ▸ · View ▸
+    /// All terminal actions clear `globalRadial` to dismiss the wheel.
+    private func globalRadialActions(at target: GlobalRadialTarget) -> [RadialMenu.Action] {
+        [
+            RadialMenu.Action(
+                id: "g-add",
+                label: "Add",
+                systemImage: "plus.circle",
+                tint: .green,
+                children: addSubActions(at: target)
+            ),
+            RadialMenu.Action(
+                id: "g-layout",
+                label: "Layout",
+                systemImage: "point.3.connected.trianglepath.dotted",
+                tint: .blue,
+                children: layoutSubActions()
+            ),
+            RadialMenu.Action(
+                id: "g-lens",
+                label: "Lens",
+                systemImage: "camera.aperture",
+                tint: .indigo,
+                children: lensSubActions()
+            ),
+            RadialMenu.Action(
+                id: "g-view",
+                label: "View",
+                systemImage: "rectangle.on.rectangle",
+                tint: .teal,
+                children: viewSubActions()
+            ),
+        ]
+    }
+
+    private func addSubActions(at target: GlobalRadialTarget) -> [RadialMenu.Action] {
+        [
+            RadialMenu.Action(
+                id: "add-capture",
+                label: "Capture",
+                systemImage: "text.bubble",
+                tint: .green
+            ) {
+                globalRadial = nil
+                guard store.canIngest else { return }
+                showingCapture = true
+            },
+            RadialMenu.Action(
+                id: "add-node",
+                label: "New node",
+                systemImage: "circle.dashed.inset.filled",
+                tint: .green
+            ) {
+                globalRadial = nil
+                guard store.canIngest else { return }
+                composerSpawnWorld = target.world
+                composerSeedID = selectedNodeID
+                showingComposer = true
+            },
+            RadialMenu.Action(
+                id: "add-recipe",
+                label: "Recipe",
+                systemImage: "wand.and.stars",
+                tint: .green
+            ) {
+                globalRadial = nil
+                showingImportRecipe = true
+            },
+        ]
+    }
+
+    /// One wedge per `LayoutAlgorithm`, plus a No-overlap toggle.
+    /// Implemented algorithms commit immediately; unimplemented ones
+    /// surface but are non-committing (no-op tap).
+    private func layoutSubActions() -> [RadialMenu.Action] {
+        var actions: [RadialMenu.Action] = LayoutAlgorithm.allCases.map { algo in
+            RadialMenu.Action(
+                id: "layout-\(algo.rawValue)",
+                label: algo.displayName,
+                systemImage: algo.systemImage,
+                tint: .blue,
+                isChecked: layoutAlgorithm == algo
+            ) {
+                if algo.isImplemented {
+                    layoutRequest = algo
+                }
+                globalRadial = nil
+            }
+        }
+        actions.append(RadialMenu.Action(
+            id: "layout-no-overlap",
+            label: "No overlap",
+            systemImage: "rectangle.dashed",
+            tint: .blue,
+            isChecked: noOverlap
+        ) {
+            noOverlap.toggle()
+            globalRadial = nil
+        })
+        return actions
+    }
+
+    /// Lens wedges, mirroring the toolbar's `LensPicker` with count
+    /// badges baked into the label so the user keeps the same
+    /// surface-area at a glance.
+    private func lensSubActions() -> [RadialMenu.Action] {
+        Lens.all(for: store.config).enumerated().map { i, lens in
+            let count: Int? = {
+                guard let filter = lens.makeTypeFilter() else { return nil }
+                return store.graph.nodes.values.filter(filter).count
+            }()
+            let labelText = count.map { "\(lens.label) (\($0))" } ?? lens.label
+            return RadialMenu.Action(
+                id: "lens-\(i)",
+                label: labelText,
+                systemImage: lens.icon,
+                tint: .indigo,
+                isChecked: activeLens == lens
+            ) {
+                activeLens = lens
+                globalRadial = nil
+            }
+        }
+    }
+
+    /// View toggles + the global hop dial (mirror of the per-node
+    /// Hops submenu so the user can set their default highlight
+    /// radius without selecting a node first).
+    private func viewSubActions() -> [RadialMenu.Action] {
+        [
+            RadialMenu.Action(
+                id: "view-inspector",
+                label: "Inspector",
+                systemImage: inspectorVisible ? "sidebar.right" : "sidebar.squares.right",
+                tint: .teal,
+                isChecked: inspectorVisible
+            ) {
+                inspectorVisible.toggle()
+                globalRadial = nil
+            },
+            RadialMenu.Action(
+                id: "view-private",
+                label: "Private",
+                systemImage: showPrivate ? "eye.fill" : "eye.slash",
+                tint: .teal,
+                isChecked: showPrivate
+            ) {
+                showPrivate.toggle()
+                globalRadial = nil
+            },
+            RadialMenu.Action(
+                id: "view-fit",
+                label: "Fit",
+                systemImage: "viewfinder",
+                tint: .teal
+            ) {
+                frameAllPulse &+= 1
+                globalRadial = nil
+            },
+            RadialMenu.Action(
+                id: "view-hops",
+                label: "Hops",
+                systemImage: "dot.radiowaves.left.and.right",
+                tint: .pink,
+                children: hopsSubActions(onPick: { globalRadial = nil })
+            ),
+        ]
     }
 
     /// Composed visible-node filter:

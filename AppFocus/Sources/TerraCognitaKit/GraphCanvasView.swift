@@ -76,9 +76,10 @@ struct GraphCanvasView: View {
     /// Edges are visible only when both endpoints pass the filter.
     var visibleNodeFilter: ((Node) -> Bool)? = nil
     /// Fires when the user long-presses *empty* canvas (no node under
-    /// the press point). The argument is the press point in world
-    /// coordinates so the host can spawn a new node there.
-    var onLongPressEmptyWorld: ((CGPoint) -> Void)?
+    /// the press point). Carries both world coordinates (so the host
+    /// can spawn content at the press point) and screen coordinates
+    /// (so the host can anchor a radial menu there).
+    var onLongPressEmptyWorld: ((_ worldPoint: CGPoint, _ screenPoint: CGPoint) -> Void)?
     /// Fires when the user long-presses *on a node*. The host opens a
     /// radial menu anchored to the press point.
     var onLongPressNode: ((_ nodeID: String, _ screenPoint: CGPoint) -> Void)?
@@ -648,11 +649,11 @@ struct GraphCanvasView: View {
                             onLongPressNode?(nodeID, drag.startLocation)
                             return
                         }
-                        // Empty canvas → spatial new-node creation.
+                        // Empty canvas → host opens a global radial.
                         let world = worldPoint(at: drag.startLocation,
                                                size: geo.size)
                         Haptics.tap(.soft)
-                        onLongPressEmptyWorld?(world)
+                        onLongPressEmptyWorld?(world, drag.startLocation)
                     }
             )
             .contextMenu { selectedNodeMenu() }
