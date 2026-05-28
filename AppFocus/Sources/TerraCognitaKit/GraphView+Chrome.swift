@@ -211,11 +211,23 @@ extension GraphView {
         VStack {
             Spacer()
             HStack {
-                Text(store.loadStatus)
-                    .font(.caption)
-                    .padding(6)
-                    .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 6))
-                    .padding(8)
+                HStack(spacing: 6) {
+                    Text(store.loadStatus)
+                        .font(.caption)
+                    Button {
+                        store.loadStatus = ""
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.borderless)
+                    .help("Dismiss")
+                }
+                .padding(6)
+                .background(.thinMaterial,
+                            in: RoundedRectangle(cornerRadius: 6))
+                .padding(8)
                 Spacer()
             }
         }
