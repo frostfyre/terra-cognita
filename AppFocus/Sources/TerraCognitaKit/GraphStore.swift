@@ -741,6 +741,76 @@ public final class GraphStore: ObservableObject {
         }
     }
 
+    /// Create a new edge from `sourceID` → `targetID`. Appends a
+    /// `[[Target]]` wikilink (with optional `::relationshipType`) to
+    /// the source note's body and wires the in-memory edge so the
+    /// canvas reflects the change without a re-scan. Used by the
+    /// canvas's spatial "Connect" gesture; the inspector's
+    /// relationship-type Menu still flows through `setEdgeRelationship`
+    /// for existing edges.
+    ///
+    /// Returns `nil` on success, or a user-readable error string —
+    /// duplicate edges (same source, target, and relationship type
+    /// already present) are refused with a "Already linked" message
+    /// so the caller can surface a brief shake instead of silently
+    /// rewriting the file.
+    @discardableResult
+    func createEdge(from sourceID: String,
+                    to targetID: String,
+                    relationshipType: String? = nil) -> String? {
+        guard let atlasURL = writableAtlasURL else {
+            return "Open or create a writable atlas first."
+        }
+        guard sourceID != targetID else {
+            return "A node can't link to itself."
+        }
+        guard let sourceNode = graph.nodes[sourceID],
+              let pathString = sourceNode.filePath else {
+            return "Source note has no backing file."
+        }
+        guard let targetNode = graph.nodes[targetID] else {
+            return "Target node no longer exists."
+        }
+        let trimmed = relationshipType?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let rel = (trimmed?.isEmpty == true) ? nil : trimmed
+        // Dupe detection: any edge with the same source+target+rel
+        // (case-insensitive on the relationship) is treated as a
+        // collision so the user gets explicit feedback instead of a
+        // silent no-op rewrite of the body.
+        let dupExists = graph.edges.contains { edge in
+            edge.sourceID == sourceID
+                && edge.targetID == targetID
+                && (edge.relationshipType?.lowercased())
+                    == rel?.lowercased()
+        }
+        if dupExists {
+            return "Already linked to \(targetNode.label)."
+        }
+        let fileURL = URL(fileURLWithPath: pathString)
+        return atlasURL.withSecurityScope {
+            let editor = makeEditor(atlasURL)
+            do {
+                let updated = try editor.appendLink(
+                    in: fileURL,
+                    target: targetNode.label,
+                    relationshipType: rel
+                )
+                var node = sourceNode
+                node.markdownContent = updated
+                graph.nodes[sourceID] = node
+                wireEdge(from: sourceID,
+                         to: targetNode.label,
+                         relationshipType: rel)
+                return nil
+            } catch let err as AtlasEditor.EditError {
+                return err.errorDescription
+            } catch {
+                return error.localizedDescription
+            }
+        }
+    }
+
     /// Delete an edge by removing its declaration line from the
     /// source note. Same restrictions as `setEdgeRelationship` —
     /// only bare edge lines are editable.

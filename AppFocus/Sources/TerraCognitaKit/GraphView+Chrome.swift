@@ -44,6 +44,17 @@ extension GraphView {
                 noOverlap: $noOverlap,
                 layoutRequest: $layoutRequest,
                 highlightDepth: $highlightDepth,
+                connectingFromID: $connectingFromID,
+                onConnectDropEmpty: { sourceID, worldPoint in
+                    // Empty-canvas drop during Connect mode opens the
+                    // unified Add Node sheet seeded with a wikilink to
+                    // the source, spawning at the drop point. Connect
+                    // mode is cleared by the canvas before the
+                    // callback so the sheet doesn't compete for taps.
+                    composerSpawnWorld = worldPoint
+                    composerSeedID = sourceID
+                    activeSheet = .addNode
+                },
                 bridgeNodeIDs: bridgeNodeIDs
             )
 
@@ -93,7 +104,22 @@ extension GraphView {
                     .zIndex(1000)
             }
 
-            if selectedNodeID != nil {
+            if let sourceID = connectingFromID,
+               let source = store.graph.nodes[sourceID] {
+                connectModeBanner(sourceLabel: source.label)
+            }
+
+            // Escape: cancel connect mode if armed, otherwise clear
+            // the selection. Two separate hidden buttons so SwiftUI
+            // can bind the shortcut to whichever is mounted —
+            // connect-mode takes priority because Escape's primary
+            // meaning while it's armed is "back out of this gesture."
+            if connectingFromID != nil {
+                Button("") { connectingFromID = nil }
+                    .keyboardShortcut(.escape, modifiers: [])
+                    .opacity(0)
+                    .frame(width: 0, height: 0)
+            } else if selectedNodeID != nil {
                 Button("") { selectedNodeID = nil }
                     .keyboardShortcut(.escape, modifiers: [])
                     .opacity(0)
@@ -135,6 +161,49 @@ extension GraphView {
             .padding(.horizontal, 12)
             Spacer()
         }
+    }
+
+    /// Top-of-canvas banner shown while Connect mode is armed.
+    /// Tells the user which node they're connecting from and how
+    /// to cancel. Sits just under `topBar` so it's discoverable
+    /// without obscuring the canvas content underneath.
+    @ViewBuilder
+    func connectModeBanner(sourceLabel: String) -> some View {
+        VStack {
+            Spacer().frame(height: 48)
+            HStack(spacing: 8) {
+                Image(systemName: "point.topleft.down.to.point.bottomright.curvepath")
+                    .foregroundStyle(.yellow)
+                Text("Connect from")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Text(sourceLabel)
+                    .font(.caption.weight(.semibold))
+                Text("· tap a node, or empty canvas for a new one")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Button {
+                    connectingFromID = nil
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.caption)
+                }
+                .buttonStyle(.borderless)
+                .help("Cancel connect")
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(.thinMaterial,
+                        in: RoundedRectangle(cornerRadius: 8))
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(.yellow.opacity(0.4), lineWidth: 1)
+            )
+            .padding(.horizontal, 12)
+            Spacer()
+        }
+        .transition(.move(edge: .top).combined(with: .opacity))
     }
 
     @ViewBuilder

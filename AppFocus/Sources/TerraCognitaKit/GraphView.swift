@@ -61,6 +61,15 @@ public struct GraphView: View {
     /// not just the one that follows a fresh load.
     @State var awaitingLayoutSettle: Bool = false
 
+    /// Source node id while the canvas is in spatial "Connect" mode.
+    /// Set by the per-node radial's Connect wedge (and by shift+drag on
+    /// macOS); the next tap on a target node creates an edge via
+    /// `store.createEdge`. Tapping empty canvas during connect mode
+    /// opens `AddNodeSheet` seeded with this id so "drag out and drop"
+    /// makes a fresh, already-wired node. Escape / second tap on the
+    /// source cancels.
+    @State var connectingFromID: String?
+
     /// Currently-applied layout. Canvas writes (on restore / settle /
     /// user pick); the toolbar Layout menu reads to show a checkmark
     /// next to the active row.

@@ -27,6 +27,24 @@ extension GraphView {
             radialTarget = nil
         })
 
+        if store.canIngest {
+            actions.append(RadialMenu.Action(
+                id: "connect",
+                label: "Connect",
+                systemImage: "point.topleft.down.to.point.bottomright.curvepath",
+                tint: .yellow
+            ) {
+                // Arm spatial Connect mode. The canvas's tap handler
+                // takes over from here — next tap on a node creates an
+                // edge, next tap on empty canvas opens AddNodeSheet
+                // seeded from this source. Escape / second tap on the
+                // source cancels.
+                connectingFromID = node.id
+                selectedNodeID = node.id
+                radialTarget = nil
+            })
+        }
+
         actions.append(RadialMenu.Action(
             id: "ai",
             label: "AI",

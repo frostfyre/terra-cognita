@@ -118,6 +118,19 @@ struct GraphCanvasView: View {
     /// Per-atlas — persisted in `LayoutPersistence` and driven from the
     /// radial Hops dial.
     @Binding var highlightDepth: Int
+    /// Source node id while a spatial "Connect" gesture is in flight.
+    /// When non-nil:
+    ///   • taps on a target node create an edge (`store.createEdge`)
+    ///   • taps on empty canvas fire `onConnectDropEmpty` so the host
+    ///     can spawn a new node seeded with a link to this source
+    ///   • a rubber band is drawn from this source to the hover target
+    /// Cleared after any commit or cancel.
+    @Binding var connectingFromID: String?
+    /// Fired when the user taps empty canvas while in Connect mode —
+    /// the host (`GraphView`) opens `AddNodeSheet` seeded with a link
+    /// to the source. Canvas clears `connectingFromID` before
+    /// invoking so the sheet doesn't fight for taps.
+    var onConnectDropEmpty: ((_ sourceID: String, _ worldPoint: CGPoint) -> Void)?
     /// Node ids that should be highlighted as topology bridges
     /// (Systems lens). Non-empty only when the Systems lens is
     /// active; rendered as a dashed gold ring outside the node fill.
@@ -709,6 +722,19 @@ struct GraphCanvasView: View {
                     if hoveredNodeID != nil { hoveredNodeID = nil }
                 }
             }
+            .overlay(alignment: .topLeading) {
+                // Connect-mode rubber band — drawn when the user has
+                // armed the "Connect" radial wedge (or shift-dragged
+                // out of a node on macOS). The line tracks from the
+                // source node to the currently-hovered candidate so
+                // the user gets a visible target preview. On iOS
+                // without a hover, the rubber band only appears once
+                // the user lands on a target via tap (effectively
+                // moded "next tap"); on macOS / iPad with pointer
+                // it follows the cursor in real time.
+                connectRubberBand(in: geo.size)
+                    .allowsHitTesting(false)
+            }
             .onAppear {
                 canvasSize = geo.size
                 seedAtmosphereSpecks()
@@ -1228,6 +1254,12 @@ struct GraphCanvasView: View {
     // MARK: - Hit testing
 
     private func handleTap(at point: CGPoint, size: CGSize) {
+        // Connect mode intercepts taps before selection.
+        if connectingFromID != nil {
+            commitConnect(at: point, size: size)
+            return
+        }
+
         if let hit = nodeAt(screenPoint: point, size: size) {
             selectedNodeID = hit
             return
@@ -1245,6 +1277,101 @@ struct GraphCanvasView: View {
         selectedNodeID = nil
         // Pulse-start is driven by `.onChange(of: selectedNodeID)` so it
         // fires for selections coming from the inspector too.
+    }
+
+    /// Commit a Connect-mode action at `endPoint` — tap target,
+    /// shift+drag release, etc. all route through this single
+    /// helper.
+    ///
+    ///   • Hits a node and that node is the source → cancel.
+    ///   • Hits any other node → `store.createEdge`, surfacing
+    ///     the duplicate / error message via `loadStatus` but
+    ///     leaving connect mode armed so the user can re-target.
+    ///   • Hits empty canvas → invoke `onConnectDropEmpty` so the
+    ///     host opens `AddNodeSheet` seeded with this source.
+    private func commitConnect(at endPoint: CGPoint, size: CGSize) {
+        guard let sourceID = connectingFromID else { return }
+        if let target = nodeAt(screenPoint: endPoint, size: size) {
+            if target == sourceID {
+                connectingFromID = nil
+                return
+            }
+            if let err = store.createEdge(from: sourceID, to: target) {
+                store.loadStatus = err
+                Haptics.tap(.medium)
+                // Keep connect mode armed so the user can pick a
+                // different target without re-entering the gesture.
+                return
+            }
+            if let t = store.graph.nodes[target] {
+                store.loadStatus = "Linked → \(t.label)"
+            }
+            Haptics.tap(.medium)
+            connectingFromID = nil
+            return
+        }
+        let world = worldPoint(at: endPoint, size: size)
+        let cb = onConnectDropEmpty
+        let sid = sourceID
+        connectingFromID = nil
+        cb?(sid, world)
+    }
+
+    /// Connect-mode rubber band overlay. Draws a gold line from the
+    /// armed source to the currently-hovered candidate target — and
+    /// a source-side glow ring so the user can see which node is
+    /// armed even before they hover a target. Returns an empty view
+    /// when not in connect mode or when positions aren't available.
+    @ViewBuilder
+    private func connectRubberBand(in size: CGSize) -> some View {
+        if let sourceID = connectingFromID,
+           let srcScreen = screenPosition(for: sourceID, size: size) {
+            ZStack(alignment: .topLeading) {
+                // Source-side halo so the user always sees the armed
+                // node even with no hover target yet.
+                Circle()
+                    .stroke(selectionGold.opacity(0.55), lineWidth: 2)
+                    .frame(width: 38, height: 38)
+                    .position(srcScreen)
+
+                if let targetID = hoveredNodeID,
+                   targetID != sourceID,
+                   let tgtScreen = screenPosition(for: targetID, size: size) {
+                    Path { path in
+                        path.move(to: srcScreen)
+                        path.addLine(to: tgtScreen)
+                    }
+                    .stroke(selectionGold.opacity(0.75),
+                            style: StrokeStyle(lineWidth: 2.5,
+                                               lineCap: .round,
+                                               dash: [6, 4]))
+                    // Target-side ring on the hovered candidate
+                    // matches the source halo so the relationship
+                    // reads as A↔B before the user commits.
+                    Circle()
+                        .stroke(selectionGold.opacity(0.85), lineWidth: 2.5)
+                        .frame(width: 42, height: 42)
+                        .position(tgtScreen)
+                }
+            }
+            .animation(.easeOut(duration: 0.15), value: hoveredNodeID)
+        }
+    }
+
+    /// Screen-space center of `nodeID` for overlay drawing (Connect-
+    /// mode rubber band, future affordances). Mirrors the projection
+    /// the Canvas draw pass uses, sans the per-frame drift wobble.
+    /// Returns `nil` when the node is hidden by a lens filter or
+    /// otherwise lacks a layout entry.
+    func screenPosition(for nodeID: String, size: CGSize) -> CGPoint? {
+        guard let p = effectivePosition(for: nodeID),
+              let node = store.graph.nodes[nodeID] else { return nil }
+        let centre = CGPoint(x: size.width / 2, y: size.height / 2)
+        let depth = node.depth(in: store.config)
+        let pf = CGFloat(0.55 + 0.45 * depth)
+        let sx = centre.x + p.x * scale + offset.width * pf
+        let sy = centre.y + p.y * scale + offset.height * pf
+        return CGPoint(x: sx, y: sy)
     }
 
     private func isTapInsideSelectionHalo(at screenPoint: CGPoint,
@@ -1422,8 +1549,23 @@ struct GraphCanvasView: View {
         // crosses 10pt almost instantly; a held finger doesn't.
         DragGesture(minimumDistance: 10, coordinateSpace: .local)
             .onChanged { value in
+                // While Connect mode is armed (radial-initiated or
+                // shift+drag in this same gesture), suppress node
+                // drag / pan — the rubber-band overlay handles the
+                // visual, and the commit fires on .onEnded below.
+                if connectingFromID != nil { return }
                 if draggingNodeID == nil && panAnchor == nil {
                     if let hit = nodeAt(screenPoint: value.startLocation, size: size) {
+                        #if os(macOS)
+                        // Shift+drag from a node arms Connect mode
+                        // and skips the node drag — the macOS power-
+                        // user accelerator for the spatial wire-up.
+                        if NSEvent.modifierFlags.contains(.shift) {
+                            connectingFromID = hit
+                            selectedNodeID = hit
+                            return
+                        }
+                        #endif
                         // Started on a node → drag that node.
                         draggingNodeID = hit
                         selectedNodeID = hit
@@ -1452,7 +1594,15 @@ struct GraphCanvasView: View {
                     )
                 }
             }
-            .onEnded { _ in
+            .onEnded { value in
+                // Connect mode commits at drop point — covers both
+                // the shift+drag path (started this gesture) and the
+                // radial-armed path (where the user happened to drag
+                // rather than tap).
+                if connectingFromID != nil {
+                    commitConnect(at: value.location, size: size)
+                    return
+                }
                 if draggingNodeID != nil {
                     draggingNodeID = nil
                     nodeDragStartWorld = nil
