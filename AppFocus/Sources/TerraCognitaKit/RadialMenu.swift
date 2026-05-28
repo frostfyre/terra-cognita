@@ -69,6 +69,14 @@ struct RadialMenu: View {
     /// falls back to the next level (or root `actions`).
     @State private var crumbs: [Crumb] = []
 
+    /// Drives the open-bloom animation: satellites start clustered
+    /// at `center` with zero radius, then spring outward to their
+    /// final positions on `onAppear`. Also scales the per-satellite
+    /// visual size + fades them in. Flipped to false during dismiss
+    /// (handled by the parent's transition) so the view collapses
+    /// before unmount.
+    @State private var bloomed: Bool = false
+
     private struct Crumb: Equatable {
         let label: String
         let children: [Action]
@@ -82,26 +90,45 @@ struct RadialMenu: View {
     private var atRoot: Bool { crumbs.isEmpty }
 
     var body: some View {
+        // Bloom factor: 0 when closed (satellites stacked at center,
+        // shrunk + invisible), 1 when open. Drives radius, scale, and
+        // opacity for both the center button and each satellite.
+        let bloom: CGFloat = bloomed ? 1.0 : 0.0
         ZStack {
-            // Full-screen dimmer + tap-to-cancel layer.
-            Color.black.opacity(0.30)
+            // Full-screen dimmer + tap-to-cancel layer. Fades in with
+            // the wheel so the screen doesn't darken before the
+            // satellites have visibly appeared.
+            Color.black.opacity(0.30 * Double(bloom))
                 .contentShape(Rectangle())
                 .onTapGesture { onCancel() }
 
             // Center button — cancel at root, back-arrow inside a sub-menu.
             centerButton
+                .scaleEffect(0.5 + 0.5 * bloom)
+                .opacity(Double(bloom))
 
-            // Satellite buttons for the current menu level.
+            // Satellite buttons for the current menu level. Each one
+            // starts stacked at `center` (effective radius = 0) and
+            // springs outward to its final ring position.
             ForEach(Array(visibleActions.enumerated()), id: \.element.id) { i, action in
                 let angle = angleFor(index: i, count: visibleActions.count)
-                let dx = cos(angle) * radius
-                let dy = sin(angle) * radius
+                let dx = cos(angle) * radius * bloom
+                let dy = sin(angle) * radius * bloom
                 satellite(action)
+                    .scaleEffect(0.4 + 0.6 * bloom)
+                    .opacity(Double(bloom))
                     .position(x: center.x + dx, y: center.y + dy)
                     .transition(.scale(scale: 0.5).combined(with: .opacity))
             }
         }
         .ignoresSafeArea()
+        .onAppear {
+            // Spring with a touch of overshoot so the wheel feels
+            // like it pops out of the user's finger.
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.65)) {
+                bloomed = true
+            }
+        }
         .animation(.spring(response: 0.32, dampingFraction: 0.78),
                    value: crumbs.count)
     }
@@ -122,7 +149,11 @@ struct RadialMenu: View {
                 .fill(.purple.opacity(0.55))
                 .frame(width: 22, height: 22)
                 .position(center)
-                .onTapGesture { onCancel() }
+                .onTapGesture {
+                    // `onCancel` is already wrapped in withAnimation
+                    // by the parent for the radialTarget = nil path.
+                    onCancel()
+                }
         } else {
             VStack(spacing: 2) {
                 Image(systemName: "chevron.left")
@@ -149,7 +180,13 @@ struct RadialMenu: View {
             if action.hasChildren, let children = action.children {
                 pushLevel(label: action.label, children: children)
             } else {
-                action.onCommit()
+                // Wrap the terminal commit in an animation block so
+                // the parent's `radialTarget = nil` (typically set
+                // inside `onCommit`) triggers the wheel's collapse
+                // transition.
+                withAnimation(.easeOut(duration: 0.18)) {
+                    action.onCommit()
+                }
             }
         } label: {
             ZStack(alignment: .topTrailing) {

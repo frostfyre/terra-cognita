@@ -37,23 +37,30 @@ extension GraphView {
                 bridgeNodeIDs: bridgeNodeIDs
             )
 
+            // Both radials fade + shrink back toward their anchor on
+            // dismiss. The bloom-out is internal to `RadialMenu`;
+            // these wrapper transitions handle the unmount step
+            // since the parent removes the view as soon as the
+            // target binding goes nil.
             if let target = radialTarget,
                let node = store.graph.nodes[target.nodeID] {
                 RadialMenu(
                     center: target.point,
                     actions: radialActions(for: node),
-                    onCancel: { radialTarget = nil }
+                    onCancel: { withAnimation(.easeOut(duration: 0.18)) { radialTarget = nil } }
                 )
-                .transition(.opacity)
+                .transition(.scale(scale: 0.55, anchor: .center)
+                    .combined(with: .opacity))
             }
 
             if let target = globalRadial {
                 RadialMenu(
                     center: target.screen,
                     actions: globalRadialActions(at: target),
-                    onCancel: { globalRadial = nil }
+                    onCancel: { withAnimation(.easeOut(duration: 0.18)) { globalRadial = nil } }
                 )
-                .transition(.opacity)
+                .transition(.scale(scale: 0.55, anchor: .center)
+                    .combined(with: .opacity))
             }
 
             topBar
