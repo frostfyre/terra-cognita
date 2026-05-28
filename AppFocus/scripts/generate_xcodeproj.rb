@@ -132,6 +132,10 @@ ios_target.build_configurations.each do |config|
   s['TARGETED_DEVICE_FAMILY'] = '1,2' # iPhone + iPad
   s['INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents'] = 'YES'
   s['INFOPLIST_KEY_UILaunchScreen_Generation'] = 'YES'
+  # Match the canvas's inner indigo so the launch screen reads as
+  # the same scene the app is about to show. The color lives in
+  # Apps/TerraCognita-iOS/Assets.xcassets/LaunchBackground.colorset.
+  s['INFOPLIST_KEY_UILaunchScreen_BackgroundColor'] = 'LaunchBackground'
   s['INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone'] =
     'UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight'
   s['INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad'] =
