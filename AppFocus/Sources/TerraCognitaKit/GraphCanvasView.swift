@@ -1638,21 +1638,23 @@ struct GraphCanvasView: View {
         }
         // When a node is selected, dimmed nodes outside the N-hop
         // highlight neighborhood are visually receding and should
-        // not be tappable — taps in their region should fall through
-        // to "empty canvas" so the user can deselect. The highlight
-        // set always includes the seed itself, so re-tapping the
-        // selection still works.
+        // not be tappable — taps in their region fall through to
+        // "empty canvas" so the user can deselect. EXCEPTION: while
+        // Connect mode is armed, every node is a valid target,
+        // including dimmed / distant ones, otherwise far edges can't
+        // be drawn without first clearing the selection.
         let highlightFilter: Set<String>? = {
+            if connectingFromID != nil { return nil }
             guard selectedNodeID != nil else { return nil }
             return highlightedNodeIDs()
         }()
         // Walk strictly front-to-back. The first node whose visual
-        // disk contains the tap wins — even if a backgrounded node
-        // happens to sit closer to the tap point, the foreground
-        // node is what the user can actually see on top. This
-        // matches the rendering Z-order and prevents accidental
-        // selection of faded background nodes "behind" foreground
-        // ones the eye is on.
+        // disk OR label pill contains the tap wins — even if a
+        // backgrounded node happens to sit closer to the tap point,
+        // the foreground node is what the user can actually see on
+        // top. This matches the rendering Z-order and prevents
+        // accidental selection of faded background nodes "behind"
+        // foreground ones the eye is on.
         for node in depthOrderedNodes.reversed() {
             let id = node.id
             if let visibleSet, !visibleSet.contains(id) { continue }
@@ -1673,8 +1675,50 @@ struct GraphCanvasView: View {
             if d < tapRadius {
                 return id
             }
+            // Label pill: a node's drawn label can extend well past
+            // the disc — taps on the visible text should hit the
+            // node even when the disc itself is far smaller. The
+            // pill is centered ON the node center (see `drawLabelPill`
+            // in the render pass), sized to the label text.
+            if estimatedLabelRect(for: node,
+                                  centeredAt: CGPoint(x: sx, y: sy))
+                .contains(screenPoint) {
+                return id
+            }
         }
         return nil
+    }
+
+    /// Conservative bounding rect for a node's drawn label pill,
+    /// centered on the node's screen position. Used to expand the
+    /// hit area beyond the visible disc — the label is what the
+    /// user sees and aims at, so it should be tappable.
+    ///
+    /// Uses a coarse glyph-width estimate rather than calling out to
+    /// `NSString.size(withAttributes:)` per node per tap: a single
+    /// tap can hit-test the whole node set, and a synchronous AppKit
+    /// text measurement on every iteration was unacceptable. The
+    /// estimate is generous (slightly oversized) so the user is
+    /// rewarded for tapping anywhere near the visible label, even
+    /// if it overshoots by a few points horizontally.
+    private func estimatedLabelRect(for node: Node,
+                                    centeredAt center: CGPoint) -> CGRect {
+        // The render pass uses sizes 10 (background) through ~14
+        // (selected, pulsed). Pick the upper end so we don't miss
+        // legitimate label taps when the node is selected and
+        // breathing.
+        let estFontSize: CGFloat = 12
+        let glyphW: CGFloat = estFontSize * 0.62
+        let textWidth = CGFloat(node.label.count) * glyphW
+        let textHeight = estFontSize * 1.25
+        let padH: CGFloat = 8
+        let padV: CGFloat = 6
+        return CGRect(
+            x: center.x - textWidth / 2 - padH,
+            y: center.y - textHeight / 2 - padV,
+            width: textWidth + padH * 2,
+            height: textHeight + padV * 2
+        )
     }
 
     // MARK: - Styling
