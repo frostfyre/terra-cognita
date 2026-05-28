@@ -342,44 +342,43 @@ public final class GraphStore: ObservableObject {
         guard var node = graph.nodes[nodeID] else {
             return "Selected node no longer exists."
         }
-        let didStart = vaultURL.startAccessingSecurityScopedResource()
-        defer { if didStart { vaultURL.stopAccessingSecurityScopedResource() } }
+        return vaultURL.withSecurityScope {
+            let editor = VaultEditor(vaultURL: vaultURL)
+            let fileURL: URL
+            if let pathString = node.filePath {
+                fileURL = URL(fileURLWithPath: pathString)
+            } else {
+                // No backing file yet — materialize one. We write an empty
+                // body first so `VaultWriter` sets up the front-matter and
+                // picks the right subfolder for the type; `replaceBody`
+                // below then fills in the user's content.
+                let writer = VaultWriter(vaultURL: vaultURL)
+                do {
+                    let created = try writer.createNote(
+                        label: node.label,
+                        type: node.type,
+                        era: node.era,
+                        body: ""
+                    )
+                    fileURL = created.fileURL
+                    node.filePath = created.fileURL.path
+                } catch let err as VaultWriter.WriteError {
+                    return err.errorDescription
+                } catch {
+                    return error.localizedDescription
+                }
+            }
 
-        let editor = VaultEditor(vaultURL: vaultURL)
-        let fileURL: URL
-        if let pathString = node.filePath {
-            fileURL = URL(fileURLWithPath: pathString)
-        } else {
-            // No backing file yet — materialize one. We write an empty
-            // body first so `VaultWriter` sets up the front-matter and
-            // picks the right subfolder for the type; `replaceBody`
-            // below then fills in the user's content.
-            let writer = VaultWriter(vaultURL: vaultURL)
             do {
-                let created = try writer.createNote(
-                    label: node.label,
-                    type: node.type,
-                    era: node.era,
-                    body: ""
-                )
-                fileURL = created.fileURL
-                node.filePath = created.fileURL.path
-            } catch let err as VaultWriter.WriteError {
+                let updated = try editor.replaceBody(in: fileURL, newBody: newBody)
+                node.markdownContent = updated
+                graph.nodes[nodeID] = node
+                return nil
+            } catch let err as VaultEditor.EditError {
                 return err.errorDescription
             } catch {
                 return error.localizedDescription
             }
-        }
-
-        do {
-            let updated = try editor.replaceBody(in: fileURL, newBody: newBody)
-            node.markdownContent = updated
-            graph.nodes[nodeID] = node
-            return nil
-        } catch let err as VaultEditor.EditError {
-            return err.errorDescription
-        } catch {
-            return error.localizedDescription
         }
     }
 
@@ -491,30 +490,29 @@ public final class GraphStore: ObservableObject {
             return "Selected node has no backing file."
         }
         let fileURL = URL(fileURLWithPath: pathString)
-        let didStart = vaultURL.startAccessingSecurityScopedResource()
-        defer { if didStart { vaultURL.stopAccessingSecurityScopedResource() } }
-
-        let editor = VaultEditor(vaultURL: vaultURL)
-        let trimmed = era?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        do {
-            // VaultEditor.setFrontMatter is upsert-only; setting to an
-            // empty string is fine for our purposes (the loader treats
-            // empty era the same as missing era).
-            let updated = try editor.setFrontMatter(in: fileURL,
-                                                    key: "era",
-                                                    value: trimmed)
-            node.markdownContent = updated
-            if trimmed.isEmpty {
-                node.attributes.removeValue(forKey: "era")
-            } else {
-                node.attributes["era"] = trimmed
+        return vaultURL.withSecurityScope {
+            let editor = VaultEditor(vaultURL: vaultURL)
+            let trimmed = era?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            do {
+                // VaultEditor.setFrontMatter is upsert-only; setting to an
+                // empty string is fine for our purposes (the loader treats
+                // empty era the same as missing era).
+                let updated = try editor.setFrontMatter(in: fileURL,
+                                                        key: "era",
+                                                        value: trimmed)
+                node.markdownContent = updated
+                if trimmed.isEmpty {
+                    node.attributes.removeValue(forKey: "era")
+                } else {
+                    node.attributes["era"] = trimmed
+                }
+                graph.nodes[nodeID] = node
+                return nil
+            } catch let err as VaultEditor.EditError {
+                return err.errorDescription
+            } catch {
+                return error.localizedDescription
             }
-            graph.nodes[nodeID] = node
-            return nil
-        } catch let err as VaultEditor.EditError {
-            return err.errorDescription
-        } catch {
-            return error.localizedDescription
         }
     }
 
@@ -534,45 +532,44 @@ public final class GraphStore: ObservableObject {
         guard var node = graph.nodes[nodeID] else {
             return "Selected node no longer exists."
         }
-        let didStart = vaultURL.startAccessingSecurityScopedResource()
-        defer { if didStart { vaultURL.stopAccessingSecurityScopedResource() } }
-
-        let editor = VaultEditor(vaultURL: vaultURL)
-        let fileURL: URL
-        if let pathString = node.filePath {
-            fileURL = URL(fileURLWithPath: pathString)
-        } else {
-            let writer = VaultWriter(vaultURL: vaultURL)
+        return vaultURL.withSecurityScope {
+            let editor = VaultEditor(vaultURL: vaultURL)
+            let fileURL: URL
+            if let pathString = node.filePath {
+                fileURL = URL(fileURLWithPath: pathString)
+            } else {
+                let writer = VaultWriter(vaultURL: vaultURL)
+                do {
+                    let created = try writer.createNote(
+                        label: node.label,
+                        type: typeName.lowercased(),
+                        era: node.era,
+                        body: ""
+                    )
+                    fileURL = created.fileURL
+                    node.filePath = created.fileURL.path
+                } catch let err as VaultWriter.WriteError {
+                    return err.errorDescription
+                } catch {
+                    return error.localizedDescription
+                }
+            }
             do {
-                let created = try writer.createNote(
-                    label: node.label,
-                    type: typeName.lowercased(),
-                    era: node.era,
-                    body: ""
-                )
-                fileURL = created.fileURL
-                node.filePath = created.fileURL.path
-            } catch let err as VaultWriter.WriteError {
+                let updated = try editor.setFrontMatter(in: fileURL,
+                                                        key: "type",
+                                                        value: typeName.lowercased())
+                node.markdownContent = updated
+                node.attributes["type"] = typeName.lowercased()
+                // If this was a synthetic placeholder, the markers are now stale.
+                node.attributes.removeValue(forKey: "placeholder")
+                node.attributes.removeValue(forKey: "synthetic")
+                graph.nodes[nodeID] = node
+                return nil
+            } catch let err as VaultEditor.EditError {
                 return err.errorDescription
             } catch {
                 return error.localizedDescription
             }
-        }
-        do {
-            let updated = try editor.setFrontMatter(in: fileURL,
-                                                    key: "type",
-                                                    value: typeName.lowercased())
-            node.markdownContent = updated
-            node.attributes["type"] = typeName.lowercased()
-            // If this was a synthetic placeholder, the markers are now stale.
-            node.attributes.removeValue(forKey: "placeholder")
-            node.attributes.removeValue(forKey: "synthetic")
-            graph.nodes[nodeID] = node
-            return nil
-        } catch let err as VaultEditor.EditError {
-            return err.errorDescription
-        } catch {
-            return error.localizedDescription
         }
     }
 
@@ -600,42 +597,40 @@ public final class GraphStore: ObservableObject {
             return "Target node no longer exists."
         }
         let fileURL = URL(fileURLWithPath: pathString)
-        let didStart = vaultURL.startAccessingSecurityScopedResource()
-        defer { if didStart { vaultURL.stopAccessingSecurityScopedResource() } }
-
-        let editor = VaultEditor(vaultURL: vaultURL)
-        let trimmedNew = newRelationship?
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        let effectiveNew = (trimmedNew?.isEmpty == true) ? nil : trimmedNew
-        do {
-            _ = try editor.updateEdgeRelationship(
-                in: fileURL,
-                target: targetNode.id,
-                oldRelationship: edge.relationshipType,
-                newRelationship: effectiveNew
-            )
-            // Mirror the change in memory: edge id encodes the
-            // relationship type, so remove the old edge and add a
-            // freshly-built one with the new id.
-            graph.edges.removeAll { $0.id == edge.id }
-            let suffix = effectiveNew.map { "::\($0)" } ?? ""
-            let newID = "\(edge.sourceID)->\(edge.targetID)\(suffix)"
-            var rebuilt = edge
-            rebuilt = Edge(id: newID,
-                           sourceID: edge.sourceID,
-                           targetID: edge.targetID)
-            rebuilt.relationshipType = effectiveNew
-            rebuilt.confidence = edge.confidence
-            rebuilt.provenance = edge.provenance
-            rebuilt.evidence = edge.evidence
-            rebuilt.era = edge.era
-            rebuilt.date = edge.date
-            graph.edges.append(rebuilt)
-            return nil
-        } catch let err as VaultEditor.EditError {
-            return err.errorDescription
-        } catch {
-            return error.localizedDescription
+        return vaultURL.withSecurityScope {
+            let editor = VaultEditor(vaultURL: vaultURL)
+            let trimmedNew = newRelationship?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            let effectiveNew = (trimmedNew?.isEmpty == true) ? nil : trimmedNew
+            do {
+                _ = try editor.updateEdgeRelationship(
+                    in: fileURL,
+                    target: targetNode.id,
+                    oldRelationship: edge.relationshipType,
+                    newRelationship: effectiveNew
+                )
+                // Mirror the change in memory: edge id encodes the
+                // relationship type, so remove the old edge and add a
+                // freshly-built one with the new id.
+                graph.edges.removeAll { $0.id == edge.id }
+                let suffix = effectiveNew.map { "::\($0)" } ?? ""
+                let newID = "\(edge.sourceID)->\(edge.targetID)\(suffix)"
+                var rebuilt = Edge(id: newID,
+                                   sourceID: edge.sourceID,
+                                   targetID: edge.targetID)
+                rebuilt.relationshipType = effectiveNew
+                rebuilt.confidence = edge.confidence
+                rebuilt.provenance = edge.provenance
+                rebuilt.evidence = edge.evidence
+                rebuilt.era = edge.era
+                rebuilt.date = edge.date
+                graph.edges.append(rebuilt)
+                return nil
+            } catch let err as VaultEditor.EditError {
+                return err.errorDescription
+            } catch {
+                return error.localizedDescription
+            }
         }
     }
 
@@ -655,22 +650,21 @@ public final class GraphStore: ObservableObject {
             return "Target node no longer exists."
         }
         let fileURL = URL(fileURLWithPath: pathString)
-        let didStart = vaultURL.startAccessingSecurityScopedResource()
-        defer { if didStart { vaultURL.stopAccessingSecurityScopedResource() } }
-
-        let editor = VaultEditor(vaultURL: vaultURL)
-        do {
-            _ = try editor.removeEdge(
-                in: fileURL,
-                target: targetNode.id,
-                relationshipType: edge.relationshipType
-            )
-            graph.edges.removeAll { $0.id == edge.id }
-            return nil
-        } catch let err as VaultEditor.EditError {
-            return err.errorDescription
-        } catch {
-            return error.localizedDescription
+        return vaultURL.withSecurityScope {
+            let editor = VaultEditor(vaultURL: vaultURL)
+            do {
+                _ = try editor.removeEdge(
+                    in: fileURL,
+                    target: targetNode.id,
+                    relationshipType: edge.relationshipType
+                )
+                graph.edges.removeAll { $0.id == edge.id }
+                return nil
+            } catch let err as VaultEditor.EditError {
+                return err.errorDescription
+            } catch {
+                return error.localizedDescription
+            }
         }
     }
 
