@@ -113,9 +113,61 @@ Keyboard shortcuts ⌘N / ⌘⇧N / ⌘0 are preserved via invisible
 catchers in `canvasStack`. Hop-distance dial (1–4) is persisted
 per-vault in `LayoutPersistence`.
 
-## Phase 4 — Pro Tier *(later)*
+## Phase 4 — Hygiene, tests, and design vocabulary gaps
 
-Sync (iCloud first), cloud AI augmentation, large-graph background workers, team-shared Staging Layers. Don't start until 1–3 are tight and we have user signal.
+After Phase 3.7 the codebase is 12k lines with four view files in the 1000–1700 range, no real test coverage, and a handful of recurring smells. This phase pays that down before the harder design work (continuity threads, conversation with archive) gets layered on top.
+
+### 4.1 — Hygiene primitives *(no behavior change)*
+
+Tiny, mechanical, each its own commit so any one is revertable.
+
+- **`URL.withSecurityScope { ... }` extension** — collapses the ~10 `start/defer stop` bracket sites in `GraphStore` / `GraphView` into one closure-based call. Structurally impossible to forget the stop.
+- **`Edge.isSynthetic` computed property** — single source of truth for the `tagged` / `embeds` / `attributes["synthetic"]` heuristic, replacing the duplicated checks in loader / store / inspector.
+- **`enum ActiveSheet` in GraphView** — folds the nine `showing*` booleans (folder picker, GEXF, capture, composer, recipe, template, vault settings, duplicate review, search) into one optional driving `.sheet(item:)`. Drops ~9 @State fields.
+- **Move `VaultEditor.snapshotted` into `GraphStore`** as a per-store set — kills the `nonisolated(unsafe) static` global. VaultEditor takes the set via initializer.
+
+### 4.2 — Test coverage *(pure-string code first)*
+
+Set up a real `TerraCognitaKitTests` target (current `app_focusTests` is 8 lines of nothing). All these run without filesystem I/O — fast and deterministic.
+
+- **VaultEditor.parseEdgeLine** — 10 cases (bare wikilink, Dataview prefix, alias `|`, prose lines like "she said:: foo", whitespace, empty target, doubled brackets, …)
+- **VaultEditor.rewriteEdgeLine** — 8 cases (change type, clear type, remove, multi-edge with type disambiguation, refuse-on-prose, target case-insensitivity, alias preservation, CRLF)
+- **VaultEditor.upsertFrontMatter** — 6 cases (no FM block, existing key, missing key, CRLF, empty value, key with colon in value)
+- **VaultEditor.splitFrontMatter** — 5 cases (LF, CRLF, no FM, malformed FM, FM with `---` in body)
+- **MarkdownNoteParser.parse** — 8 cases (frontmatter, title, wikilinks, Dataview edges, embeds, tags, the leading-newline-after-frontmatter case that bit us on GEXF)
+- **GEXFImporter** — golden-file tests against a small fixture `.gexf` with known nodes / edges / attributes
+- **Integration group** (uses `FileManager.url(for: .itemReplacementDirectory)`):
+  - VaultEditor: round-trip appendLink → updateEdgeRelationship → removeEdge on a real file
+  - VaultLoader: load a tiny fixture vault, assert node + edge counts
+  - VaultWriter: createNote uniqueness + slug collision
+
+Goal: fail loudly the next time a parser regression would otherwise quietly corrupt notes.
+
+### 4.3 — View-layer extraction *(with tests as the safety net)*
+
+Don't start until 4.2 is green.
+
+- **`GraphView.swift` splits** into `GraphView.swift` (top-level composition, ~300 lines), `GraphView+Toolbar.swift`, `GraphView+RadialActions.swift`, `GraphView+SheetMounts.swift`, `GraphView+Lifecycle.swift`.
+- **`NodeInspectorView.swift` splits** into `+Header.swift`, `+Note.swift`, `+Edges.swift`, `+AI.swift`, `+Metadata.swift`. Same struct via extensions.
+- **`GraphCanvasView.swift` splits** — view + gestures stay; drawing primitives (`drawEdges`, `drawNodes`, `drawAtmosphere`, `drawLabels`) move to a `CanvasPainter` namespace; layout dispatch moves to `+Layouts.swift`.
+- **Extract `VaultSession` actor** from `GraphStore` — owns current vault URL, writable flag, security-scope lifetime, and the snapshotted set from 4.1. Store delegates `withCurrentVault { ... }` to it. `GraphStore` slims to ~600 lines as the in-memory truth + mutation orchestrator.
+
+### 4.4 — Design vocabulary gaps *(the actual features)*
+
+With the codebase rearranged, the design's remaining commitments become tractable.
+
+- **Per-vault edge type taxonomy** — declared in `VaultConfig.edgeTypes` alongside node types (name, displayName, icon, color, optional reverse-label). Inspector relationship picker reads from this instead of mining the graph. `Lens` gains an edge-filter mode.
+- **Add-edge UI** — long-pressed node's radial gets an "Add link…" wedge that opens a target-picker (the merge-picker template). Pick target → pick relationship type from the vault taxonomy → confirm.
+- **Continuity threads** — design's heart for Continuity mode. Needs a quick design pass first:
+  - On-disk: `thread:: <thread-id>` on contributing edges (lightweight, Dataview-native). Escalate to `.terracognita/threads/<id>.md` only if thread-level metadata becomes load-bearing.
+  - UI: thread picker next to the Mode pill, active-thread rendering highlights contributing edges + nodes and dims everything else (mirrors the selection halo).
+  - Authoring: "Add to thread…" wedge on the per-node radial.
+- **Conversation with archive** — per-vault persistent `LanguageModelSession`. Transcript stored at `.terracognita/conversation.md` so it survives restarts and the user owns it. Surfaces in the inspector when no node is selected (or in a separate sheet) — talks to the archive as a whole.
+- **Phase 3.5 Display Settings** rolls into this phase — gear icon → sheet → edge width, label opacity, gradient endpoints. Persists to `UserDefaults` via a `DisplaySettings` observable.
+
+## Phase 5 — Pro Tier *(later)*
+
+Sync (iCloud first), cloud AI augmentation, large-graph background workers, team-shared Staging Layers. Don't start until 1–4 are tight and we have user signal.
 
 ---
 
