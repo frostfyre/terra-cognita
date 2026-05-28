@@ -51,7 +51,7 @@ Risk: medium-high — community detection on large graphs needs a background wor
 
 Surface canvas appearance controls the user has so far set via taste-driven hard-coded constants: edge line width, edge opacity, edge curve amount, label pill opacity, gradient endpoints, ambient puff frequency. A single settings sheet (gear icon in the toolbar) writes preferences to `UserDefaults` and the canvas reads from a `DisplaySettings` observable. Order this against Phase 3 work — likely natural to land after Lens expansion.
 
-## Phase 3.7 — Radial menus expansion *(in progress)*
+## Phase 3.7 — Radial menus expansion *(shipped)*
 
 Toolbar real estate is saturated (10+ controls). The existing per-node
 `RadialMenu` already proves the spatial-context pattern works on
@@ -105,10 +105,13 @@ Wonky things to settle as we land each piece:
 - Two entry points for Hops is intentional: per-node = "this one
   expanded", global = "default for future selections".
 
-Risk: medium. The nesting refactor is mechanical; the gesture-
-arbitration for long-press on canvas-empty vs canvas-with-node
-already works today. Largest risk is animation polish between
-sub-menu transitions.
+**Shipped status** — all four sub-items in this phase landed:
+nested `RadialMenu.Action`, per-node radial with AI/Edit/Hops
+submenus, global radial on long-press blank canvas, and the
+toolbar collapse to Back/Forward · Mode · Vault · Find · Inspector.
+Keyboard shortcuts ⌘N / ⌘⇧N / ⌘0 are preserved via invisible
+catchers in `canvasStack`. Hop-distance dial (1–4) is persisted
+per-vault in `LayoutPersistence`.
 
 ## Phase 4 — Pro Tier *(later)*
 

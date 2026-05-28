@@ -608,6 +608,8 @@ public struct GraphView: View {
                     .opacity(0)
                     .frame(width: 0, height: 0)
             }
+
+            hiddenShortcuts
         }
     }
 
@@ -672,9 +674,12 @@ public struct GraphView: View {
         .transition(.opacity)
     }
 
-    /// Top toolbar — extracted from `body` so the giant view tree
-    /// stays type-checkable. Same chrome as before: back / forward,
-    /// lens, mode pill, then the right-aligned action cluster.
+    /// Collapsed top toolbar — high-frequency only. Lens / Add /
+    /// Layout / Fit / Private moved to the canvas radial wheels
+    /// (long-press blank for the global wheel, long-press a node
+    /// for the per-node one). What stays here is navigation + the
+    /// affordances the user wants at the periphery while reading:
+    /// back / forward, mode, vault, find, inspector.
     @ViewBuilder
     private var topBar: some View {
         HStack(spacing: 8) {
@@ -697,11 +702,9 @@ public struct GraphView: View {
                 .disabled(!navigation.canGoForward)
                 .help("Forward (⌘])")
             }
-            LensPicker(active: $activeLens, store: store)
             modePill
             Spacer()
             vaultMenu
-            addMenu
 
             Button {
                 showingSearch = true
@@ -711,24 +714,6 @@ public struct GraphView: View {
             }
             .keyboardShortcut("f", modifiers: .command)
             .help("Find a node by name (⌘F)")
-
-            Button {
-                frameAllPulse &+= 1
-            } label: {
-                Image(systemName: "viewfinder")
-            }
-            .keyboardShortcut("0", modifiers: .command)
-            .help("Fit graph to window (⌘0)")
-
-            layoutMenu
-
-            Button {
-                showPrivate.toggle()
-            } label: {
-                Image(systemName: showPrivate ? "eye.fill" : "eye.slash")
-                    .foregroundStyle(showPrivate ? .orange : .secondary)
-            }
-            .help(showPrivate ? "Hide private nodes" : "Show private nodes")
 
             Button {
                 inspectorVisible.toggle()
@@ -743,6 +728,36 @@ public struct GraphView: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
         .background(.thinMaterial)
+    }
+
+    /// Zero-size keyboard-shortcut catchers for affordances we
+    /// pulled out of the toolbar. SwiftUI binds `.keyboardShortcut`
+    /// to the visible button — so when the buttons left, so did
+    /// the shortcuts. These hidden buttons restore them.
+    @ViewBuilder
+    private var hiddenShortcuts: some View {
+        Group {
+            Button("") {
+                frameAllPulse &+= 1
+            }
+            .keyboardShortcut("0", modifiers: .command)
+
+            Button("") {
+                guard store.canIngest else { return }
+                composerSpawnWorld = nil
+                composerSeedID = selectedNodeID
+                showingComposer = true
+            }
+            .keyboardShortcut("n", modifiers: .command)
+
+            Button("") {
+                guard store.canIngest else { return }
+                showingCapture = true
+            }
+            .keyboardShortcut("n", modifiers: [.command, .shift])
+        }
+        .opacity(0)
+        .frame(width: 0, height: 0)
     }
 
     @ViewBuilder
@@ -816,72 +831,6 @@ public struct GraphView: View {
         .menuStyle(.borderlessButton)
         .fixedSize()
         .help("Open a markdown vault folder (⌘O)")
-    }
-
-    @ViewBuilder
-    private var addMenu: some View {
-        Menu {
-            Button {
-                showingCapture = true
-            } label: {
-                Label("Capture…", systemImage: "text.bubble")
-            }
-            .keyboardShortcut("n", modifiers: [.command, .shift])
-            .disabled(!store.canIngest)
-
-            Button {
-                composerSpawnWorld = nil   // canvas picks (near selection)
-                composerSeedID = selectedNodeID
-                showingComposer = true
-            } label: {
-                Label("New Node…", systemImage: "circle.dashed.inset.filled")
-            }
-            .keyboardShortcut("n", modifiers: .command)
-            .disabled(!store.canIngest)
-        } label: {
-            Image(systemName: "plus.circle")
-        }
-        .menuStyle(.borderlessButton)
-        .fixedSize()
-        .disabled(!store.canIngest)
-        .help(store.canIngest
-              ? "Add to graph — Capture (⌘⇧N) or New Node (⌘N)"
-              : "Open or create a writable vault first.")
-    }
-
-    @ViewBuilder
-    private var layoutMenu: some View {
-        Menu {
-            ForEach(LayoutAlgorithm.allCases) { algorithm in
-                Button {
-                    layoutRequest = algorithm
-                } label: {
-                    Label {
-                        HStack {
-                            Text(algorithm.displayName)
-                            if !algorithm.isImplemented {
-                                Text("(soon)").foregroundStyle(.secondary)
-                            }
-                        }
-                    } icon: {
-                        Image(systemName: layoutAlgorithm == algorithm
-                              ? "checkmark"
-                              : algorithm.systemImage)
-                    }
-                }
-                .disabled(!algorithm.isImplemented)
-            }
-            Divider()
-            Toggle(isOn: $noOverlap) {
-                Label("No overlap", systemImage: "rectangle.dashed")
-            }
-        } label: {
-            Image(systemName: layoutAlgorithm?.systemImage
-                  ?? "point.3.connected.trianglepath.dotted")
-        }
-        .menuStyle(.borderlessButton)
-        .fixedSize()
-        .help("Layout — pick how nodes are arranged")
     }
 
     /// Inspector body, factored out of `body` so SwiftUI's type
@@ -1188,9 +1137,9 @@ public struct GraphView: View {
         return actions
     }
 
-    /// Lens wedges, mirroring the toolbar's `LensPicker` with count
-    /// badges baked into the label so the user keeps the same
-    /// surface-area at a glance.
+    /// Lens wedges — one per declared type plus All / Systems.
+    /// Count badges are baked into the label so the user sees the
+    /// same surface-area at a glance as the old toolbar picker.
     private func lensSubActions() -> [RadialMenu.Action] {
         Lens.all(for: store.config).enumerated().map { i, lens in
             let count: Int? = {
@@ -1456,29 +1405,3 @@ struct Lens: Hashable, Identifiable {
     }
 }
 
-private struct LensPicker: View {
-    @Binding var active: Lens
-    @ObservedObject var store: GraphStore
-
-    var body: some View {
-        Menu {
-            ForEach(Lens.all(for: store.config)) { lens in
-                Button {
-                    active = lens
-                } label: {
-                    Label(lens.label + countSuffix(lens), systemImage: lens.icon)
-                }
-            }
-        } label: {
-            Label(active.label, systemImage: active.icon)
-        }
-        .menuStyle(.borderlessButton)
-        .fixedSize()
-    }
-
-    private func countSuffix(_ lens: Lens) -> String {
-        guard let filter = lens.makeTypeFilter() else { return "" }
-        let n = store.graph.nodes.values.filter(filter).count
-        return n > 0 ? " (\(n))" : ""
-    }
-}
