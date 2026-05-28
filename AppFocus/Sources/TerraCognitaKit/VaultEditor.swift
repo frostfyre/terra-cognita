@@ -10,6 +10,11 @@ import Foundation
 /// Machine cover deeper history).
 struct VaultEditor {
     let vaultURL: URL
+    /// Tracker for "first edit per file in this session" so we only
+    /// write one `.bak` snapshot per file even across many mutations.
+    /// `nil` means "snapshot every edit" — the conservative default
+    /// when no owner has been provided (e.g. one-off test instances).
+    var snapshots: SnapshotTracker?
 
     enum EditError: LocalizedError {
         case fileMissing(String)
@@ -201,19 +206,12 @@ struct VaultEditor {
 
     // MARK: - .bak snapshot bookkeeping
 
-    /// In-process registry of files we've already snapshotted this
-    /// session. Single source of truth — VaultEditor is a value type
-    /// but the actor-isolated static lock keeps mutations safe.
-    private static let snapshotLock = NSLock()
-    nonisolated(unsafe) private static var snapshotted: Set<String> = []
-
     private func snapshotIfNeeded(_ fileURL: URL, original raw: String) throws {
-        let key = fileURL.path
-        Self.snapshotLock.lock()
-        let already = Self.snapshotted.contains(key)
-        if !already { Self.snapshotted.insert(key) }
-        Self.snapshotLock.unlock()
-        if already { return }
+        let shouldSnapshot: Bool = {
+            guard let tracker = snapshots else { return true }
+            return tracker.markFirstEdit(of: fileURL.path)
+        }()
+        guard shouldSnapshot else { return }
         let bak = fileURL.appendingPathExtension("bak")
         do {
             try raw.write(to: bak, atomically: true, encoding: .utf8)
@@ -223,6 +221,9 @@ struct VaultEditor {
             print("VaultEditor: failed to snapshot \(bak.path): \(error)")
         }
     }
+}
+
+extension VaultEditor {
 
     // MARK: - Low-level file I/O
 
@@ -288,5 +289,26 @@ struct VaultEditor {
         }
         let newFM = lines.joined(separator: "\n")
         return "---\n\(newFM)\n---\n\n" + body.trimmingCharacters(in: .whitespacesAndNewlines) + "\n"
+    }
+}
+
+/// Reference-typed tracker for the "first edit per file this
+/// session" rule. Lives on `GraphStore` so each store gets its own
+/// scoped lifecycle (was a process-global `nonisolated(unsafe)
+/// static` on VaultEditor — moved here so tests + future
+/// multi-vault flows don't share state).
+final class SnapshotTracker: @unchecked Sendable {
+    private let lock = NSLock()
+    private var seen: Set<String> = []
+
+    /// Returns `true` if this is the first time `path` is being
+    /// reported; subsequent calls with the same path return `false`.
+    /// Callers snapshot when `true`.
+    func markFirstEdit(of path: String) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        let isFirst = !seen.contains(path)
+        if isFirst { seen.insert(path) }
+        return isFirst
     }
 }

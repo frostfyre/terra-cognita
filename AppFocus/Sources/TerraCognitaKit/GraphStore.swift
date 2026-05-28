@@ -22,6 +22,23 @@ public final class GraphStore: ObservableObject {
     /// True if node ingestion is allowed against the current vault.
     var canIngest: Bool { writableVaultURL != nil }
 
+    /// Per-store `.bak` snapshot tracker. Was a process-global static
+    /// on `VaultEditor`; lives here so each `GraphStore` (current
+    /// usage: one per session, future usage: potentially per-vault)
+    /// gets its own scope. Reference type so the value-typed
+    /// `VaultEditor` can hold a shared handle.
+    private let snapshots = SnapshotTracker()
+
+    /// Construct a `VaultEditor` wired to this store's snapshot
+    /// tracker. Every mutation site in GraphStore should route
+    /// through here so they all share the same `.bak`-once-per-file
+    /// semantics.
+    private func makeEditor(_ vaultURL: URL) -> VaultEditor {
+        var editor = VaultEditor(vaultURL: vaultURL)
+        editor.snapshots = snapshots
+        return editor
+    }
+
     /// Empty store. The app's `GraphView` calls `loadDefaultVault()` to
     /// populate it from the heritage vault on disk.
     public init() {
@@ -273,7 +290,7 @@ public final class GraphStore: ObservableObject {
         let didStart = vaultURL.startAccessingSecurityScopedResource()
         defer { if didStart { vaultURL.stopAccessingSecurityScopedResource() } }
 
-        let editor = VaultEditor(vaultURL: vaultURL)
+        let editor = makeEditor(vaultURL)
         do {
             switch proposal.kind {
             case .addLink(let target, let rel):
@@ -343,7 +360,7 @@ public final class GraphStore: ObservableObject {
             return "Selected node no longer exists."
         }
         return vaultURL.withSecurityScope {
-            let editor = VaultEditor(vaultURL: vaultURL)
+            let editor = makeEditor(vaultURL)
             let fileURL: URL
             if let pathString = node.filePath {
                 fileURL = URL(fileURLWithPath: pathString)
@@ -491,7 +508,7 @@ public final class GraphStore: ObservableObject {
         }
         let fileURL = URL(fileURLWithPath: pathString)
         return vaultURL.withSecurityScope {
-            let editor = VaultEditor(vaultURL: vaultURL)
+            let editor = makeEditor(vaultURL)
             let trimmed = era?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             do {
                 // VaultEditor.setFrontMatter is upsert-only; setting to an
@@ -533,7 +550,7 @@ public final class GraphStore: ObservableObject {
             return "Selected node no longer exists."
         }
         return vaultURL.withSecurityScope {
-            let editor = VaultEditor(vaultURL: vaultURL)
+            let editor = makeEditor(vaultURL)
             let fileURL: URL
             if let pathString = node.filePath {
                 fileURL = URL(fileURLWithPath: pathString)
@@ -598,7 +615,7 @@ public final class GraphStore: ObservableObject {
         }
         let fileURL = URL(fileURLWithPath: pathString)
         return vaultURL.withSecurityScope {
-            let editor = VaultEditor(vaultURL: vaultURL)
+            let editor = makeEditor(vaultURL)
             let trimmedNew = newRelationship?
                 .trimmingCharacters(in: .whitespacesAndNewlines)
             let effectiveNew = (trimmedNew?.isEmpty == true) ? nil : trimmedNew
@@ -651,7 +668,7 @@ public final class GraphStore: ObservableObject {
         }
         let fileURL = URL(fileURLWithPath: pathString)
         return vaultURL.withSecurityScope {
-            let editor = VaultEditor(vaultURL: vaultURL)
+            let editor = makeEditor(vaultURL)
             do {
                 _ = try editor.removeEdge(
                     in: fileURL,
@@ -719,7 +736,7 @@ public final class GraphStore: ObservableObject {
         guard let vaultURL = writableVaultURL else { return firstCreatedID }
         let didStart = vaultURL.startAccessingSecurityScopedResource()
         defer { if didStart { vaultURL.stopAccessingSecurityScopedResource() } }
-        let editor = VaultEditor(vaultURL: vaultURL)
+        let editor = makeEditor(vaultURL)
 
         for (_, sourceID, links) in created {
             guard var node = graph.nodes[sourceID],
