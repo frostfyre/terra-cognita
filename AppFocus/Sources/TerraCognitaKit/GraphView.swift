@@ -19,8 +19,7 @@ public struct GraphView: View {
     @State var activeSheet: ActiveSheet?
 
     enum ActiveSheet: Identifiable, Hashable {
-        case capture
-        case composer
+        case addNode
         case atlasSettings
         case importRecipe
         case templatePicker
@@ -56,9 +55,6 @@ public struct GraphView: View {
     /// every visible node fits — driven by the top-bar Fit button
     /// (⌘0) and by the post-load auto-frame.
     @State var frameAllPulse: Int = 0
-    /// Was the graph empty on the previous load tick? Used to detect
-    /// the "first content arrived" transition and auto-frame.
-    @State var graphWasEmpty: Bool = true
 
     /// Currently-applied layout. Canvas writes (on restore / settle /
     /// user pick); the toolbar Layout menu reads to show a checkmark
@@ -183,7 +179,7 @@ public struct GraphView: View {
     public var body: some View {
         canvasStack
         .onAppear { store.loadDefaultAtlas() }
-        .onChange(of: store.graph.nodes.count) { oldCount, newCount in
+        .onChange(of: store.graph.nodes.count) { _, _ in
             // Recompute duplicate clusters whenever the graph changes
             // (atlas load, create, delete, merge). Reset the dismissal
             // flag only on growth — shrinking after a merge shouldn't
@@ -193,22 +189,21 @@ public struct GraphView: View {
                 dupeBannerDismissed = false
             }
             duplicateClusters = newClusters
-
-            // Auto-frame when content first arrives. We wait a beat
-            // for the layout pipeline to crossfade in the FA2 result,
-            // then nudge the canvas to fit the whole cluster. Once
-            // the fit animation has had time to settle (~700 ms past
-            // the trigger), clear the cartographer-loading overlay
-            // so the cross-fade lands on a fully-framed view.
-            let wasEmpty = graphWasEmpty
-            graphWasEmpty = (newCount == 0)
-            if wasEmpty && newCount > 0 {
-                Task { @MainActor in
-                    try? await Task.sleep(for: .milliseconds(900))
-                    frameAllPulse &+= 1
-                    try? await Task.sleep(for: .milliseconds(700))
-                    store.finishLoadingPresentation()
-                }
+        }
+        .onChange(of: store.loadCompletedTick) { _, _ in
+            // Atlas load arrived with content. Wait a beat for the
+            // layout pipeline to crossfade in the FA2 result, nudge
+            // the canvas to fit the whole cluster, and once the fit
+            // animation has had time to settle (~700 ms past the
+            // trigger) clear the cartographer-loading overlay so the
+            // cross-fade lands on a fully-framed view. Driven by a
+            // store-side tick (not a count edge) so atlas switches
+            // also clear the overlay.
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(900))
+                frameAllPulse &+= 1
+                try? await Task.sleep(for: .milliseconds(700))
+                store.finishLoadingPresentation()
             }
         }
         // Folder-picker presentation differs by platform:
@@ -277,17 +272,6 @@ public struct GraphView: View {
                 pendingGEXFName = nil
             }
         }
-        .sheet(isPresented: sheetBinding(for: .capture)) {
-            CaptureSheet(
-                store: store,
-                isPresented: sheetBinding(for: .capture),
-                onCommitted: { firstID in
-                    if let firstID {
-                        selectedNodeID = firstID
-                    }
-                }
-            )
-        }
         .sheet(isPresented: sheetBinding(for: .atlasSettings)) {
             AtlasSettingsSheet(store: store,
                                isPresented: sheetBinding(for: .atlasSettings))
@@ -323,11 +307,12 @@ public struct GraphView: View {
                 }
             )
         }
-        .sheet(isPresented: sheetBinding(for: .composer)) {
-            NodeComposer(
+        .sheet(isPresented: sheetBinding(for: .addNode)) {
+            AddNodeSheet(
                 store: store,
-                isPresented: sheetBinding(for: .composer),
+                isPresented: sheetBinding(for: .addNode),
                 seedConnectionTo: composerSeedID,
+                spawnWorld: composerSpawnWorld,
                 onCreated: { newID in
                     // Hand the new node off to the canvas so it can pin
                     // it at the spawn point, select it, and frame onto it.

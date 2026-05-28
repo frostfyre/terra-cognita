@@ -139,6 +139,56 @@ final class NodeIntelligence: ObservableObject {
         return nil
     }
 
+    /// Run the Augment flow against an existing node — the user has
+    /// pasted/dictated additional context for *this* node and we want
+    /// the model to propose merges: a unified body, new wikilinks
+    /// to existing graph nodes, possibly a new era, possibly new
+    /// linked nodes to create. Populates `proposals` on success; the
+    /// inspector's proposal-chip UI renders them for accept/reject.
+    ///
+    /// Same surface as `runOperation` so the existing accept/reject
+    /// pipeline (`store.applyProposal`) just works.
+    func runAugment(node: Node, newText: String, graph: Graph) {
+        let trimmed = newText.trimmingCharacters(in: .whitespacesAndNewlines)
+        ensureBound(node)
+        cancel()
+        proposals.removeAll()
+        guard !trimmed.isEmpty else { return }
+        guard isAvailable else {
+            activity = .unavailable(availabilityNote ?? "Unavailable.")
+            return
+        }
+        activity = .running
+        currentTask = Task { [weak self] in
+            await self?.performAugment(node: node, newText: trimmed, graph: graph)
+        }
+    }
+
+    private func performAugment(node: Node, newText: String, graph: Graph) async {
+        #if canImport(FoundationModels)
+        if #available(macOS 26, iOS 26, *) {
+            do {
+                let results: [NodeProposal] = try await Self.augmentProposals(
+                    node: node,
+                    newText: newText,
+                    graph: graph
+                )
+                if Task.isCancelled { return }
+                proposals = results
+                activity = .idle
+            } catch LanguageModelSession.GenerationError.refusal {
+                if Task.isCancelled { return }
+                activity = .failed("Model declined to augment — try a different framing.")
+            } catch {
+                if Task.isCancelled { return }
+                activity = .failed(error.localizedDescription)
+            }
+            return
+        }
+        #endif
+        activity = .unavailable(availabilityNote ?? "Unavailable.")
+    }
+
     /// Kick off a node summary as a fresh-conversation first turn.
     func summarize(node: Node) {
         ensureBound(node)
@@ -440,6 +490,34 @@ extension NodeIntelligence {
     struct GenLinkOnlyBatch {
         @Guide(description: "Up to four additional links", .count(0...4))
         let proposals: [GenLinkOnly]
+    }
+
+    // ---- Augment-existing schemas ----
+
+    @Generable
+    struct GenAugmentLinkedNode {
+        @Guide(description: "Label for the new node mentioned in the user's added text")
+        let label: String
+        @Guide(description: "One of: concept, person, institution, event, work")
+        let type: String
+        @Guide(description: "Optional Dataview relationship type from the current note (e.g. directed, influenced-by). Omit if none.")
+        let relationshipType: String?
+    }
+
+    @Generable
+    struct GenAugmentResult {
+        @Guide(description: "The merged note body — incorporate the user's added text cohesively. Preserve every existing [[wikilink]] verbatim. Keep the author's voice. Output markdown.")
+        let mergedBody: String
+        @Guide(description: "One short sentence describing what changed in the body")
+        let bodyReason: String
+        @Guide(description: "Up to four wikilinks to EXISTING graph nodes implied by the merged text. Only use labels from the provided list.", .count(0...4))
+        let newLinks: [GenLinkOnly]
+        @Guide(description: "Up to three NEW nodes to create that are mentioned in the user's added text and don't already exist", .count(0...3))
+        let newLinkedNodes: [GenAugmentLinkedNode]
+        @Guide(description: "Optional era taxonomy value if the merged text implies a period the current node doesn't yet have. Omit to leave era unchanged. Allowed: pre-conscious, self-choosing-childhood, pre-blizzard, early-career, blizzard-era, bridge, post-formation, post-blizzard, current, career-spanning.")
+        let suggestedEra: String?
+        @Guide(description: "Reason for the era suggestion (if any).")
+        let eraReason: String?
     }
 
     // ---- Capture orchestration ----
@@ -831,6 +909,117 @@ extension NodeIntelligence {
             kind: .replaceBody(newBody: response.content.body),
             reason: response.content.reason
         )]
+    }
+
+    // ---- Augment orchestration ----
+
+    fileprivate static func augmentProposals(node: Node,
+                                             newText: String,
+                                             graph: Graph) async throws -> [NodeProposal] {
+        let session = LanguageModelSession(instructions: instructions)
+        let existingBody = trimmedBody(node.markdownContent ?? "")
+        let kind = node.attributes["type"] ?? node.attributes["folder"] ?? "entry"
+        let currentEra = node.attributes["era"] ?? ""
+        let candidates = graph.nodes.values
+            .filter { $0.id != node.id }
+            .prefix(120)
+            .map { node -> String in
+                if let t = node.type { return "\(node.label) [\(t)]" }
+                return node.label
+            }
+        let candidateList = candidates.joined(separator: "\n- ")
+
+        let prompt = """
+        We are augmenting an existing \(kind) note titled "\(node.label)".
+
+        Current body:
+        \"\"\"
+        \(existingBody)
+        \"\"\"
+
+        The user has added new context for this note:
+        \"\"\"
+        \(newText)
+        \"\"\"
+
+        Propose:
+          • `mergedBody` — the existing body with the new context folded
+            in cohesively. Preserve every [[wikilink]] verbatim. Don't
+            summarize away the existing content; integrate the new text.
+          • `newLinks` — wikilinks to existing graph nodes implied by
+            the merged content. ONLY use labels from the existing-labels
+            list. Skip the note itself.
+          • `newLinkedNodes` — distinct people, works, institutions,
+            concepts, or events mentioned in the user's added text that
+            do NOT already appear in the existing-labels list.
+          • `suggestedEra` — only if the new text implies a period the
+            current era (\(currentEra.isEmpty ? "—" : currentEra)) doesn't
+            already cover. Otherwise omit.
+
+        Existing graph labels:
+        - \(candidateList)
+        """
+        let response = try await session.respond(to: prompt, generating: GenAugmentResult.self)
+
+        var out: [NodeProposal] = []
+
+        let merged = response.content.mergedBody.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !merged.isEmpty && merged != existingBody {
+            out.append(NodeProposal(
+                kind: .replaceBody(newBody: merged),
+                reason: response.content.bodyReason
+            ))
+        }
+
+        // Filter the AI's link proposals against the actual graph,
+        // preserving the canonical display label.
+        let lookup: [String: String] = Dictionary(
+            graph.nodes.values.map { ($0.label.lowercased(), $0.label) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        let existingLinkTargets: Set<String> = Set(graph.edges
+            .filter { $0.sourceID == node.id }
+            .map { $0.targetID.lowercased() })
+
+        for link in response.content.newLinks {
+            guard let resolved = lookup[link.target.lowercased()],
+                  resolved.lowercased() != node.label.lowercased(),
+                  !existingLinkTargets.contains(resolved.lowercased()) else { continue }
+            out.append(NodeProposal(
+                kind: .addLink(target: resolved,
+                               relationshipType: link.relationshipType),
+                reason: "Implied by your added context."
+            ))
+        }
+
+        // New linked nodes — drop anything that already collides with
+        // an existing label (`createLinkedNode` will refuse on submit
+        // anyway, but we want the chip list to be honest).
+        let existingLower = Set(graph.nodes.values.map { $0.label.lowercased() })
+        for proposed in response.content.newLinkedNodes {
+            let label = proposed.label.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !label.isEmpty, !existingLower.contains(label.lowercased()) else { continue }
+            out.append(NodeProposal(
+                kind: .createLinkedNode(
+                    label: label,
+                    type: proposed.type,
+                    era: nil,
+                    relationshipType: proposed.relationshipType
+                ),
+                reason: "Mentioned in your added context."
+            ))
+        }
+
+        if let era = response.content.suggestedEra?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !era.isEmpty,
+           era != currentEra {
+            out.append(NodeProposal(
+                kind: .setFrontMatter(key: "era", value: era),
+                reason: response.content.eraReason ?? "Implied by your added context."
+            ))
+        }
+
+        return out
     }
 }
 #endif

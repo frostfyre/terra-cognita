@@ -256,17 +256,22 @@ extension GraphView {
             }
             .keyboardShortcut("0", modifiers: .command)
 
+            // Both shortcuts open the unified Add Node sheet. ⌘N seeds
+            // a connection to the current selection; ⌘⇧N opens unseeded
+            // — useful when you want a standalone node from text capture.
             Button("") {
                 guard store.canIngest else { return }
                 composerSpawnWorld = nil
                 composerSeedID = selectedNodeID
-                activeSheet = .composer
+                activeSheet = .addNode
             }
             .keyboardShortcut("n", modifiers: .command)
 
             Button("") {
                 guard store.canIngest else { return }
-                activeSheet = .capture
+                composerSpawnWorld = nil
+                composerSeedID = nil
+                activeSheet = .addNode
             }
             .keyboardShortcut("n", modifiers: [.command, .shift])
         }

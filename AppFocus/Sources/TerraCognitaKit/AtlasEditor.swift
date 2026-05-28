@@ -243,6 +243,16 @@ extension AtlasEditor {
     }
 
     private func writeFile(_ url: URL, contents: String) throws {
+        // Defensive: ensure the parent directory exists before the
+        // atomic write. The vast majority of "write failed — No such
+        // file or directory" errors come from a missing parent — the
+        // user reorganized in Finder, the type subfolder was deleted,
+        // or the node's `filePath` predates a recent restructuring.
+        // Creating the dir lazily means the write succeeds in all of
+        // these instead of bouncing back as a hard error.
+        let parent = url.deletingLastPathComponent()
+        try? FileManager.default.createDirectory(at: parent,
+                                                 withIntermediateDirectories: true)
         do {
             try contents.write(to: url, atomically: true, encoding: .utf8)
         } catch {

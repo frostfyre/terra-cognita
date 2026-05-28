@@ -57,6 +57,12 @@ struct NodeInspectorView: View {
     @State var noteSpeechPrefix: String = ""
     @StateObject var noteSpeech = SpeechRecognizer()
 
+    /// Drives the unified augment sheet — paste/dictate context for
+    /// this node, run the AI, accept/reject the resulting proposals.
+    /// Same proposal pipeline as the named operations; the inspector's
+    /// proposal list shows results from either entry point.
+    @State var showingAugmentSheet = false
+
     var body: some View {
         Group {
             if let node = store.graph.nodes[nodeID] {
@@ -135,6 +141,16 @@ struct NodeInspectorView: View {
                         || noteSpeechPrefix.hasSuffix(" ")
                         ? "" : " "
                     noteDraft = noteSpeechPrefix + separator + newValue
+                }
+                .sheet(isPresented: $showingAugmentSheet) {
+                    if let n = store.graph.nodes[nodeID] {
+                        AugmentNodeSheet(
+                            store: store,
+                            ai: ai,
+                            isPresented: $showingAugmentSheet,
+                            node: n
+                        )
+                    }
                 }
             } else {
                 ContentUnavailableView(

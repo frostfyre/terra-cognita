@@ -110,27 +110,18 @@ extension NodeInspectorView {
 
     @ViewBuilder
     func operationsRow(_ node: Node) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text("Operations")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            InspectorFlowLayout(spacing: 6) {
-                ForEach(NodeIntelligence.Operation.allCases) { op in
-                    Button {
-                        ai.runOperation(op, node: node, graph: store.graph)
-                    } label: {
-                        Label(op.rawValue, systemImage: op.icon)
-                            .font(.caption)
-                            .lineLimit(1)
-                            .padding(.horizontal, 8).padding(.vertical, 4)
-                            .background(.purple.opacity(0.14), in: Capsule())
-                            .foregroundStyle(.purple)
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(ai.activity == .running)
-                }
-            }
+        Button {
+            showingAugmentSheet = true
+        } label: {
+            Label("Augment this node…", systemImage: "wand.and.sparkles")
+                .font(.callout.weight(.medium))
+                .padding(.horizontal, 12).padding(.vertical, 6)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(.purple.opacity(0.14), in: RoundedRectangle(cornerRadius: 8))
+                .foregroundStyle(.purple)
         }
+        .buttonStyle(.plain)
+        .disabled(ai.activity == .running)
     }
 
     @ViewBuilder

@@ -228,18 +228,8 @@ extension GraphView {
     func addSubActions(at target: GlobalRadialTarget) -> [RadialMenu.Action] {
         [
             RadialMenu.Action(
-                id: "add-capture",
-                label: "Capture",
-                systemImage: "text.bubble",
-                tint: .green
-            ) {
-                globalRadial = nil
-                guard store.canIngest else { return }
-                activeSheet = .capture
-            },
-            RadialMenu.Action(
                 id: "add-node",
-                label: "New node",
+                label: "Add node",
                 systemImage: "circle.dashed.inset.filled",
                 tint: .green
             ) {
@@ -247,7 +237,7 @@ extension GraphView {
                 guard store.canIngest else { return }
                 composerSpawnWorld = target.world
                 composerSeedID = selectedNodeID
-                activeSheet = .composer
+                activeSheet = .addNode
             },
             RadialMenu.Action(
                 id: "add-recipe",

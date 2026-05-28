@@ -1226,9 +1226,43 @@ struct GraphCanvasView: View {
     // MARK: - Hit testing
 
     private func handleTap(at point: CGPoint, size: CGSize) {
-        selectedNodeID = nodeAt(screenPoint: point, size: size)
+        if let hit = nodeAt(screenPoint: point, size: size) {
+            selectedNodeID = hit
+            return
+        }
+        // Sticky-selection: if the tap landed within the halo of the
+        // currently-selected node (its orbital-sparks ring + a touch
+        // of slack), keep the selection rather than deselecting. The
+        // visible idle animation tells the user "this is what's
+        // focused" — a tap near the glow should reaffirm focus, not
+        // throw it away.
+        if let id = selectedNodeID,
+           isTapInsideSelectionHalo(at: point, of: id, size: size) {
+            return
+        }
+        selectedNodeID = nil
         // Pulse-start is driven by `.onChange(of: selectedNodeID)` so it
         // fires for selections coming from the inspector too.
+    }
+
+    private func isTapInsideSelectionHalo(at screenPoint: CGPoint,
+                                          of nodeID: String,
+                                          size: CGSize) -> Bool {
+        guard let p = effectivePosition(for: nodeID),
+              let node = store.graph.nodes[nodeID] else { return false }
+        let centre = CGPoint(x: size.width / 2, y: size.height / 2)
+        let depth = node.depth(in: store.config)
+        let pf = CGFloat(0.55 + 0.45 * depth)
+        let sx = centre.x + p.x * scale + offset.width * pf
+        let sy = centre.y + p.y * scale + offset.height * pf
+        let d = hypot(sx - screenPoint.x, sy - screenPoint.y)
+        let depthSizeMul: CGFloat = 0.85 + 0.35 * CGFloat(depth)
+        // Visible halo: node radius + orbital-sparks ring (14 pt out in
+        // screen space) + 8 pt of forgiveness. The orbital sparks are
+        // the visual edge of the selection — taps inside that ring are
+        // clearly aimed at the selection, not the empty canvas.
+        let haloRadius = (radiusFor(nodeID: nodeID) * depthSizeMul) + 14 + 8
+        return d < haloRadius
     }
 
     // MARK: - Edge batching

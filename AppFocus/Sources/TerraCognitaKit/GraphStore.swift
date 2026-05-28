@@ -37,6 +37,15 @@ public final class GraphStore: ObservableObject {
     @Published var loadingCaption: String?
     private var captionRotator: Task<Void, Never>?
 
+    /// Monotonic counter incremented after each successful atlas load
+    /// that produced content. `GraphView` observes this to schedule
+    /// the post-load auto-frame and clear the loading overlay. Using
+    /// a dedicated tick (rather than `graph.nodes.count` transitions)
+    /// guarantees the cleanup fires on every load — including atlas
+    /// switches where the count goes from N→M or N→N, neither of
+    /// which would trigger an empty→non-empty edge.
+    @Published var loadCompletedTick: Int = 0
+
     /// Begin (or restart) the loading-caption rotation. Idempotent
     /// per load — calling twice cancels the previous rotator.
     func startLoadingPresentation() {
@@ -115,6 +124,8 @@ public final class GraphStore: ObservableObject {
                     // will fire to clear the overlay; do it here.
                     if g.nodes.isEmpty {
                         self.finishLoadingPresentation()
+                    } else {
+                        self.loadCompletedTick &+= 1
                     }
                 } catch AtlasError.notFound {
                     self.loadStatus = "Atlas not found — looked relative to CWD and the executable directory."
@@ -167,6 +178,7 @@ public final class GraphStore: ObservableObject {
                     self.finishLoadingPresentation()
                 } else {
                     self.loadStatus = "Loaded \(g.nodes.count) nodes / \(g.edges.count) edges from \(url.lastPathComponent)"
+                    self.loadCompletedTick &+= 1
                 }
                 self.writableAtlasURL = url
                 if !fromBookmark {
