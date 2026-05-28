@@ -108,6 +108,10 @@ struct GraphCanvasView: View {
     /// this flips non-nil, the canvas runs `applyLayout(_:)` and
     /// resets it back to nil.
     @Binding var layoutRequest: LayoutAlgorithm?
+    /// How many BFS hops from the selected node remain at full opacity.
+    /// Per-vault — persisted in `LayoutPersistence` and driven from the
+    /// radial Hops dial.
+    @Binding var highlightDepth: Int
     /// Node ids that should be highlighted as topology bridges
     /// (Systems lens). Non-empty only when the Systems lens is
     /// active; rendered as a dashed gold ring outside the node fill.
@@ -134,9 +138,6 @@ struct GraphCanvasView: View {
         var phase: Double    // twinkle phase
     }
 
-
-    /// How many BFS hops from the selected node remain at full opacity.
-    private let highlightDepth = 1
 
     /// Opacity for nodes/edges outside the highlight set when a node is
     /// selected. 1.0 when no selection.
@@ -993,6 +994,9 @@ struct GraphCanvasView: View {
                 offset = CGSize(width: persisted.offsetX, height: persisted.offsetY)
                 layoutAlgorithm = persisted.algorithm ?? .forceDirected
                 noOverlap = persisted.noOverlap ?? false
+                if let d = persisted.highlightDepth {
+                    highlightDepth = max(1, min(4, d))
+                }
                 if noOverlap {
                     layout = LayoutEngine.enforceNoOverlap(
                         layout,
@@ -1114,6 +1118,7 @@ struct GraphCanvasView: View {
         snapshot.offsetY = Double(offset.height)
         snapshot.algorithm = layoutAlgorithm
         snapshot.noOverlap = noOverlap
+        snapshot.highlightDepth = highlightDepth
         Task.detached { LayoutPersistence.save(snapshot) }
     }
 

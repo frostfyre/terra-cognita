@@ -1,5 +1,16 @@
 import SwiftUI
 
+/// One-shot intent posted from outside the inspector (typically the
+/// per-node radial menu) for the inspector to execute on appear or
+/// on next selection change. The inspector clears the binding back
+/// to `nil` after it consumes the intent so the same payload doesn't
+/// fire twice.
+enum InspectorIntent: Equatable {
+    case aiOperation(NodeIntelligence.Operation)
+    case editBody
+    case showMergePicker
+}
+
 /// Side-panel inspector for the currently selected node.
 ///
 /// Sections (Metadata / Note / Outbound / Inbound) are individually
@@ -13,6 +24,9 @@ struct NodeInspectorView: View {
     /// outbound row, or an inline `[[wikilink]]` in the note body).
     /// `nil` means "clear the current selection" (used after delete).
     var onSelectNode: (String?) -> Void
+    /// One-shot intent dispatched from outside (e.g. the per-node
+    /// radial menu). Consumed and reset to `nil` on receipt.
+    var pendingIntent: Binding<InspectorIntent?> = .constant(nil)
 
     @State private var showAI = true
     @State private var showMetadata = false
@@ -89,12 +103,23 @@ struct NodeInspectorView: View {
                     }
                     .padding()
                 }
-                .onAppear { ai.prepare(for: node) }
+                .onAppear {
+                    ai.prepare(for: node)
+                    consumePendingIntentIfAny(for: node)
+                }
                 .onChange(of: nodeID) { _, _ in
                     if let n = store.graph.nodes[nodeID] { ai.prepare(for: n) }
                     // If we're swapping nodes mid-edit, drop the draft —
                     // the user is now looking at a different note.
                     if isEditingNote { cancelNoteEdit() }
+                    if let n = store.graph.nodes[nodeID] {
+                        consumePendingIntentIfAny(for: n)
+                    }
+                }
+                .onChange(of: pendingIntent.wrappedValue) { _, _ in
+                    if let n = store.graph.nodes[nodeID] {
+                        consumePendingIntentIfAny(for: n)
+                    }
                 }
                 // Mirror dictated speech into the editor while recording.
                 // We append to a snapshot taken at session start so the
@@ -906,6 +931,25 @@ struct NodeInspectorView: View {
         isEditingNote = true
         showNote = true
         Task { await noteSpeech.prepare() }
+    }
+
+    /// Dispatch an externally-posted `InspectorIntent` to the right
+    /// affordance. Always clears the binding so the same payload
+    /// doesn't refire on the next view update.
+    private func consumePendingIntentIfAny(for node: Node) {
+        guard let intent = pendingIntent.wrappedValue else { return }
+        pendingIntent.wrappedValue = nil
+        switch intent {
+        case .aiOperation(let op):
+            showAI = true
+            ai.runOperation(op, node: node, graph: store.graph)
+        case .editBody:
+            guard store.canIngest else { return }
+            beginNoteEdit(for: node)
+        case .showMergePicker:
+            guard store.canIngest else { return }
+            showingMergePicker = true
+        }
     }
 
     private func cancelNoteEdit() {

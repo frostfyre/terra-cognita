@@ -21,6 +21,9 @@ struct PersistedLayout: Codable, Equatable {
     /// Whether the no-overlap post-pass is enabled for this vault.
     /// Optional for forward compatibility with older snapshots.
     var noOverlap: Bool? = nil
+    /// Selection-highlight radius in BFS hops (1...4). Different vault
+    /// densities want different defaults. Optional for older snapshots.
+    var highlightDepth: Int? = nil
 
     struct Point: Codable, Equatable {
         var x: Double

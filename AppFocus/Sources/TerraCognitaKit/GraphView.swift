@@ -54,6 +54,12 @@ public struct GraphView: View {
     /// Flips non-nil → canvas applies → canvas resets to nil.
     @State private var layoutRequest: LayoutAlgorithm? = nil
 
+    /// Selection-highlight radius in BFS hops (1...4). Persisted
+    /// per-vault via `LayoutPersistence`. Driven from the radial
+    /// Hops dial; the canvas restores it on load and reads on each
+    /// frame.
+    @State private var highlightDepth: Int = 1
+
     /// Drives the template picker sheet that appears before the
     /// folder picker on Create New Vault.
     @State private var showingTemplatePicker: Bool = false
@@ -98,6 +104,14 @@ public struct GraphView: View {
         let point: CGPoint
     }
 
+    /// Side-channel from the per-node radial → the inspector. Set
+    /// when the user picks an AI op or edit affordance from the
+    /// wheel; the inspector reads on appear (or change of selection)
+    /// and clears it back to `nil` once it's consumed. Keeps the
+    /// inspector authoritative over which view actually runs the op
+    /// while letting the radial be the entry point.
+    @State private var pendingInspectorIntent: InspectorIntent? = nil
+
     /// Duplicate clusters surfaced by the vault-load review banner.
     @State private var duplicateClusters: [[String]] = []
     /// Set to true once the user has dismissed the banner this session
@@ -132,308 +146,7 @@ public struct GraphView: View {
     }
 
     public var body: some View {
-        ZStack(alignment: .top) {
-            GraphCanvasView(
-                store: store,
-                selectedNodeID: $selectedNodeID,
-                pendingNewNode: $pendingNewNode,
-                visibleNodeFilter: visibleFilter,
-                onLongPressEmptyWorld: { worldPoint in
-                    // Spatial entry — node will materialize where the
-                    // user pointed. Pre-link to the current selection
-                    // if any (cheap "add a related thought" affordance).
-                    composerSpawnWorld = worldPoint
-                    composerSeedID = selectedNodeID
-                    showingComposer = true
-                },
-                onLongPressNode: { nodeID, screenPoint in
-                    radialTarget = RadialTarget(nodeID: nodeID, point: screenPoint)
-                },
-                frameAllPulse: $frameAllPulse,
-                layoutAlgorithm: $layoutAlgorithm,
-                noOverlap: $noOverlap,
-                layoutRequest: $layoutRequest,
-                bridgeNodeIDs: bridgeNodeIDs
-            )
-
-            // Radial action wheel anchored at the long-press point.
-            if let target = radialTarget,
-               let node = store.graph.nodes[target.nodeID] {
-                RadialMenu(
-                    center: target.point,
-                    actions: radialActions(for: node),
-                    onCancel: { radialTarget = nil }
-                )
-                .transition(.opacity)
-            }
-
-            // Top bar — back/forward + lens + find + …
-            HStack(spacing: 8) {
-                HStack(spacing: 2) {
-                    Button {
-                        navigateBack()
-                    } label: {
-                        Image(systemName: "chevron.backward")
-                    }
-                    .keyboardShortcut("[", modifiers: .command)
-                    .disabled(!navigation.canGoBack)
-                    .help("Back (⌘[)")
-
-                    Button {
-                        navigateForward()
-                    } label: {
-                        Image(systemName: "chevron.forward")
-                    }
-                    .keyboardShortcut("]", modifiers: .command)
-                    .disabled(!navigation.canGoForward)
-                    .help("Forward (⌘])")
-                }
-                LensPicker(active: $activeLens, store: store)
-                modePill
-                Spacer()
-                Menu {
-                    Button {
-                        presentFolderPicker(.openVault)
-                    } label: {
-                        Label("Open Vault Folder…", systemImage: "folder")
-                    }
-                    .keyboardShortcut("o", modifiers: .command)
-                    Button {
-                        showingTemplatePicker = true
-                    } label: {
-                        Label("Create New Vault…", systemImage: "folder.badge.plus")
-                    }
-                    Button {
-                        showingGEXFPicker = true
-                    } label: {
-                        Label("Import GEXF…", systemImage: "square.and.arrow.down.on.square")
-                    }
-                    Button {
-                        showingImportRecipe = true
-                    } label: {
-                        Label("Import from Recipe…", systemImage: "wand.and.stars")
-                    }
-                    Divider()
-                    Button {
-                        showingVaultSettings = true
-                    } label: {
-                        Label("Vault Settings…", systemImage: "gearshape")
-                    }
-                    .disabled(!store.canIngest)
-
-                    if !store.library.entries.isEmpty {
-                        Divider()
-                        Text("Recent")
-                        ForEach(store.library.entries) { entry in
-                            Button {
-                                store.openLibraryEntry(entry.id)
-                            } label: {
-                                let suffix: String = {
-                                    if let n = entry.nodeCount, let e = entry.edgeCount {
-                                        return " — \(n) nodes / \(e) edges"
-                                    }
-                                    return ""
-                                }()
-                                Label(entry.displayName + suffix,
-                                      systemImage: "clock.arrow.circlepath")
-                            }
-                        }
-                        Divider()
-                        Menu("Forget…") {
-                            ForEach(store.library.entries) { entry in
-                                Button("\(entry.displayName)", role: .destructive) {
-                                    store.forgetLibraryEntry(entry.id)
-                                }
-                            }
-                        }
-                    }
-
-                    Divider()
-                    Button {
-                        store.resetToDefaultVault()
-                    } label: {
-                        Label("Use Default (Miyazaki)", systemImage: "sparkles")
-                    }
-                } label: {
-                    Label("Vault", systemImage: "folder")
-                }
-                .menuStyle(.borderlessButton)
-                .fixedSize()
-                .help("Open a markdown vault folder (⌘O)")
-
-                Menu {
-                    Button {
-                        showingCapture = true
-                    } label: {
-                        Label("Capture…", systemImage: "text.bubble")
-                    }
-                    .keyboardShortcut("n", modifiers: [.command, .shift])
-                    .disabled(!store.canIngest)
-
-                    Button {
-                        composerSpawnWorld = nil   // canvas picks (near selection)
-                        composerSeedID = selectedNodeID
-                        showingComposer = true
-                    } label: {
-                        Label("New Node…", systemImage: "circle.dashed.inset.filled")
-                    }
-                    .keyboardShortcut("n", modifiers: .command)
-                    .disabled(!store.canIngest)
-                } label: {
-                    Image(systemName: "plus.circle")
-                }
-                .menuStyle(.borderlessButton)
-                .fixedSize()
-                .disabled(!store.canIngest)
-                .help(store.canIngest
-                      ? "Add to graph — Capture (⌘⇧N) or New Node (⌘N)"
-                      : "Open or create a writable vault first.")
-
-                Button {
-                    showingSearch = true
-                } label: {
-                    Label("Find", systemImage: "magnifyingglass")
-                        .labelStyle(.titleAndIcon)
-                }
-                .keyboardShortcut("f", modifiers: .command)
-                .help("Find a node by name (⌘F)")
-
-                Button {
-                    frameAllPulse &+= 1
-                } label: {
-                    Image(systemName: "viewfinder")
-                }
-                .keyboardShortcut("0", modifiers: .command)
-                .help("Fit graph to window (⌘0)")
-
-                Menu {
-                    ForEach(LayoutAlgorithm.allCases) { algorithm in
-                        Button {
-                            layoutRequest = algorithm
-                        } label: {
-                            // Checkmark on the active algorithm; suffix
-                            // the un-shipped ones ("Soon") so the menu
-                            // honestly reflects what's wired up.
-                            Label {
-                                HStack {
-                                    Text(algorithm.displayName)
-                                    if !algorithm.isImplemented {
-                                        Text("(soon)").foregroundStyle(.secondary)
-                                    }
-                                }
-                            } icon: {
-                                Image(systemName: layoutAlgorithm == algorithm
-                                      ? "checkmark"
-                                      : algorithm.systemImage)
-                            }
-                        }
-                        .disabled(!algorithm.isImplemented)
-                    }
-                    Divider()
-                    Toggle(isOn: $noOverlap) {
-                        Label("No overlap", systemImage: "rectangle.dashed")
-                    }
-                } label: {
-                    Image(systemName: layoutAlgorithm?.systemImage
-                          ?? "point.3.connected.trianglepath.dotted")
-                }
-                .menuStyle(.borderlessButton)
-                .fixedSize()
-                .help("Layout — pick how nodes are arranged")
-
-                Button {
-                    showPrivate.toggle()
-                } label: {
-                    Image(systemName: showPrivate ? "eye.fill" : "eye.slash")
-                        .foregroundStyle(showPrivate ? .orange : .secondary)
-                }
-                .help(showPrivate ? "Hide private nodes" : "Show private nodes")
-
-                Button {
-                    inspectorVisible.toggle()
-                } label: {
-                    Image(systemName: inspectorVisible
-                          ? "sidebar.right"
-                          : "sidebar.squares.right")
-                }
-                .keyboardShortcut("i", modifiers: .command)
-                .help(inspectorVisible ? "Hide info panel (⌘I)" : "Show info panel (⌘I)")
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(.thinMaterial)
-
-            // Duplicate-clusters banner (just below the top bar).
-            if !duplicateClusters.isEmpty && !dupeBannerDismissed {
-                VStack {
-                    Spacer().frame(height: 48)
-                    HStack(spacing: 8) {
-                        Image(systemName: "exclamationmark.bubble")
-                            .foregroundStyle(.orange)
-                        Text("\(duplicateClusters.count) duplicate cluster\(duplicateClusters.count == 1 ? "" : "s") detected")
-                            .font(.caption)
-                        Spacer()
-                        Button("Review") {
-                            showingDuplicateReview = true
-                            dupeBannerDismissed = true
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .controlSize(.small)
-                        .tint(.orange)
-                        Button {
-                            dupeBannerDismissed = true
-                        } label: {
-                            Image(systemName: "xmark")
-                                .font(.caption)
-                        }
-                        .buttonStyle(.borderless)
-                    }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                    .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 8))
-                    .padding(.horizontal, 12)
-                    Spacer()
-                }
-            }
-
-            // Load-status pill (bottom)
-            if !store.loadStatus.isEmpty {
-                VStack {
-                    Spacer()
-                    HStack {
-                        Text(store.loadStatus)
-                            .font(.caption)
-                            .padding(6)
-                            .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 6))
-                            .padding(8)
-                        Spacer()
-                    }
-                }
-            }
-
-            if showingSearch {
-                VStack {
-                    Spacer().frame(height: 56)
-                    NodeSearchView(store: store) { chosen in
-                        if let id = chosen { selectedNodeID = id }
-                        showingSearch = false
-                    }
-                    Spacer()
-                }
-                .transition(.opacity)
-            }
-
-            // Invisible Escape catcher — clears the current selection.
-            // (SwiftUI lacks a direct top-level keyboard handler outside
-            // a focused field, so this gives us one without stealing
-            // any user-visible behaviour.)
-            if selectedNodeID != nil {
-                Button("") { selectedNodeID = nil }
-                    .keyboardShortcut(.escape, modifiers: [])
-                    .opacity(0)
-                    .frame(width: 0, height: 0)
-            }
-        }
+        canvasStack
         .onAppear { store.loadDefaultVault() }
         .onChange(of: store.graph.nodes.count) { oldCount, newCount in
             // Recompute duplicate clusters whenever the graph changes
@@ -602,21 +315,7 @@ public struct GraphView: View {
             isPresented: $inspectorVisible,
             useSheet: useSheetForInspector
         ) {
-            Group {
-                if let id = selectedNodeID {
-                    NodeInspectorView(
-                        nodeID: id,
-                        store: store,
-                        onSelectNode: { newID in selectedNodeID = newID }
-                    )
-                } else {
-                    ContentUnavailableView(
-                        "No node selected",
-                        systemImage: "circle.dashed",
-                        description: Text("Tap a node in the graph to inspect it.")
-                    )
-                }
-            }
+            inspectorContent
         })
         .onChange(of: selectedNodeID) { oldValue, newValue in
             // Auto-open the panel the first time the user selects after
@@ -629,6 +328,14 @@ public struct GraphView: View {
         }
         .onChange(of: activeLens) { _, _ in
             refreshBridgeNodesIfNeeded()
+        }
+        .onChange(of: highlightDepth) { _, newValue in
+            // Persist immediately so the per-vault hop dial survives
+            // a restart even if the user never triggers a new layout
+            // pass (which is the only other write path).
+            var snapshot = LayoutPersistence.load() ?? PersistedLayout()
+            snapshot.highlightDepth = newValue
+            Task.detached { LayoutPersistence.save(snapshot) }
         }
         .onChange(of: store.graph.nodes.count) { _, _ in
             refreshBridgeNodesIfNeeded()
@@ -823,8 +530,366 @@ public struct GraphView: View {
         #endif
     }
 
-    /// Compose the radial menu's actions for a given node. Each action
-    /// dismisses the wheel after committing.
+    /// Main canvas stack — extracted from `body` so the chained
+    /// modifier list outside it doesn't have to be type-checked in
+    /// one expression. Layered top-to-bottom: graph canvas, radial
+    /// menu (when armed), top bar, banners, and the invisible
+    /// escape-catcher.
+    @ViewBuilder
+    private var canvasStack: some View {
+        ZStack(alignment: .top) {
+            GraphCanvasView(
+                store: store,
+                selectedNodeID: $selectedNodeID,
+                pendingNewNode: $pendingNewNode,
+                visibleNodeFilter: visibleFilter,
+                onLongPressEmptyWorld: { worldPoint in
+                    composerSpawnWorld = worldPoint
+                    composerSeedID = selectedNodeID
+                    showingComposer = true
+                },
+                onLongPressNode: { nodeID, screenPoint in
+                    radialTarget = RadialTarget(nodeID: nodeID, point: screenPoint)
+                },
+                frameAllPulse: $frameAllPulse,
+                layoutAlgorithm: $layoutAlgorithm,
+                noOverlap: $noOverlap,
+                layoutRequest: $layoutRequest,
+                highlightDepth: $highlightDepth,
+                bridgeNodeIDs: bridgeNodeIDs
+            )
+
+            if let target = radialTarget,
+               let node = store.graph.nodes[target.nodeID] {
+                RadialMenu(
+                    center: target.point,
+                    actions: radialActions(for: node),
+                    onCancel: { radialTarget = nil }
+                )
+                .transition(.opacity)
+            }
+
+            topBar
+
+            if !duplicateClusters.isEmpty && !dupeBannerDismissed {
+                duplicateBanner
+            }
+
+            if !store.loadStatus.isEmpty {
+                loadStatusPill
+            }
+
+            if showingSearch {
+                searchOverlay
+            }
+
+            if selectedNodeID != nil {
+                Button("") { selectedNodeID = nil }
+                    .keyboardShortcut(.escape, modifiers: [])
+                    .opacity(0)
+                    .frame(width: 0, height: 0)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var duplicateBanner: some View {
+        VStack {
+            Spacer().frame(height: 48)
+            HStack(spacing: 8) {
+                Image(systemName: "exclamationmark.bubble")
+                    .foregroundStyle(.orange)
+                Text("\(duplicateClusters.count) duplicate cluster\(duplicateClusters.count == 1 ? "" : "s") detected")
+                    .font(.caption)
+                Spacer()
+                Button("Review") {
+                    showingDuplicateReview = true
+                    dupeBannerDismissed = true
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+                .tint(.orange)
+                Button {
+                    dupeBannerDismissed = true
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.caption)
+                }
+                .buttonStyle(.borderless)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 8))
+            .padding(.horizontal, 12)
+            Spacer()
+        }
+    }
+
+    @ViewBuilder
+    private var loadStatusPill: some View {
+        VStack {
+            Spacer()
+            HStack {
+                Text(store.loadStatus)
+                    .font(.caption)
+                    .padding(6)
+                    .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 6))
+                    .padding(8)
+                Spacer()
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var searchOverlay: some View {
+        VStack {
+            Spacer().frame(height: 56)
+            NodeSearchView(store: store) { chosen in
+                if let id = chosen { selectedNodeID = id }
+                showingSearch = false
+            }
+            Spacer()
+        }
+        .transition(.opacity)
+    }
+
+    /// Top toolbar — extracted from `body` so the giant view tree
+    /// stays type-checkable. Same chrome as before: back / forward,
+    /// lens, mode pill, then the right-aligned action cluster.
+    @ViewBuilder
+    private var topBar: some View {
+        HStack(spacing: 8) {
+            HStack(spacing: 2) {
+                Button {
+                    navigateBack()
+                } label: {
+                    Image(systemName: "chevron.backward")
+                }
+                .keyboardShortcut("[", modifiers: .command)
+                .disabled(!navigation.canGoBack)
+                .help("Back (⌘[)")
+
+                Button {
+                    navigateForward()
+                } label: {
+                    Image(systemName: "chevron.forward")
+                }
+                .keyboardShortcut("]", modifiers: .command)
+                .disabled(!navigation.canGoForward)
+                .help("Forward (⌘])")
+            }
+            LensPicker(active: $activeLens, store: store)
+            modePill
+            Spacer()
+            vaultMenu
+            addMenu
+
+            Button {
+                showingSearch = true
+            } label: {
+                Label("Find", systemImage: "magnifyingglass")
+                    .labelStyle(.titleAndIcon)
+            }
+            .keyboardShortcut("f", modifiers: .command)
+            .help("Find a node by name (⌘F)")
+
+            Button {
+                frameAllPulse &+= 1
+            } label: {
+                Image(systemName: "viewfinder")
+            }
+            .keyboardShortcut("0", modifiers: .command)
+            .help("Fit graph to window (⌘0)")
+
+            layoutMenu
+
+            Button {
+                showPrivate.toggle()
+            } label: {
+                Image(systemName: showPrivate ? "eye.fill" : "eye.slash")
+                    .foregroundStyle(showPrivate ? .orange : .secondary)
+            }
+            .help(showPrivate ? "Hide private nodes" : "Show private nodes")
+
+            Button {
+                inspectorVisible.toggle()
+            } label: {
+                Image(systemName: inspectorVisible
+                      ? "sidebar.right"
+                      : "sidebar.squares.right")
+            }
+            .keyboardShortcut("i", modifiers: .command)
+            .help(inspectorVisible ? "Hide info panel (⌘I)" : "Show info panel (⌘I)")
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(.thinMaterial)
+    }
+
+    @ViewBuilder
+    private var vaultMenu: some View {
+        Menu {
+            Button {
+                presentFolderPicker(.openVault)
+            } label: {
+                Label("Open Vault Folder…", systemImage: "folder")
+            }
+            .keyboardShortcut("o", modifiers: .command)
+            Button {
+                showingTemplatePicker = true
+            } label: {
+                Label("Create New Vault…", systemImage: "folder.badge.plus")
+            }
+            Button {
+                showingGEXFPicker = true
+            } label: {
+                Label("Import GEXF…", systemImage: "square.and.arrow.down.on.square")
+            }
+            Button {
+                showingImportRecipe = true
+            } label: {
+                Label("Import from Recipe…", systemImage: "wand.and.stars")
+            }
+            Divider()
+            Button {
+                showingVaultSettings = true
+            } label: {
+                Label("Vault Settings…", systemImage: "gearshape")
+            }
+            .disabled(!store.canIngest)
+
+            if !store.library.entries.isEmpty {
+                Divider()
+                Text("Recent")
+                ForEach(store.library.entries) { entry in
+                    Button {
+                        store.openLibraryEntry(entry.id)
+                    } label: {
+                        let suffix: String = {
+                            if let n = entry.nodeCount, let e = entry.edgeCount {
+                                return " — \(n) nodes / \(e) edges"
+                            }
+                            return ""
+                        }()
+                        Label(entry.displayName + suffix,
+                              systemImage: "clock.arrow.circlepath")
+                    }
+                }
+                Divider()
+                Menu("Forget…") {
+                    ForEach(store.library.entries) { entry in
+                        Button("\(entry.displayName)", role: .destructive) {
+                            store.forgetLibraryEntry(entry.id)
+                        }
+                    }
+                }
+            }
+
+            Divider()
+            Button {
+                store.resetToDefaultVault()
+            } label: {
+                Label("Use Default (Miyazaki)", systemImage: "sparkles")
+            }
+        } label: {
+            Label("Vault", systemImage: "folder")
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+        .help("Open a markdown vault folder (⌘O)")
+    }
+
+    @ViewBuilder
+    private var addMenu: some View {
+        Menu {
+            Button {
+                showingCapture = true
+            } label: {
+                Label("Capture…", systemImage: "text.bubble")
+            }
+            .keyboardShortcut("n", modifiers: [.command, .shift])
+            .disabled(!store.canIngest)
+
+            Button {
+                composerSpawnWorld = nil   // canvas picks (near selection)
+                composerSeedID = selectedNodeID
+                showingComposer = true
+            } label: {
+                Label("New Node…", systemImage: "circle.dashed.inset.filled")
+            }
+            .keyboardShortcut("n", modifiers: .command)
+            .disabled(!store.canIngest)
+        } label: {
+            Image(systemName: "plus.circle")
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+        .disabled(!store.canIngest)
+        .help(store.canIngest
+              ? "Add to graph — Capture (⌘⇧N) or New Node (⌘N)"
+              : "Open or create a writable vault first.")
+    }
+
+    @ViewBuilder
+    private var layoutMenu: some View {
+        Menu {
+            ForEach(LayoutAlgorithm.allCases) { algorithm in
+                Button {
+                    layoutRequest = algorithm
+                } label: {
+                    Label {
+                        HStack {
+                            Text(algorithm.displayName)
+                            if !algorithm.isImplemented {
+                                Text("(soon)").foregroundStyle(.secondary)
+                            }
+                        }
+                    } icon: {
+                        Image(systemName: layoutAlgorithm == algorithm
+                              ? "checkmark"
+                              : algorithm.systemImage)
+                    }
+                }
+                .disabled(!algorithm.isImplemented)
+            }
+            Divider()
+            Toggle(isOn: $noOverlap) {
+                Label("No overlap", systemImage: "rectangle.dashed")
+            }
+        } label: {
+            Image(systemName: layoutAlgorithm?.systemImage
+                  ?? "point.3.connected.trianglepath.dotted")
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+        .help("Layout — pick how nodes are arranged")
+    }
+
+    /// Inspector body, factored out of `body` so SwiftUI's type
+    /// inference doesn't have to chew through the whole graph view
+    /// in one pass.
+    @ViewBuilder
+    private var inspectorContent: some View {
+        if let id = selectedNodeID {
+            NodeInspectorView(
+                nodeID: id,
+                store: store,
+                onSelectNode: { newID in selectedNodeID = newID },
+                pendingIntent: $pendingInspectorIntent
+            )
+        } else {
+            ContentUnavailableView(
+                "No node selected",
+                systemImage: "circle.dashed",
+                description: Text("Tap a node in the graph to inspect it.")
+            )
+        }
+    }
+
+    /// Compose the per-node radial menu. Top level reads as
+    /// **Open · AI ▸ · Edit ▸ · Center · Hops ▸**; AI and Edit are
+    /// nested sub-menus that swap in when tapped. Every terminal
+    /// wedge dismisses the wheel by clearing `radialTarget`.
     private func radialActions(for node: Node) -> [RadialMenu.Action] {
         var actions: [RadialMenu.Action] = []
 
@@ -840,15 +905,22 @@ public struct GraphView: View {
         })
 
         actions.append(RadialMenu.Action(
-            id: "find-links",
-            label: "AI links",
-            systemImage: "link",
-            tint: .indigo
-        ) {
-            selectedNodeID = node.id
-            inspectorVisible = true
-            radialTarget = nil
-        })
+            id: "ai",
+            label: "AI",
+            systemImage: "sparkles",
+            tint: .indigo,
+            children: aiSubActions(for: node)
+        ))
+
+        if store.canIngest {
+            actions.append(RadialMenu.Action(
+                id: "edit",
+                label: "Edit",
+                systemImage: "pencil",
+                tint: .orange,
+                children: editSubActions(for: node)
+            ))
+        }
 
         actions.append(RadialMenu.Action(
             id: "center",
@@ -860,9 +932,107 @@ public struct GraphView: View {
             radialTarget = nil
         })
 
-        if store.canIngest {
-            actions.append(RadialMenu.Action(
-                id: "delete",
+        actions.append(RadialMenu.Action(
+            id: "hops",
+            label: "Hops",
+            systemImage: "dot.radiowaves.left.and.right",
+            tint: .pink,
+            children: hopsSubActions()
+        ))
+
+        return actions
+    }
+
+    /// Five AI wedges — each routes through the inspector's
+    /// `NodeIntelligence` instance via `pendingInspectorIntent`.
+    private func aiSubActions(for node: Node) -> [RadialMenu.Action] {
+        let dispatch: (NodeIntelligence.Operation) -> Void = { op in
+            selectedNodeID = node.id
+            inspectorVisible = true
+            pendingInspectorIntent = .aiOperation(op)
+            radialTarget = nil
+        }
+        return [
+            RadialMenu.Action(
+                id: "ai-connect",
+                label: "Connections",
+                systemImage: NodeIntelligence.Operation.suggestConnect.icon,
+                tint: .indigo
+            ) { dispatch(.suggestConnect) },
+            RadialMenu.Action(
+                id: "ai-links",
+                label: "Find links",
+                systemImage: NodeIntelligence.Operation.findLinks.icon,
+                tint: .indigo
+            ) { dispatch(.findLinks) },
+            RadialMenu.Action(
+                id: "ai-era",
+                label: "Suggest era",
+                systemImage: NodeIntelligence.Operation.suggestEra.icon,
+                tint: .indigo
+            ) { dispatch(.suggestEra) },
+            RadialMenu.Action(
+                id: "ai-concepts",
+                label: "Concepts",
+                systemImage: NodeIntelligence.Operation.extractConcepts.icon,
+                tint: .indigo
+            ) { dispatch(.extractConcepts) },
+            RadialMenu.Action(
+                id: "ai-rewrite",
+                label: "Rewrite",
+                systemImage: NodeIntelligence.Operation.rewriteConcise.icon,
+                tint: .indigo
+            ) { dispatch(.rewriteConcise) },
+        ]
+    }
+
+    /// Edit-time affordances. Type / Era live in the header so the
+    /// wedge simply opens the inspector — the user taps the pill
+    /// from there. Body / Merge route through `pendingInspectorIntent`
+    /// to land the inspector in the right state. Delete is direct.
+    private func editSubActions(for node: Node) -> [RadialMenu.Action] {
+        let openInspector: () -> Void = {
+            selectedNodeID = node.id
+            inspectorVisible = true
+            radialTarget = nil
+        }
+        return [
+            RadialMenu.Action(
+                id: "edit-type",
+                label: "Type",
+                systemImage: "tag",
+                tint: .orange
+            ) { openInspector() },
+            RadialMenu.Action(
+                id: "edit-era",
+                label: "Era",
+                systemImage: "calendar.badge.clock",
+                tint: .orange
+            ) { openInspector() },
+            RadialMenu.Action(
+                id: "edit-body",
+                label: "Body",
+                systemImage: "text.alignleft",
+                tint: .orange
+            ) {
+                selectedNodeID = node.id
+                inspectorVisible = true
+                pendingInspectorIntent = .editBody
+                radialTarget = nil
+            },
+            RadialMenu.Action(
+                id: "edit-merge",
+                label: "Merge…",
+                systemImage: "arrow.triangle.merge",
+                tint: .orange
+            ) {
+                selectedNodeID = node.id
+                inspectorVisible = true
+                pendingInspectorIntent = .showMergePicker
+                radialTarget = nil
+            },
+            RadialMenu.Action(
+                id: "edit-delete",
                 label: "Delete",
                 systemImage: "trash",
                 tint: .red
@@ -870,19 +1040,25 @@ public struct GraphView: View {
                 _ = store.deleteNode(node.id)
                 if selectedNodeID == node.id { selectedNodeID = nil }
                 radialTarget = nil
-            })
+            },
+        ]
+    }
+
+    /// Four hop-distance wedges. The active value shows a ✓ badge
+    /// so the user can read the current state at a glance.
+    private func hopsSubActions() -> [RadialMenu.Action] {
+        (1...4).map { depth in
+            RadialMenu.Action(
+                id: "hops-\(depth)",
+                label: "\(depth) hop\(depth == 1 ? "" : "s")",
+                systemImage: "\(depth).circle",
+                tint: .pink,
+                isChecked: highlightDepth == depth
+            ) {
+                highlightDepth = depth
+                radialTarget = nil
+            }
         }
-
-        actions.append(RadialMenu.Action(
-            id: "cancel",
-            label: "Cancel",
-            systemImage: "xmark",
-            tint: .gray
-        ) {
-            radialTarget = nil
-        })
-
-        return actions
     }
 
     /// Composed visible-node filter:
