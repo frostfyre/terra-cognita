@@ -68,7 +68,13 @@ struct AddNodeSheet: View {
             #endif
             .toolbar { toolbarContent }
         }
+        #if os(macOS)
+        // The minWidth was sized for macOS sheets. Applying it on
+        // iOS pushes the content past the screen edges in portrait
+        // (typically 375–428pt wide), bleeding buttons and the
+        // editor off the right. Let iOS use the natural sheet width.
         .frame(minWidth: 500, idealWidth: 620, minHeight: 460, idealHeight: 620)
+        #endif
         .task { await speech.prepare() }
         .onAppear {
             if typeChoice.isEmpty {

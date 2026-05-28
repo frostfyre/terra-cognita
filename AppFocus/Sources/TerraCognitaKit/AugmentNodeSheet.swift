@@ -91,7 +91,12 @@ struct AugmentNodeSheet: View {
                 }
             }
         }
+        #if os(macOS)
+        // Sized for macOS sheets; on iOS the natural sheet width is
+        // already correct and any minWidth ≥ ~400 bleeds buttons /
+        // the editor off the right edge in portrait.
         .frame(minWidth: 500, idealWidth: 620, minHeight: 460, idealHeight: 620)
+        #endif
         .task { await speech.prepare() }
         .onAppear { inputFocused = true }
         .onChange(of: speech.transcript) { _, newValue in
