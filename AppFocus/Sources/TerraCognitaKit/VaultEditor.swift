@@ -48,6 +48,125 @@ struct VaultEditor {
         return body
     }
 
+    /// Rewrite the relationship type on an edge line. The line must
+    /// be a *bare* edge declaration — optional `rel:: ` prefix, then
+    /// `[[target]]` (optionally with `|alias`) on a line by itself.
+    /// We refuse edges embedded mid-prose to avoid corrupting body
+    /// text; callers should fall back to "edit the source note".
+    ///
+    /// `newRelationship == nil` removes the prefix entirely (the
+    /// edge becomes a bare wikilink). Returns the updated body.
+    func updateEdgeRelationship(in fileURL: URL,
+                                target: String,
+                                oldRelationship: String?,
+                                newRelationship: String?) throws -> String {
+        let raw = try readFile(fileURL)
+        try snapshotIfNeeded(fileURL, original: raw)
+        guard let updated = Self.rewriteEdgeLine(in: raw,
+                                                 target: target,
+                                                 oldRelationship: oldRelationship,
+                                                 newRelationship: newRelationship,
+                                                 removeLine: false) else {
+            throw EditError.writeFailed("No editable edge line for [[\(target)]] — it may be embedded in prose.")
+        }
+        try writeFile(fileURL, contents: updated)
+        return updated
+    }
+
+    /// Delete an edge by removing the entire line containing it.
+    /// Same restrictions as `updateEdgeRelationship` — only bare
+    /// edge lines are editable. Returns the updated body.
+    func removeEdge(in fileURL: URL,
+                    target: String,
+                    relationshipType: String?) throws -> String {
+        let raw = try readFile(fileURL)
+        try snapshotIfNeeded(fileURL, original: raw)
+        guard let updated = Self.rewriteEdgeLine(in: raw,
+                                                 target: target,
+                                                 oldRelationship: relationshipType,
+                                                 newRelationship: nil,
+                                                 removeLine: true) else {
+            throw EditError.writeFailed("No editable edge line for [[\(target)]] — it may be embedded in prose.")
+        }
+        try writeFile(fileURL, contents: updated)
+        return updated
+    }
+
+    /// Locate-and-rewrite a single edge line. Returns `nil` if no
+    /// bare edge line matched — keeps prose-embedded wikilinks
+    /// untouched. Matching is case-insensitive on `target` and
+    /// trims whitespace around `[[…]]`.
+    static func rewriteEdgeLine(in raw: String,
+                                target: String,
+                                oldRelationship: String?,
+                                newRelationship: String?,
+                                removeLine: Bool) -> String? {
+        let needle = target.lowercased()
+        var lines = raw.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+        for i in lines.indices {
+            let trimmed = lines[i].trimmingCharacters(in: .whitespaces)
+            guard let parsed = Self.parseEdgeLine(trimmed) else { continue }
+            if parsed.target.lowercased() != needle { continue }
+            // Optional disambiguation: when caller passes the old
+            // relationship type, require it to match — otherwise
+            // multiple edges A → B with different types would
+            // collide.
+            if let oldRel = oldRelationship {
+                if parsed.relationship?.lowercased() != oldRel.lowercased() { continue }
+            } else if parsed.relationship != nil {
+                // Caller meant "bare wikilink"; skip Dataview lines.
+                continue
+            }
+            if removeLine {
+                lines.remove(at: i)
+            } else {
+                let aliasSuffix = parsed.alias.map { "|\($0)" } ?? ""
+                let link = "[[\(parsed.target)\(aliasSuffix)]]"
+                if let newRel = newRelationship, !newRel.isEmpty {
+                    lines[i] = "\(newRel):: \(link)"
+                } else {
+                    lines[i] = link
+                }
+            }
+            return lines.joined(separator: "\n")
+        }
+        return nil
+    }
+
+    /// Parses a single trimmed line as an edge declaration. Returns
+    /// `nil` if the line isn't *exclusively* a wikilink (optionally
+    /// preceded by a Dataview `key::` prefix).
+    static func parseEdgeLine(_ line: String) -> (relationship: String?, target: String, alias: String?)? {
+        var work = line
+        var relationship: String?
+        if let dataviewSep = work.range(of: "::") {
+            let key = work[..<dataviewSep.lowerBound]
+                .trimmingCharacters(in: .whitespaces)
+            // Reject keys with whitespace or punctuation that wouldn't be a
+            // valid Dataview attribute — this guards against prose like
+            // "she said:: ..." being mistaken for an edge.
+            let keyChars = CharacterSet(charactersIn:
+                "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-")
+            guard !key.isEmpty,
+                  key.unicodeScalars.allSatisfy(keyChars.contains) else {
+                return nil
+            }
+            relationship = key
+            work = String(work[dataviewSep.upperBound...])
+                .trimmingCharacters(in: .whitespaces)
+        }
+        guard work.hasPrefix("[["), work.hasSuffix("]]") else { return nil }
+        let inner = work.dropFirst(2).dropLast(2)
+        if inner.contains("[[") || inner.contains("]]") { return nil }
+        let parts = inner.split(separator: "|", maxSplits: 1).map(String.init)
+        let target = parts[0].trimmingCharacters(in: .whitespaces)
+        let alias = parts.count > 1
+            ? parts[1].trimmingCharacters(in: .whitespaces)
+            : nil
+        if target.isEmpty { return nil }
+        return (relationship, target, alias)
+    }
+
     /// Set (or insert) a single YAML front-matter key. Adds a
     /// front-matter block if the note didn't have one.
     func setFrontMatter(in fileURL: URL,

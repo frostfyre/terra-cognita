@@ -576,6 +576,104 @@ public final class GraphStore: ObservableObject {
         }
     }
 
+    // MARK: - Edge editing
+
+    /// Rewrite the `relationshipType` on an existing edge. The edit
+    /// happens in the **source** note's markdown (Dataview-style
+    /// `key:: [[target]]` line). Returns `nil` on success, a
+    /// user-facing error message otherwise.
+    ///
+    /// Only edges whose body line is *exclusively* a wikilink (with
+    /// optional Dataview prefix) are editable here — wikilinks
+    /// embedded mid-prose are flagged with a hint to edit the
+    /// source note manually.
+    @discardableResult
+    func setEdgeRelationship(_ edge: Edge, to newRelationship: String?) -> String? {
+        guard let vaultURL = writableVaultURL else {
+            return "Open or create a writable vault first."
+        }
+        guard let sourceNode = graph.nodes[edge.sourceID],
+              let pathString = sourceNode.filePath else {
+            return "Source note has no backing file."
+        }
+        guard let targetNode = graph.nodes[edge.targetID] else {
+            return "Target node no longer exists."
+        }
+        let fileURL = URL(fileURLWithPath: pathString)
+        let didStart = vaultURL.startAccessingSecurityScopedResource()
+        defer { if didStart { vaultURL.stopAccessingSecurityScopedResource() } }
+
+        let editor = VaultEditor(vaultURL: vaultURL)
+        let trimmedNew = newRelationship?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let effectiveNew = (trimmedNew?.isEmpty == true) ? nil : trimmedNew
+        do {
+            _ = try editor.updateEdgeRelationship(
+                in: fileURL,
+                target: targetNode.id,
+                oldRelationship: edge.relationshipType,
+                newRelationship: effectiveNew
+            )
+            // Mirror the change in memory: edge id encodes the
+            // relationship type, so remove the old edge and add a
+            // freshly-built one with the new id.
+            graph.edges.removeAll { $0.id == edge.id }
+            let suffix = effectiveNew.map { "::\($0)" } ?? ""
+            let newID = "\(edge.sourceID)->\(edge.targetID)\(suffix)"
+            var rebuilt = edge
+            rebuilt = Edge(id: newID,
+                           sourceID: edge.sourceID,
+                           targetID: edge.targetID)
+            rebuilt.relationshipType = effectiveNew
+            rebuilt.confidence = edge.confidence
+            rebuilt.provenance = edge.provenance
+            rebuilt.evidence = edge.evidence
+            rebuilt.era = edge.era
+            rebuilt.date = edge.date
+            graph.edges.append(rebuilt)
+            return nil
+        } catch let err as VaultEditor.EditError {
+            return err.errorDescription
+        } catch {
+            return error.localizedDescription
+        }
+    }
+
+    /// Delete an edge by removing its declaration line from the
+    /// source note. Same restrictions as `setEdgeRelationship` —
+    /// only bare edge lines are editable.
+    @discardableResult
+    func removeEdge(_ edge: Edge) -> String? {
+        guard let vaultURL = writableVaultURL else {
+            return "Open or create a writable vault first."
+        }
+        guard let sourceNode = graph.nodes[edge.sourceID],
+              let pathString = sourceNode.filePath else {
+            return "Source note has no backing file."
+        }
+        guard let targetNode = graph.nodes[edge.targetID] else {
+            return "Target node no longer exists."
+        }
+        let fileURL = URL(fileURLWithPath: pathString)
+        let didStart = vaultURL.startAccessingSecurityScopedResource()
+        defer { if didStart { vaultURL.stopAccessingSecurityScopedResource() } }
+
+        let editor = VaultEditor(vaultURL: vaultURL)
+        do {
+            _ = try editor.removeEdge(
+                in: fileURL,
+                target: targetNode.id,
+                relationshipType: edge.relationshipType
+            )
+            graph.edges.removeAll { $0.id == edge.id }
+            return nil
+        } catch let err as VaultEditor.EditError {
+            return err.errorDescription
+        } catch {
+            return error.localizedDescription
+        }
+    }
+
     /// Materialize a Capture proposal: creates each accepted node, then
     /// wires the wikilinks (internal between new nodes + external to
     /// existing graph nodes) by appending them to each new node's body.
