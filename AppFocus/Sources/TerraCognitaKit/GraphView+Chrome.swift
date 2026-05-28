@@ -70,6 +70,10 @@ extension GraphView {
                 searchOverlay
             }
 
+            if let caption = store.loadingCaption {
+                loadingOverlay(caption: caption)
+            }
+
             if selectedNodeID != nil {
                 Button("") { selectedNodeID = nil }
                     .keyboardShortcut(.escape, modifiers: [])
@@ -127,6 +131,41 @@ extension GraphView {
                 Spacer()
             }
         }
+    }
+
+    /// Centered overlay with a spinner + the rotating caption from
+    /// `LoadingCaptions`. Sits above everything except the radial
+    /// menus (we won't render radials during a load anyway since
+    /// the canvas content is still arriving). The dimmer is
+    /// non-blocking — gestures still pass through — but the caption
+    /// gives the user something to read instead of a frozen frame.
+    @ViewBuilder
+    func loadingOverlay(caption: String) -> some View {
+        VStack {
+            Spacer()
+            HStack(spacing: 10) {
+                ProgressView()
+                    .progressViewStyle(.circular)
+                    .controlSize(.regular)
+                    .tint(.white)
+                Text(caption)
+                    .font(.callout)
+                    .foregroundStyle(.white)
+                    .animation(.easeInOut(duration: 0.4), value: caption)
+                    .transition(.opacity)
+            }
+            .padding(.horizontal, 18)
+            .padding(.vertical, 12)
+            .background(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(.black.opacity(0.55))
+            )
+            Spacer()
+        }
+        .frame(maxWidth: .infinity)
+        .allowsHitTesting(false)
+        .transition(.opacity)
+        .id(caption)   // force the .transition on each new caption
     }
 
     @ViewBuilder

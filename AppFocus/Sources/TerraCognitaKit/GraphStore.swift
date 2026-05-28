@@ -22,6 +22,14 @@ public final class GraphStore: ObservableObject {
     /// True if node ingestion is allowed against the current atlas.
     var canIngest: Bool { writableAtlasURL != nil }
 
+    /// Set while an atlas load is in flight. `nil` means idle; a
+    /// non-nil value is the cartography-flavored caption to show
+    /// in the loading overlay (cycles every ~2 s in the cartographer's
+    /// voice — "Surveying the seams…", "Folding the eras…", …).
+    /// Large atlases on iOS can take several seconds to walk, so
+    /// silence is reads as a frozen UI.
+    @Published var loadingCaption: String?
+
     /// Per-store `.bak` snapshot tracker. Was a process-global static
     /// on `AtlasEditor`; lives here so each `GraphStore` (current
     /// usage: one per session, future usage: potentially per-atlas)
@@ -83,6 +91,27 @@ public final class GraphStore: ObservableObject {
         let didStart = url.startAccessingSecurityScopedResource()
         Task {
             defer { if didStart { url.stopAccessingSecurityScopedResource() } }
+            // Kick off the caption rotator. Cancelled in `defer`
+            // below so it can never leak past the load.
+            self.loadingCaption = LoadingCaptions.next(after: nil)
+            let captionTask = Task { [weak self] in
+                while !Task.isCancelled {
+                    try? await Task.sleep(for: .seconds(2))
+                    guard !Task.isCancelled else { break }
+                    await MainActor.run {
+                        guard let self else { return }
+                        // Only advance if a load is still in flight.
+                        if self.loadingCaption != nil {
+                            self.loadingCaption = LoadingCaptions.next(
+                                after: self.loadingCaption)
+                        }
+                    }
+                }
+            }
+            defer {
+                captionTask.cancel()
+                self.loadingCaption = nil
+            }
             do {
                 // Load the config first so the loader's extractor
                 // toggles + custom types come into play during the walk.
