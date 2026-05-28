@@ -1,5 +1,36 @@
 # Known Issues
 
+## iOS: heritage folder loads as 0 nodes / 0 edges
+**Status:** instrumented, awaiting on-device repro
+**Reported:** 2026-05-27
+
+User copied the heritage vault folder to iOS, picked it via Open
+Vault Folder → status shows 0 nodes / 0 edges. Same folder loads
+correctly on macOS so the source is intact. Most likely causes,
+in decreasing order of likelihood:
+
+1. **Wrong-folder pick** — the heritage tree on disk is nested
+   (`Data/heritage-vault/heritage-vault/concepts/...`). Picking
+   the outer `heritage-vault` wrapper yields a folder with one
+   child directory and zero `.md` files. The Files-app picker
+   surfaces both levels with the same name; easy to grab the
+   wrong one.
+2. **iOS sandboxing** — `UIDocumentPickerViewController(forOpeningContentTypes: [.folder])`
+   should grant recursive read access via the security-scoped
+   bracket, but iCloud-Drive folders sometimes need an
+   `NSFileCoordinator.coordinate(readingItemAt:options:byAccessor:)`
+   wrap before `FileManager.enumerator` will yield anything.
+3. **Encoding issue** — the loader's encoding fallback chain runs
+   per file, so this is a long-shot; would surface as "found
+   N .md but parsed 0 nodes."
+
+`VaultLoader.load()` now returns `(Graph, Diagnostics)` and
+`GraphStore.load(from:)` surfaces the diag counts in the load
+status when nodes.count == 0, distinguishing #1 (`walked N items
+but no .md`) from #2 (`folder access was denied`) from #3
+(`walked N, M .md but none parsed`). Next on-device repro should
+say which.
+
 ## Capture / AI ops crashed on graphs with duplicate-labelled nodes
 **Status:** fixed, awaiting confirmation
 **Reported:** 2026-05-27

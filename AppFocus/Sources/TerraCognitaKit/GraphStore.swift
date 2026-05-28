@@ -70,12 +70,29 @@ public final class GraphStore: ObservableObject {
                 // Load the config first so the loader's extractor
                 // toggles + custom types come into play during the walk.
                 let cfg = VaultConfig.load(from: url)
-                let g = try await Task.detached(priority: .userInitiated) {
+                let (g, diag) = try await Task.detached(priority: .userInitiated) {
                     try VaultLoader(vaultURL: url, config: cfg).load()
                 }.value
                 self.graph = g
                 self.config = cfg
-                self.loadStatus = "Loaded \(g.nodes.count) nodes / \(g.edges.count) edges from \(url.lastPathComponent)"
+                if g.nodes.isEmpty {
+                    // Explain *why* the load came back empty so the
+                    // user can act — most often this is a wrong-folder
+                    // pick on iOS (parent of the actual vault) or a
+                    // sandbox failure if the picker URL didn't grant
+                    // recursive read access.
+                    if diag.enumeratorFailed {
+                        self.loadStatus = "Couldn't read \(url.lastPathComponent) — folder access was denied. Try picking the folder again."
+                    } else if diag.itemsWalked == 0 {
+                        self.loadStatus = "Loaded 0 nodes from \(url.lastPathComponent) — the folder appears to be empty."
+                    } else if diag.mdFilesFound == 0 {
+                        self.loadStatus = "Loaded 0 nodes from \(url.lastPathComponent) — walked \(diag.itemsWalked) items but found no .md files. Did you pick the parent folder?"
+                    } else {
+                        self.loadStatus = "Loaded 0 nodes from \(url.lastPathComponent) — walked \(diag.itemsWalked) items, \(diag.mdFilesFound) .md files but none parsed."
+                    }
+                } else {
+                    self.loadStatus = "Loaded \(g.nodes.count) nodes / \(g.edges.count) edges from \(url.lastPathComponent)"
+                }
                 self.writableVaultURL = url
                 if !fromBookmark {
                     VaultBookmark.save(url)
@@ -911,7 +928,7 @@ public final class GraphStore: ObservableObject {
         }
         let cfg = VaultConfig.load(from: vaultURL)
         let loader = VaultLoader(vaultURL: vaultURL, config: cfg)
-        let g = try loader.load()
+        let (g, _) = try loader.load()
         // Bundle resources live under .../Resources/ inside the app
         // bundle and aren't writable. Anything else we resolved (the
         // dev heritage vault, etc.) is treated as writable.

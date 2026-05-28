@@ -53,6 +53,16 @@ struct VaultLoader {
         return nil
     }
 
+    /// Per-load counts useful when the graph comes back empty —
+    /// distinguishes "enumerator couldn't open the URL at all" (iOS
+    /// sandboxing / wrong-folder) from "walked but found no .md"
+    /// (user picked a parent above the actual vault).
+    struct Diagnostics {
+        var itemsWalked: Int = 0
+        var mdFilesFound: Int = 0
+        var enumeratorFailed: Bool = false
+    }
+
     /// Loads the entire vault into a `Graph`. The four extraction
     /// passes run in order:
     ///   1. Walk `.md` files → first-class nodes
@@ -60,14 +70,16 @@ struct VaultLoader {
     ///   3. (extractors.placeholders) Dangling wikilinks → ghost nodes
     ///   4. (extractors.tags) `#tag` references → tag-nodes + edges
     ///   5. (extractors.embeds) `![[file.png]]` references → file-nodes + edges
-    func load() throws -> Graph {
+    func load() throws -> (Graph, Diagnostics) {
         let fm = FileManager.default
+        var diag = Diagnostics()
         guard let enumerator = fm.enumerator(
             at: vaultURL,
             includingPropertiesForKeys: [.isRegularFileKey],
             options: [.skipsHiddenFiles]
         ) else {
-            return Graph(nodes: [:], edges: [])
+            diag.enumeratorFailed = true
+            return (Graph(nodes: [:], edges: []), diag)
         }
 
         var nodes: [String: Node] = [:]
@@ -79,8 +91,10 @@ struct VaultLoader {
         var pendingTagRefs: [(String, String)] = []
         var pendingEmbedRefs: [(String, String)] = []
 
-        for case let url as URL in enumerator
-        where url.pathExtension.lowercased() == "md" {
+        for case let url as URL in enumerator {
+            diag.itemsWalked += 1
+            guard url.pathExtension.lowercased() == "md" else { continue }
+            diag.mdFilesFound += 1
             let id = url.deletingPathExtension().lastPathComponent
             // Skip README and top-level vault docs.
             if id.uppercased() == "README" { continue }
@@ -210,7 +224,7 @@ struct VaultLoader {
             }
         }
 
-        return Graph(nodes: nodes, edges: edges)
+        return (Graph(nodes: nodes, edges: edges), diag)
     }
 }
 
