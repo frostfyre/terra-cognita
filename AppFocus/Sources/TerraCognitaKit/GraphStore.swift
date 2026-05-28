@@ -27,8 +27,45 @@ public final class GraphStore: ObservableObject {
     /// in the loading overlay (cycles every ~2 s in the cartographer's
     /// voice — "Surveying the seams…", "Folding the eras…", …).
     /// Large atlases on iOS can take several seconds to walk, so
-    /// silence is reads as a frozen UI.
+    /// silence reads as a frozen UI.
+    ///
+    /// The lifetime spans **load + layout + first frame** — the
+    /// store keeps the captions running until the canvas reports
+    /// it has settled (`finishLoadingPresentation()`), so the user
+    /// sees one continuous loading state from picker to fully-
+    /// framed view.
     @Published var loadingCaption: String?
+    private var captionRotator: Task<Void, Never>?
+
+    /// Begin (or restart) the loading-caption rotation. Idempotent
+    /// per load — calling twice cancels the previous rotator.
+    func startLoadingPresentation() {
+        captionRotator?.cancel()
+        loadingCaption = LoadingCaptions.next(after: nil)
+        captionRotator = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(2))
+                guard !Task.isCancelled else { break }
+                await MainActor.run {
+                    guard let self, self.loadingCaption != nil else { return }
+                    self.loadingCaption = LoadingCaptions.next(
+                        after: self.loadingCaption)
+                }
+            }
+        }
+    }
+
+    /// End the loading-caption rotation and clear the overlay.
+    /// Called from `GraphView` after the post-load auto-frame
+    /// animation has settled, so the cross-fade lands on a
+    /// fully-framed canvas instead of a half-laid-out blink.
+    func finishLoadingPresentation() {
+        captionRotator?.cancel()
+        captionRotator = nil
+        withAnimation(.easeOut(duration: 0.5)) {
+            loadingCaption = nil
+        }
+    }
 
     /// Per-store `.bak` snapshot tracker. Was a process-global static
     /// on `AtlasEditor`; lives here so each `GraphStore` (current
@@ -66,6 +103,7 @@ public final class GraphStore: ObservableObject {
         if let url = AtlasBookmark.load() {
             load(from: url, fromBookmark: true)
         } else {
+            startLoadingPresentation()
             Task {
                 do {
                     let (atlasName, g, isWritable, url) = try await Self.loadFromDefaultAtlas()
@@ -73,12 +111,19 @@ public final class GraphStore: ObservableObject {
                     self.config = AtlasConfig.load(from: url)
                     self.loadStatus = "Loaded \(g.nodes.count) nodes / \(g.edges.count) edges from \(atlasName)"
                     self.writableAtlasURL = isWritable ? url : nil
+                    // Empty graph (e.g. demo missing) → no auto-frame
+                    // will fire to clear the overlay; do it here.
+                    if g.nodes.isEmpty {
+                        self.finishLoadingPresentation()
+                    }
                 } catch AtlasError.notFound {
                     self.loadStatus = "Atlas not found — looked relative to CWD and the executable directory."
                     self.writableAtlasURL = nil
+                    self.finishLoadingPresentation()
                 } catch {
                     self.loadStatus = "Atlas load failed: \(error.localizedDescription)"
                     self.writableAtlasURL = nil
+                    self.finishLoadingPresentation()
                 }
             }
         }
@@ -89,29 +134,9 @@ public final class GraphStore: ObservableObject {
     /// touches the recent-atlases library.
     func load(from url: URL, fromBookmark: Bool = false) {
         let didStart = url.startAccessingSecurityScopedResource()
+        startLoadingPresentation()
         Task {
             defer { if didStart { url.stopAccessingSecurityScopedResource() } }
-            // Kick off the caption rotator. Cancelled in `defer`
-            // below so it can never leak past the load.
-            self.loadingCaption = LoadingCaptions.next(after: nil)
-            let captionTask = Task { [weak self] in
-                while !Task.isCancelled {
-                    try? await Task.sleep(for: .seconds(2))
-                    guard !Task.isCancelled else { break }
-                    await MainActor.run {
-                        guard let self else { return }
-                        // Only advance if a load is still in flight.
-                        if self.loadingCaption != nil {
-                            self.loadingCaption = LoadingCaptions.next(
-                                after: self.loadingCaption)
-                        }
-                    }
-                }
-            }
-            defer {
-                captionTask.cancel()
-                self.loadingCaption = nil
-            }
             do {
                 // Load the config first so the loader's extractor
                 // toggles + custom types come into play during the walk.
@@ -136,6 +161,10 @@ public final class GraphStore: ObservableObject {
                     } else {
                         self.loadStatus = "Loaded 0 nodes from \(url.lastPathComponent) — walked \(diag.itemsWalked) items, \(diag.mdFilesFound) .md files but none parsed."
                     }
+                    // Empty load → the auto-frame branch in GraphView
+                    // (wasEmpty && newCount > 0) won't fire, so the
+                    // overlay would hang. Clear now.
+                    self.finishLoadingPresentation()
                 } else {
                     self.loadStatus = "Loaded \(g.nodes.count) nodes / \(g.edges.count) edges from \(url.lastPathComponent)"
                 }
@@ -150,6 +179,9 @@ public final class GraphStore: ObservableObject {
             } catch {
                 self.loadStatus = "Couldn't read \(url.lastPathComponent): \(error.localizedDescription)"
                 self.writableAtlasURL = nil
+                // Load failed → no canvas-frame-settle will arrive
+                // to clear the overlay. Clear here.
+                self.finishLoadingPresentation()
             }
         }
     }

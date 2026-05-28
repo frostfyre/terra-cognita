@@ -196,13 +196,18 @@ public struct GraphView: View {
 
             // Auto-frame when content first arrives. We wait a beat
             // for the layout pipeline to crossfade in the FA2 result,
-            // then nudge the canvas to fit the whole cluster.
+            // then nudge the canvas to fit the whole cluster. Once
+            // the fit animation has had time to settle (~700 ms past
+            // the trigger), clear the cartographer-loading overlay
+            // so the cross-fade lands on a fully-framed view.
             let wasEmpty = graphWasEmpty
             graphWasEmpty = (newCount == 0)
             if wasEmpty && newCount > 0 {
                 Task { @MainActor in
                     try? await Task.sleep(for: .milliseconds(900))
                     frameAllPulse &+= 1
+                    try? await Task.sleep(for: .milliseconds(700))
+                    store.finishLoadingPresentation()
                 }
             }
         }
