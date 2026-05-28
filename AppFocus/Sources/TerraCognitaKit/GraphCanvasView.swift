@@ -19,6 +19,11 @@ struct GraphCanvasView: View {
     @State private var pinnedPositions: [String: CGPoint] = [:]
     /// While the user is dragging a node, this holds its id.
     @State private var draggingNodeID: String?
+    /// World-space position of the dragging node at drag start.
+    /// During the drag we translate from this anchor by
+    /// `value.translation / scale` so the node moves exactly with
+    /// the finger (no parallax-induced jump when the drag begins).
+    @State private var nodeDragStartWorld: CGPoint?
     /// While the user is panning (drag started on empty canvas), this
     /// holds the `offset` at the start of the drag so each onChanged
     /// frame can compute the new offset relative to it.
@@ -1320,25 +1325,41 @@ struct GraphCanvasView: View {
     /// MouseInputMonitor NSEvent layer) — both paths coexist. On iOS /
     /// iPadOS, this gesture is the only pan affordance.
     private func nodeDragGesture(size: CGSize) -> some Gesture {
-        // `minimumDistance: 1` so pan engages on the first move event
-        // instead of waiting for ~3pt of travel. The earlier 3pt floor
-        // was the dominant cause of the iOS "delayed pan" feel —
-        // arbitration against the tap / long-press recognizers held
-        // the touch in suspense until the threshold cleared.
-        DragGesture(minimumDistance: 1, coordinateSpace: .local)
+        // `minimumDistance: 10` so the drag doesn't engage on finger
+        // jitter during a long-press hold. The radial-menu LongPress
+        // accepts up to 8pt of movement before cancelling; the drag
+        // needs to require more than that or every long-press hold
+        // turns into an accidental node drag (which moved the node
+        // out from under the finger and dropped the radial trigger
+        // into empty canvas instead of the intended node).
+        //
+        // Panning still feels responsive — a deliberate pan move
+        // crosses 10pt almost instantly; a held finger doesn't.
+        DragGesture(minimumDistance: 10, coordinateSpace: .local)
             .onChanged { value in
                 if draggingNodeID == nil && panAnchor == nil {
                     if let hit = nodeAt(screenPoint: value.startLocation, size: size) {
                         // Started on a node → drag that node.
                         draggingNodeID = hit
                         selectedNodeID = hit
+                        nodeDragStartWorld = effectivePosition(for: hit)
                     } else {
                         // Empty canvas → start a pan.
                         panAnchor = offset
                     }
                 }
-                if let id = draggingNodeID {
-                    pinnedPositions[id] = worldPoint(at: value.location, size: size)
+                if let id = draggingNodeID, let start = nodeDragStartWorld {
+                    // Translate by the drag delta in world coords. This
+                    // is parallax-correct: the node's screen position
+                    // changes by exactly `value.translation`, no jump.
+                    // (Using `worldPoint(value.location)` would snap the
+                    // node center to the touch, losing the depth
+                    // parallax offset and producing the "jumps above
+                    // the finger" feel.)
+                    pinnedPositions[id] = CGPoint(
+                        x: start.x + value.translation.width / scale,
+                        y: start.y + value.translation.height / scale
+                    )
                 } else if let anchor = panAnchor {
                     offset = CGSize(
                         width: anchor.width + value.translation.width,
@@ -1349,6 +1370,7 @@ struct GraphCanvasView: View {
             .onEnded { _ in
                 if draggingNodeID != nil {
                     draggingNodeID = nil
+                    nodeDragStartWorld = nil
                     persistLayout()
                 }
                 panAnchor = nil
