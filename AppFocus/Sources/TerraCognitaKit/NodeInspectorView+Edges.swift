@@ -144,6 +144,70 @@ extension NodeInspectorView {
         }
     }
 
+    /// Section label for Outbound / Inbound that adds an inline
+    /// `+` pill on the right for "add a new link in this direction."
+    /// The pill opens a `NodeSearchView` sheet so the user can pick
+    /// a target by search — complements the spatial Connect mode on
+    /// the canvas with a list-based route that's contextual to the
+    /// node already being inspected.
+    @ViewBuilder
+    func edgeSectionLabel(_ title: String,
+                          count: Int,
+                          direction: NodeInspectorView.AddLinkDirection) -> some View {
+        HStack(spacing: 6) {
+            sectionLabel(title, count: count)
+            if store.canIngest {
+                Button {
+                    addingLink = direction
+                } label: {
+                    Image(systemName: "plus.circle.fill")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.borderless)
+                .help(direction == .outbound
+                      ? "Add an outbound link"
+                      : "Add an inbound link from another node")
+            }
+        }
+    }
+
+    /// Search-picker sheet for "add a link in `direction`." Outbound
+    /// → pick a target, create `current → picked`. Inbound → pick a
+    /// source, create `picked → current` (writes to the picked
+    /// node's body, not the current one). Duplicates and self-links
+    /// surface via the dismissable status pill, same as the spatial
+    /// Connect path.
+    @ViewBuilder
+    func addLinkPickerSheet(direction: NodeInspectorView.AddLinkDirection) -> some View {
+        let prompt = direction == .outbound
+            ? "Pick a node to link to"
+            : "Pick a node to link from"
+        VStack(spacing: 10) {
+            Text(prompt)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .padding(.top, 14)
+            NodeSearchView(store: store) { chosen in
+                guard let other = chosen else {
+                    addingLink = nil
+                    return
+                }
+                let from = direction == .outbound ? nodeID : other
+                let to = direction == .outbound ? other : nodeID
+                if let err = store.createEdge(from: from, to: to) {
+                    store.loadStatus = err
+                } else if let target = store.graph.nodes[to] {
+                    store.loadStatus = "Linked → \(target.label)"
+                }
+                addingLink = nil
+            }
+            Spacer()
+        }
+        .padding(.bottom, 12)
+        .frame(minWidth: 360, idealWidth: 400, minHeight: 360, idealHeight: 420)
+    }
+
     /// Union of every relationship type already present in the
     /// graph (sorted, case-folded-deduped). Used as menu options
     /// for the relationship pill.

@@ -63,6 +63,15 @@ struct NodeInspectorView: View {
     /// proposal list shows results from either entry point.
     @State var showingAugmentSheet = false
 
+    /// Drives the "add link" search-picker sheet — opened from the
+    /// `+` pill on the Outbound / Inbound section headers. The
+    /// direction is the side that initiated.
+    enum AddLinkDirection: String, Identifiable {
+        case outbound, inbound
+        var id: String { rawValue }
+    }
+    @State var addingLink: AddLinkDirection?
+
     var body: some View {
         Group {
             if let node = store.graph.nodes[nodeID] {
@@ -102,13 +111,21 @@ struct NodeInspectorView: View {
                         DisclosureGroup(isExpanded: $showOutbound) {
                             outboundList(node).padding(.top, 4)
                         } label: {
-                            sectionLabel("Outbound", count: outboundEdges(node).count)
+                            edgeSectionLabel(
+                                "Outbound",
+                                count: outboundEdges(node).count,
+                                direction: .outbound
+                            )
                         }
 
                         DisclosureGroup(isExpanded: $showInbound) {
                             inboundList(node).padding(.top, 4)
                         } label: {
-                            sectionLabel("Inbound", count: inboundEdges(node).count)
+                            edgeSectionLabel(
+                                "Inbound",
+                                count: inboundEdges(node).count,
+                                direction: .inbound
+                            )
                         }
                     }
                     .padding()
@@ -151,6 +168,9 @@ struct NodeInspectorView: View {
                             node: n
                         )
                     }
+                }
+                .sheet(item: $addingLink) { direction in
+                    addLinkPickerSheet(direction: direction)
                 }
             } else {
                 ContentUnavailableView(
