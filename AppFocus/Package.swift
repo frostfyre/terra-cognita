@@ -20,9 +20,9 @@ let package = Package(
             name: "TerraCognitaKit",
             path: "Sources/TerraCognitaKit",
             resources: [
-                // "The World of Hayao Miyazaki" demo vault, bundled with
+                // "The World of Hayao Miyazaki" demo atlas, bundled with
                 // every target so the app launches with content even when
-                // no on-disk vault is available (e.g. iOS).
+                // no on-disk atlas is available (e.g. iOS).
                 .copy("Resources/miyazaki-vault")
             ]
         ),
@@ -30,6 +30,11 @@ let package = Package(
             name: "TerraCognita",
             dependencies: ["TerraCognitaKit"],
             path: "Sources/TerraCognita"
+        ),
+        .testTarget(
+            name: "TerraCognitaKitTests",
+            dependencies: ["TerraCognitaKit"],
+            path: "Tests/TerraCognitaKitTests"
         )
     ]
 )

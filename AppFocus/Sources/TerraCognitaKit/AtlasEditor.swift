@@ -163,8 +163,12 @@ struct AtlasEditor {
         guard work.hasPrefix("[["), work.hasSuffix("]]") else { return nil }
         let inner = work.dropFirst(2).dropLast(2)
         if inner.contains("[[") || inner.contains("]]") { return nil }
+        // `"[[]]"` yields an empty `inner`; `split` returns an empty
+        // array, so guard against that before indexing.
+        if inner.isEmpty { return nil }
         let parts = inner.split(separator: "|", maxSplits: 1).map(String.init)
-        let target = parts[0].trimmingCharacters(in: .whitespaces)
+        guard let first = parts.first else { return nil }
+        let target = first.trimmingCharacters(in: .whitespaces)
         let alias = parts.count > 1
             ? parts[1].trimmingCharacters(in: .whitespaces)
             : nil
@@ -250,19 +254,37 @@ extension AtlasEditor {
 
     /// Splits `raw` into (front-matter-content, body). `nil` front
     /// matter means the file didn't have a `---` block at the top.
+    ///
+    /// Handles both LF and CRLF inputs. Swift treats `\r\n` as a
+    /// single Character (extended grapheme cluster), which means
+    /// `range(of: "\n---")` does **not** match a CRLF file — we
+    /// search for both the LF form and the CRLF form explicitly.
+    /// Returns the fm with trailing whitespace trimmed so downstream
+    /// parsers don't have to deal with a stray `\r`.
     static func splitFrontMatter(_ raw: String) -> (String?, String) {
         guard raw.hasPrefix("---\n") || raw.hasPrefix("---\r\n") else {
             return (nil, raw)
         }
-        let afterFirst = raw.dropFirst(raw.hasPrefix("---\r\n") ? 5 : 4)
-        guard let endRange = afterFirst.range(of: "\n---") else {
+        // `\r\n` is a single extended grapheme cluster in Swift, so
+        // both prefixes are 4 Characters long. dropFirst(4) is right
+        // for both.
+        let afterFirst = raw.dropFirst(4)
+        // Try LF closing first, then CRLF closing. (We can't normalize
+        // newlines up-front without changing what we write back.)
+        let close: Range<Substring.Index>
+        if let r = afterFirst.range(of: "\n---") {
+            close = r
+        } else if let r = afterFirst.range(of: "\r\n---") {
+            close = r
+        } else {
             return (nil, raw)
         }
-        let fm = String(afterFirst[..<endRange.lowerBound])
-        var rest = String(afterFirst[endRange.upperBound...])
+        let fm = String(afterFirst[..<close.lowerBound])
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        var rest = String(afterFirst[close.upperBound...])
         // Eat the newline(s) right after the closing fence.
-        if rest.hasPrefix("\n")   { rest.removeFirst() }
         if rest.hasPrefix("\r\n") { rest.removeFirst(2) }
+        else if rest.hasPrefix("\n") { rest.removeFirst() }
         return (fm, rest)
     }
 
