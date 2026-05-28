@@ -4,7 +4,7 @@
 
 This document defines the architecture, vocabulary, interaction philosophy, modes, lenses, and product direction of Terra Cognita.
 
-Terra Cognita is **a local-first, graph-native semantic workspace**: an interactive map where the graph itself is the primary surface — navigable, editable, exploratory, and meaning-bearing — backed by a vault of plain markdown the user owns.
+Terra Cognita is **a local-first, graph-native semantic workspace**: an interactive map where the graph itself is the primary surface — navigable, editable, exploratory, and meaning-bearing — backed by an atlas of plain markdown the user owns.
 
 ---
 
@@ -29,7 +29,7 @@ User data is local-first, exportable, inspectable, portable, and user-owned. AI-
 # Canonical Terminology
 
 ## Node
-A semantic entity. Backed by one markdown file in the vault.
+A semantic entity. Backed by one markdown file in the atlas.
 
 ## Edge
 A semantic relationship between two nodes. Optionally typed.
@@ -72,7 +72,7 @@ Graphs about **lived continuity over time** — people, careers, stories, lineag
 **Continuity-bearing by default** — every node and edge can carry a date or era.
 
 **User journey:**
-1. User picks a launch template or opens an existing Continuity vault.
+1. User picks a launch template or opens an existing Continuity atlas.
 2. App seeds the canvas with the template's starter nodes and prompts for the first capture.
 3. User captures (text/voice) → AI proposes a constellation into the Staging Layer → user accepts/rejects per-node.
 4. Timeline lens reveals the temporal spine.
@@ -122,7 +122,7 @@ Graphs over **file / code / asset structures** — discovered topology, not auth
 - **Unreal Project** — asset GUID graph, level references
 - **Houdini Project** — VEX, OP networks, dependencies
 - **USD Stage** — layer composition, references, payloads
-- **Markdown Vault** — wikilinks, frontmatter, backlinks
+- **Markdown Atlas** — wikilinks, frontmatter, backlinks
 
 ---
 
@@ -153,7 +153,7 @@ A layout is the spatial arrangement of nodes. Accessible from a dedicated **Layo
 | **Grid** | `square.grid.3x3` | Auditing / catalog views; deterministic position |
 | **Cluster** | `circle.grid.hex` | Community detection — clusters as visual groupings |
 
-Layouts persist per-vault. Switching layout animates the camera and node positions in one easeInOut pass (~600ms) so the user keeps spatial memory through the transition.
+Layouts persist per-atlas. Switching layout animates the camera and node positions in one easeInOut pass (~600ms) so the user keeps spatial memory through the transition.
 
 ---
 
@@ -176,7 +176,7 @@ Potential extraction from on-device sources:
 - **Apple Notes** — recurring concepts, thematic clusters
 - **Apple Photos** — recurring locations, collaborators, events, visual motifs, project eras
 - **Local File Systems** — dependency graphs, asset lineage, project archaeology
-- **Markdown Vaults** — backlink topology, recurring themes
+- **Markdown Atlases** — backlink topology, recurring themes
 
 All extraction is on-device, opt-in per source, and lands in the Staging Layer for review.
 
@@ -251,7 +251,7 @@ Aesthetic anchors: deep indigo → black radial field, warm gold selection ("the
 
 ## Guardrail
 
-> **Pro gates orchestration and compute. Pro never gates data access, portability, or interoperability.** The vault is always fully usable in the Free edition. There is no path by which upgrading to Pro adds essential read/write capabilities to the user's own data.
+> **Pro gates orchestration and compute. Pro never gates data access, portability, or interoperability.** The atlas is always fully usable in the Free edition. There is no path by which upgrading to Pro adds essential read/write capabilities to the user's own data.
 
 ---
 

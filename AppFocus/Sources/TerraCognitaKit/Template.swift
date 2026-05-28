@@ -1,10 +1,10 @@
 import Foundation
 import SwiftUI
 
-/// A starting configuration for a new vault. Each template belongs to
+/// A starting configuration for a new atlas. Each template belongs to
 /// one `Mode` and provides a default node-type vocabulary, optional
-/// era taxonomy, and the subfolders to materialize. `VaultWriter`
-/// consumes templates during `initializeEmptyVault(at:template:)`.
+/// era taxonomy, and the subfolders to materialize. `AtlasWriter`
+/// consumes templates during `initializeEmptyAtlas(at:template:)`.
 ///
 /// Phase 2 ships a thin registry — just type + era presets. Richer
 /// template content (seed nodes, prompts, lens defaults) is a Phase 3
@@ -15,10 +15,10 @@ struct Template: Identifiable {
     let mode: Mode
     let systemImage: String
     let summary: String
-    let types: [VaultConfig.TypeSpec]
-    let eras: [VaultConfig.EraSpec]
+    let types: [AtlasConfig.TypeSpec]
+    let eras: [AtlasConfig.EraSpec]
 
-    /// The subfolder names a fresh vault should pre-create.
+    /// The subfolder names a fresh atlas should pre-create.
     /// Derived from any non-nil `folder` on the template's types.
     var subfolders: [String] {
         Array(Set(types.compactMap { $0.folder })).sorted()
@@ -90,11 +90,11 @@ struct Template: Identifiable {
 
         // ---------- Project Archaeology ----------
         Template(
-            id: "markdown-vault",
-            name: "Markdown Vault",
+            id: "markdown-atlas",
+            name: "Markdown Atlas",
             mode: .projectArchaeology,
             systemImage: "doc.text",
-            summary: "Existing notes vault — wikilinks, backlinks, recurring themes.",
+            summary: "Existing notes atlas — wikilinks, backlinks, recurring themes.",
             types: projectMarkdownTypes,
             eras: []
         ),
@@ -123,7 +123,7 @@ struct Template: Identifiable {
 
 // MARK: - Type vocabularies
 
-private let continuityCoreTypes: [VaultConfig.TypeSpec] = [
+private let continuityCoreTypes: [AtlasConfig.TypeSpec] = [
     .init(name: "person",      color: .cyan,   icon: "person.fill",     folder: "people"),
     .init(name: "concept",     color: .yellow, icon: "lightbulb.fill",  folder: "concepts"),
     .init(name: "institution", color: .mint,   icon: "building.2.fill", folder: "institutions"),
@@ -131,7 +131,7 @@ private let continuityCoreTypes: [VaultConfig.TypeSpec] = [
     .init(name: "work",        color: .pink,   icon: "book.fill",       folder: "works"),
 ]
 
-private let worldbuildTypes: [VaultConfig.TypeSpec] = [
+private let worldbuildTypes: [AtlasConfig.TypeSpec] = [
     .init(name: "character",   color: .cyan,    icon: "person.fill",         folder: "characters"),
     .init(name: "faction",     color: .indigo,  icon: "person.3.fill",       folder: "factions"),
     .init(name: "place",       color: .mint,    icon: "mappin.and.ellipse",  folder: "places"),
@@ -141,13 +141,13 @@ private let worldbuildTypes: [VaultConfig.TypeSpec] = [
     .init(name: "artifact",    color: .brown,   icon: "shippingbox.fill",    folder: "artifacts"),
 ]
 
-private let projectMarkdownTypes: [VaultConfig.TypeSpec] = [
+private let projectMarkdownTypes: [AtlasConfig.TypeSpec] = [
     .init(name: "note",        color: .cyan,    icon: "doc.text.fill",       folder: "notes"),
     .init(name: "concept",     color: .yellow,  icon: "lightbulb.fill",      folder: "concepts"),
     .init(name: "reference",   color: .indigo,  icon: "link",                folder: "references"),
 ]
 
-private let projectCodeTypes: [VaultConfig.TypeSpec] = [
+private let projectCodeTypes: [AtlasConfig.TypeSpec] = [
     .init(name: "module",      color: .cyan,   icon: "shippingbox.fill",            folder: "modules"),
     .init(name: "class",       color: .mint,   icon: "square.stack.3d.up.fill",     folder: "classes"),
     .init(name: "function",    color: .yellow, icon: "function",                    folder: "functions"),
@@ -156,7 +156,7 @@ private let projectCodeTypes: [VaultConfig.TypeSpec] = [
 
 // MARK: - Era taxonomies
 
-private let heritageEras: [VaultConfig.EraSpec] = [
+private let heritageEras: [AtlasConfig.EraSpec] = [
     .init(name: "pre-conscious",           weight: 0),
     .init(name: "self-choosing-childhood", weight: 1),
     .init(name: "early-formation",         weight: 2),
@@ -166,14 +166,14 @@ private let heritageEras: [VaultConfig.EraSpec] = [
     .init(name: "career-spanning",         weight: 4.5),
 ]
 
-private let yearBasedEras: [VaultConfig.EraSpec] = [
+private let yearBasedEras: [AtlasConfig.EraSpec] = [
     .init(name: "early",   weight: 0),
     .init(name: "mid",     weight: 1),
     .init(name: "recent",  weight: 2),
     .init(name: "current", weight: 3),
 ]
 
-private let storyEras: [VaultConfig.EraSpec] = [
+private let storyEras: [AtlasConfig.EraSpec] = [
     .init(name: "backstory",    weight: 0),
     .init(name: "act-one",      weight: 1),
     .init(name: "act-two",      weight: 2),

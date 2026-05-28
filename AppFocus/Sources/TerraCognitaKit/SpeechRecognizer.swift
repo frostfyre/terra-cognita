@@ -7,7 +7,7 @@ import AVFoundation
 /// On-device speech-to-text wrapper for the Capture flow.
 ///
 /// Always opts into `requiresOnDeviceRecognition = true` — the heritage
-/// vault is personal data, so audio never leaves the device. Streams
+/// atlas is personal data, so audio never leaves the device. Streams
 /// partial transcripts as the user speaks so the UI can render them
 /// live.
 ///

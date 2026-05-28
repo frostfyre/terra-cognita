@@ -2,7 +2,7 @@ import Foundation
 
 /// User-facing graph layout algorithms. The currently-applied one is
 /// surfaced via the Layout menu in the toolbar (Phase 1) and
-/// persisted per-vault. Phase 0 wires the type; Phase 1 implements
+/// persisted per-atlas. Phase 0 wires the type; Phase 1 implements
 /// the radial / hierarchical / grid algorithms and the menu UI;
 /// Phase 3 fills in `cluster` once community detection lands.
 enum LayoutAlgorithm: String, Codable, CaseIterable, Identifiable, Hashable {

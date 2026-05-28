@@ -18,10 +18,10 @@ struct PersistedLayout: Codable, Equatable {
     /// `layout.json` files (which predate this field) still decode —
     /// the canvas defaults to `.forceDirected` when it's nil.
     var algorithm: LayoutAlgorithm? = nil
-    /// Whether the no-overlap post-pass is enabled for this vault.
+    /// Whether the no-overlap post-pass is enabled for this atlas.
     /// Optional for forward compatibility with older snapshots.
     var noOverlap: Bool? = nil
-    /// Selection-highlight radius in BFS hops (1...4). Different vault
+    /// Selection-highlight radius in BFS hops (1...4). Different atlas
     /// densities want different defaults. Optional for older snapshots.
     var highlightDepth: Int? = nil
 

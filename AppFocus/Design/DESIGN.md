@@ -235,7 +235,7 @@ Supports:
 - Metal
 - SceneKit or SpriteKit
 - SQLite local cache/index
-- Markdown vault as source of truth
+- Markdown atlas as source of truth
 - GEXF import/export
 - Obsidian-compatible wikilinks
 - Apple Foundation Models framework
@@ -477,7 +477,7 @@ The app should support ingestion from:
 - graph formats
 - table formats
 - mind maps
-- markdown vaults
+- markdown atlases
 - semantic exports
 - structured datasets
 
@@ -488,7 +488,7 @@ Supported examples:
 - XLSX
 - OPML
 - FreeMind
-- Obsidian vaults
+- Obsidian atlases
 - Logseq
 - JSON graph formats
 

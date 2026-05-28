@@ -12,10 +12,10 @@ struct Node: Identifiable, Equatable, Hashable {
     /// These correspond to columns/fields from imports (e.g., GEXF) or YAML front matter.
     var attributes: [String: String] = [:]
 
-    /// The relative path to the corresponding Markdown file from the vault, if any.
+    /// The relative path to the corresponding Markdown file from the atlas, if any.
     var filePath: String?
 
-    /// Cached content of the corresponding Markdown file from the vault, if loaded.
+    /// Cached content of the corresponding Markdown file from the atlas, if loaded.
     var markdownContent: String?
 
     // MARK: - Common derived attributes for convenience

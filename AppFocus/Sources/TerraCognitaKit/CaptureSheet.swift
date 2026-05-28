@@ -5,7 +5,7 @@ import SwiftUI
 ///      or dictates a free-form note. "Process" sends it to the AI.
 ///   2. **Review pane** — the AI's constellation proposal as a list of
 ///      cards, each with type / body / link summary and an accept/reject
-///      toggle. "Commit" applies the accepted subset to the vault.
+///      toggle. "Commit" applies the accepted subset to the atlas.
 struct CaptureSheet: View {
     @ObservedObject var store: GraphStore
     @Binding var isPresented: Bool
@@ -65,7 +65,7 @@ struct CaptureSheet: View {
     @ViewBuilder
     private var inputPane: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Dump anything — a meeting recap, a stream of thought, a quote — and the AI will extract a graph fragment to fold into your vault.")
+            Text("Dump anything — a meeting recap, a stream of thought, a quote — and the AI will extract a graph fragment to fold into your atlas.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .padding(.horizontal)

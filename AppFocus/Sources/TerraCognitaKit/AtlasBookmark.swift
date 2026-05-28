@@ -1,13 +1,13 @@
 import Foundation
 
-/// Persists the user's chosen vault folder across app launches.
+/// Persists the user's chosen atlas folder across app launches.
 ///
 /// Uses security-scoped bookmarks (required for sandboxed macOS apps and
 /// iOS), stored as `Data` in `UserDefaults`. On resolution we ask the
 /// system to re-establish access via `startAccessingSecurityScopedResource()`;
 /// the caller must balance that with `stopAccessingSecurityScopedResource()`
 /// when finished.
-enum VaultBookmark {
+enum AtlasBookmark {
     private static let key = "TerraCognita.vaultBookmark"
 
     /// Save a bookmark for the given folder URL. Returns true on success.
@@ -30,7 +30,7 @@ enum VaultBookmark {
             UserDefaults.standard.set(data, forKey: key)
             return true
         } catch {
-            print("[VaultBookmark] save failed: \(error)")
+            print("[AtlasBookmark] save failed: \(error)")
             return false
         }
     }
@@ -59,7 +59,7 @@ enum VaultBookmark {
             }
             return url
         } catch {
-            print("[VaultBookmark] resolve failed: \(error)")
+            print("[AtlasBookmark] resolve failed: \(error)")
             return nil
         }
     }

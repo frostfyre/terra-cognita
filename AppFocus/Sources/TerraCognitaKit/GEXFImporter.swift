@@ -1,14 +1,14 @@
 import Foundation
 
 /// GEXF (Graph Exchange XML Format) importer. Reads a `.gexf` file and
-/// materializes a Terra Cognita vault from it — one `.md` per node with
+/// materializes a Terra Cognita atlas from it — one `.md` per node with
 /// the node's attributes folded into YAML front-matter and any
 /// description becoming the body. Edges are emitted as Dataview-style
 /// `relation:: [[target]]` lines on the source node so the standard
-/// vault loader picks them up.
+/// atlas loader picks them up.
 ///
 /// Goal: GEXF is a one-shot import, not a live format. After the
-/// import the vault is just markdown — every other Terra Cognita
+/// import the atlas is just markdown — every other Terra Cognita
 /// affordance (AI ops, ingestion, dive-in, etc.) works as usual.
 struct GEXFImporter {
 
@@ -44,7 +44,7 @@ struct GEXFImporter {
         var errorDescription: String? {
             switch self {
             case .parseFailed(let s): return "Couldn't parse GEXF — \(s)"
-            case .writeFailed(let s): return "Couldn't write vault — \(s)"
+            case .writeFailed(let s): return "Couldn't write atlas — \(s)"
             }
         }
     }
@@ -67,11 +67,11 @@ struct GEXFImporter {
         return delegate.document
     }
 
-    /// Materialize `document` as a Terra Cognita vault under `destination`.
+    /// Materialize `document` as a Terra Cognita atlas under `destination`.
     /// Creates the destination folder (if needed) and writes one `.md`
     /// per node. Returns the number of nodes written.
     @discardableResult
-    static func writeVault(_ document: Document, to destination: URL) throws -> Int {
+    static func writeAtlas(_ document: Document, to destination: URL) throws -> Int {
         let fm = FileManager.default
         do {
             try fm.createDirectory(at: destination, withIntermediateDirectories: true)
@@ -80,7 +80,7 @@ struct GEXFImporter {
         }
 
         // Pre-index edges so each node can list its outbound relations
-        // inline (Dataview style) — the vault loader picks these up.
+        // inline (Dataview style) — the atlas loader picks these up.
         var edgesBySource: [String: [Document.EdgeRecord]] = [:]
         for edge in document.edges {
             edgesBySource[edge.source, default: []].append(edge)
@@ -97,7 +97,7 @@ struct GEXFImporter {
 
         // Seed `usedFilenames` with any `.md` slugs already present at
         // the destination so a re-import doesn't silently overwrite the
-        // existing vault. Walk the top-level folder plus the recognised
+        // existing atlas. Walk the top-level folder plus the recognised
         // subfolders (concepts/, events/, …) since that's where the
         // importer writes.
         let existingSlugs = collectExistingSlugs(under: destination)
@@ -105,7 +105,7 @@ struct GEXFImporter {
 
         for node in document.nodes {
             // Build the slug: based on label, filesystem-safe, unique.
-            let baseSlug = VaultWriter.makeSlug(from: node.label.isEmpty ? node.id : node.label)
+            let baseSlug = AtlasWriter.makeSlug(from: node.label.isEmpty ? node.id : node.label)
             var slug = baseSlug
             var n = 2
             while usedFilenames.contains(slug.lowercased()) {
@@ -116,7 +116,7 @@ struct GEXFImporter {
 
             // Decide where it lives — by GEXF "type" if we recognise it.
             let typeRaw = node.values["type"]?.lowercased()
-            let subfolder = typeRaw.flatMap { VaultWriter.subfolder(for: $0) }
+            let subfolder = typeRaw.flatMap { AtlasWriter.subfolder(for: $0) }
             let folderURL = subfolder.map {
                 destination.appendingPathComponent($0)
             } ?? destination
@@ -247,7 +247,7 @@ struct GEXFImporter {
             lines.append("")
         }
 
-        // Outbound relations — Dataview style so the vault loader
+        // Outbound relations — Dataview style so the atlas loader
         // creates typed edges with the GEXF relation as the type.
         if !outbound.isEmpty {
             for edge in outbound {

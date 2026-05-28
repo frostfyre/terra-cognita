@@ -1,14 +1,14 @@
 import SwiftUI
 
-/// In-app editor for the vault's `.terracognita/config.yaml`. Lets the
+/// In-app editor for the atlas's `.terracognita/config.yaml`. Lets the
 /// user manage their type vocabulary, era taxonomy, and extractor
 /// toggles without hand-writing YAML. Saves write the config back to
-/// disk; the vault auto-reloads so the new ontology takes effect.
-struct VaultSettingsSheet: View {
+/// disk; the atlas auto-reloads so the new ontology takes effect.
+struct AtlasSettingsSheet: View {
     @ObservedObject var store: GraphStore
     @Binding var isPresented: Bool
 
-    @State private var draft: VaultConfig
+    @State private var draft: AtlasConfig
     @State private var errorMessage: String?
 
     init(store: GraphStore, isPresented: Binding<Bool>) {
@@ -36,7 +36,7 @@ struct VaultSettingsSheet: View {
                 }
             }
             .formStyle(.grouped)
-            .navigationTitle("Vault Settings")
+            .navigationTitle("Atlas Settings")
             #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
             #endif
@@ -80,7 +80,7 @@ struct VaultSettingsSheet: View {
     }
 
     @ViewBuilder
-    private func typeRow(_ spec: VaultConfig.TypeSpec) -> some View {
+    private func typeRow(_ spec: AtlasConfig.TypeSpec) -> some View {
         let binding = bindingForType(spec.id)
         VStack(alignment: .leading, spacing: 6) {
             HStack {
@@ -198,7 +198,7 @@ struct VaultSettingsSheet: View {
 
     // MARK: - Bindings + actions
 
-    private var userTypes: [VaultConfig.TypeSpec] {
+    private var userTypes: [AtlasConfig.TypeSpec] {
         draft.types.filter { !syntheticNames.contains($0.name) }
     }
 
@@ -219,7 +219,7 @@ struct VaultSettingsSheet: View {
     }
 
     private func addType() {
-        let new = VaultConfig.TypeSpec(
+        let new = AtlasConfig.TypeSpec(
             name: "new-type",
             color: .blue,
             icon: "circle.fill",
@@ -237,12 +237,12 @@ struct VaultSettingsSheet: View {
     }
 
     private func save() {
-        guard let vaultURL = store.writableVaultURL else {
-            errorMessage = "Open or create a writable vault first."
+        guard let atlasURL = store.writableAtlasURL else {
+            errorMessage = "Open or create a writable atlas first."
             return
         }
         do {
-            try draft.save(to: vaultURL)
+            try draft.save(to: atlasURL)
             store.config = draft
             isPresented = false
         } catch {
@@ -254,9 +254,9 @@ struct VaultSettingsSheet: View {
 /// Small wrapper providing a derived `.color` binding alongside the
 /// base TypeSpec binding so the ColorPicker can drive it.
 private struct TypeSpecBinding {
-    let base: Binding<VaultConfig.TypeSpec>
+    let base: Binding<AtlasConfig.TypeSpec>
 
-    var wrappedValue: VaultConfig.TypeSpec {
+    var wrappedValue: AtlasConfig.TypeSpec {
         get { base.wrappedValue }
         nonmutating set { base.wrappedValue = newValue }
     }

@@ -1,28 +1,28 @@
 import Foundation
 
-/// Writes new node files into a markdown vault, matching the format
-/// `VaultLoader` expects: YAML front-matter, `# Title`, then body. New
+/// Writes new node files into a markdown atlas, matching the format
+/// `AtlasLoader` expects: YAML front-matter, `# Title`, then body. New
 /// nodes are placed into the type-conventional subfolder (`people/`,
 /// `concepts/`, …) and given a filesystem-safe filename derived from the
 /// label, with collision avoidance via numeric suffix.
-struct VaultWriter {
-    let vaultURL: URL
+struct AtlasWriter {
+    let atlasURL: URL
 
     enum WriteError: LocalizedError {
         case emptyLabel
-        case vaultUnwritable(String)
+        case atlasUnwritable(String)
         case writeFailed(String)
 
         var errorDescription: String? {
             switch self {
             case .emptyLabel:                 return "Label can't be empty."
-            case .vaultUnwritable(let why):   return "Vault isn't writable — \(why)"
+            case .atlasUnwritable(let why):   return "Atlas isn't writable — \(why)"
             case .writeFailed(let why):       return "Write failed — \(why)"
             }
         }
     }
 
-    /// Write a new node into the vault. Returns the URL of the created
+    /// Write a new node into the atlas. Returns the URL of the created
     /// file plus the slug that will become the node's id. Assumes the
     /// caller has already started the security-scoped resource if needed.
     func createNote(label: String,
@@ -34,12 +34,12 @@ struct VaultWriter {
         guard !trimmedLabel.isEmpty else { throw WriteError.emptyLabel }
 
         let fm = FileManager.default
-        let folderURL = subfolderURL(for: type, base: vaultURL)
+        let folderURL = subfolderURL(for: type, base: atlasURL)
         do {
             try fm.createDirectory(at: folderURL,
                                    withIntermediateDirectories: true)
         } catch {
-            throw WriteError.vaultUnwritable("couldn't create \(folderURL.path) (\(error.localizedDescription))")
+            throw WriteError.atlasUnwritable("couldn't create \(folderURL.path) (\(error.localizedDescription))")
         }
 
         let baseSlug = Self.makeSlug(from: trimmedLabel)
@@ -56,16 +56,16 @@ struct VaultWriter {
         return (fileURL, slug)
     }
 
-    // MARK: - Vault creation
+    // MARK: - Atlas creation
 
-    /// Initialize an empty vault in `url`. When a `template` is given,
+    /// Initialize an empty atlas in `url`. When a `template` is given,
     /// uses its mode + types + eras to (a) materialize the appropriate
     /// subfolders, and (b) write `.terracognita/config.yaml` so the
-    /// vault loads with the template's ontology on first open. When
+    /// atlas loads with the template's ontology on first open. When
     /// `template` is nil the historical behavior is preserved —
     /// hardcoded Continuity subfolders, no config file.
     /// Idempotent — existing folders/files are left alone.
-    static func initializeEmptyVault(at url: URL,
+    static func initializeEmptyAtlas(at url: URL,
                                      template: Template? = nil) throws {
         let fm = FileManager.default
         try fm.createDirectory(at: url, withIntermediateDirectories: true)
@@ -82,23 +82,23 @@ struct VaultWriter {
             let body = """
             # \(url.lastPathComponent)
 
-            Terra Cognita vault — \(modeLabel) mode, \(templateLabel) template.
+            Terra Cognita atlas — \(modeLabel) mode, \(templateLabel) template.
             Each `.md` file in a typed subfolder is a node; `[[wikilinks]]`
             in note bodies become edges.
             """
             try? body.write(to: readme, atomically: true, encoding: .utf8)
         }
         // Materialize `.terracognita/config.yaml` only when a template
-        // is provided. Untagged vaults stay backward-compatible: no
-        // config file means `VaultConfig.default` (Continuity) on load.
+        // is provided. Untagged atlases stay backward-compatible: no
+        // config file means `AtlasConfig.default` (Continuity) on load.
         if let template {
-            let config = VaultConfig(
+            let config = AtlasConfig(
                 mode: template.mode,
                 types: template.types,
                 eras: template.eras.isEmpty
-                    ? VaultConfig.default.eras
+                    ? AtlasConfig.default.eras
                     : template.eras,
-                extractors: VaultConfig.Extractors()
+                extractors: AtlasConfig.Extractors()
             )
             try? config.save(to: url)
         }
@@ -148,7 +148,7 @@ struct VaultWriter {
     }
 
     /// Sanitize a label for use as a filename. Preserves spaces (the
-    /// vault format is fine with them) but strips filesystem-hostile
+    /// atlas format is fine with them) but strips filesystem-hostile
     /// characters.
     static func makeSlug(from label: String) -> String {
         let stripped = label.unicodeScalars.map { scalar -> Character in

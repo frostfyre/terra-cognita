@@ -1,15 +1,15 @@
 import Foundation
 import SwiftUI
 
-/// Deterministic file-system → vault executor for `ImportRecipe`.
+/// Deterministic file-system → atlas executor for `ImportRecipe`.
 /// Walks the source folder, materializes one `.md` per file matching
 /// a `NodeRule.filePattern`, then applies `EdgeRule`s by writing
 /// Dataview wikilinks into the appropriate node bodies. Writes a
 /// `.terracognita/config.yaml` declaring the recipe's types so the
-/// new vault loads with the right palette.
+/// new atlas loads with the right palette.
 ///
 /// "Deterministic" is the contract: the same source folder + recipe
-/// always produces the same vault. The interpreter is allowed to be
+/// always produces the same atlas. The interpreter is allowed to be
 /// creative; the executor is not.
 enum RecipeExecutor {
 
@@ -19,7 +19,7 @@ enum RecipeExecutor {
         var errorDescription: String? {
             switch self {
             case .unreadableSource(let p): return "Couldn't read source folder \(p)."
-            case .writeFailed(let r):      return "Couldn't write vault — \(r)"
+            case .writeFailed(let r):      return "Couldn't write atlas — \(r)"
             }
         }
     }
@@ -33,7 +33,7 @@ enum RecipeExecutor {
     }
 
     /// Run a recipe. `source` is the folder the user pointed at;
-    /// `destination` is where the new vault lives. Caller is
+    /// `destination` is where the new atlas lives. Caller is
     /// responsible for security-scoped access on both URLs.
     static func execute(_ recipe: ImportRecipe,
                         source: URL,
@@ -42,7 +42,7 @@ enum RecipeExecutor {
         try fm.createDirectory(at: destination, withIntermediateDirectories: true)
 
         // --- 1. Build the type vocabulary for the config + per-rule indexes.
-        var typeSpecs: [VaultConfig.TypeSpec] = []
+        var typeSpecs: [AtlasConfig.TypeSpec] = []
         for rule in recipe.nodeRules {
             typeSpecs.append(.init(
                 name: rule.typeName,
@@ -56,11 +56,11 @@ enum RecipeExecutor {
                 withIntermediateDirectories: true
             )
         }
-        let config = VaultConfig(
+        let config = AtlasConfig(
             mode: .projectArchaeology,
             types: typeSpecs,
             eras: [],
-            extractors: VaultConfig.Extractors()
+            extractors: AtlasConfig.Extractors()
         )
         try? config.save(to: destination)
 
@@ -82,7 +82,7 @@ enum RecipeExecutor {
             var written = 0
             for file in matchedByRule[rule.typeName] ?? [] {
                 let label = labelFor(file, strategy: rule.labelStrategy)
-                let slug = VaultWriter.makeSlug(from: label)
+                let slug = AtlasWriter.makeSlug(from: label)
                 let target = folder.appendingPathComponent("\(slug).md")
                 guard !fm.fileExists(atPath: target.path) else { continue }
                 let body = """
@@ -118,7 +118,7 @@ enum RecipeExecutor {
                 let srcLabel = labelByFileURL[src] ?? src.lastPathComponent
                 let srcMD = destination
                     .appendingPathComponent(sourceTypeSubfolder.typeName)
-                    .appendingPathComponent("\(VaultWriter.makeSlug(from: srcLabel)).md")
+                    .appendingPathComponent("\(AtlasWriter.makeSlug(from: srcLabel)).md")
                 // Resolve candidate targets per strategy.
                 let matchedTargets: [URL] = targets.filter { tgt in
                     matches(src, tgt, strategy: edgeRule.strategy, labels: labelByFileURL)
@@ -253,6 +253,6 @@ enum RecipeExecutor {
             "gray": .gray, "grey": .gray, "white": .white, "black": .black,
         ]
         if let c = named[raw.lowercased()] { return c }
-        return VaultConfig.parseColor(raw) ?? .secondary
+        return AtlasConfig.parseColor(raw) ?? .secondary
     }
 }

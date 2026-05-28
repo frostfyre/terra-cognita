@@ -1,6 +1,6 @@
 import Foundation
 
-/// What kind of graph a vault is. Set at vault creation (via the
+/// What kind of graph an atlas is. Set at atlas creation (via the
 /// template picker) and persisted in `.terracognita/config.yaml`
 /// alongside types and eras. Drives the toolbar mode pill, the
 /// default node-type vocabulary, and the launch-template selector.

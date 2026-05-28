@@ -58,7 +58,7 @@ extension RecipeInterpreter {
     struct GenRecipe {
         @Guide(description: "One-sentence summary of what this recipe does")
         let summary: String
-        @Guide(description: "Node-type rules — at least one. Each rule defines a vault subfolder + the file pattern that materializes into nodes of that type.", .count(1...8))
+        @Guide(description: "Node-type rules — at least one. Each rule defines an atlas subfolder + the file pattern that materializes into nodes of that type.", .count(1...8))
         let nodeRules: [GenNodeRule]
         @Guide(description: "Edge rules — strategies for linking the materialized nodes. May be empty.", .count(0...8))
         let edgeRules: [GenEdgeRule]
@@ -66,7 +66,7 @@ extension RecipeInterpreter {
 
     @Generable
     struct GenNodeRule {
-        @Guide(description: "Lowercase type name (e.g. 'texture', 'asset', 'class'). Becomes the front-matter `type:` AND the vault subfolder.")
+        @Guide(description: "Lowercase type name (e.g. 'texture', 'asset', 'class'). Becomes the front-matter `type:` AND the atlas subfolder.")
         let typeName: String
         @Guide(description: "SwiftUI color name (red, orange, yellow, green, mint, teal, cyan, blue, indigo, purple, pink, brown, gray) OR a hex like '#FF8000'.")
         let color: String

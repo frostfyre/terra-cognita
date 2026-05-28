@@ -1,15 +1,15 @@
 import Foundation
 
-/// File-level mutations on an existing vault note. Companion to
-/// `VaultWriter` (which creates new notes); this one edits.
+/// File-level mutations on an existing atlas note. Companion to
+/// `AtlasWriter` (which creates new notes); this one edits.
 ///
 /// **Safety rail:** on the first edit per file per process, a `.bak`
 /// snapshot is written next to the original so the user always has a
 /// pre-AI copy to fall back on. Subsequent edits within the same session
 /// reuse that snapshot (we don't keep rolling backups — git / Time
 /// Machine cover deeper history).
-struct VaultEditor {
-    let vaultURL: URL
+struct AtlasEditor {
+    let atlasURL: URL
     /// Tracker for "first edit per file in this session" so we only
     /// write one `.bak` snapshot per file even across many mutations.
     /// `nil` means "snapshot every edit" — the conservative default
@@ -218,12 +218,12 @@ struct VaultEditor {
         } catch {
             // Snapshot failure is logged but doesn't block the edit —
             // git / Time Machine remain the deeper backstop.
-            print("VaultEditor: failed to snapshot \(bak.path): \(error)")
+            print("AtlasEditor: failed to snapshot \(bak.path): \(error)")
         }
     }
 }
 
-extension VaultEditor {
+extension AtlasEditor {
 
     // MARK: - Low-level file I/O
 
@@ -295,8 +295,8 @@ extension VaultEditor {
 /// Reference-typed tracker for the "first edit per file this
 /// session" rule. Lives on `GraphStore` so each store gets its own
 /// scoped lifecycle (was a process-global `nonisolated(unsafe)
-/// static` on VaultEditor — moved here so tests + future
-/// multi-vault flows don't share state).
+/// static` on AtlasEditor — moved here so tests + future
+/// multi-atlas flows don't share state).
 final class SnapshotTracker: @unchecked Sendable {
     private let lock = NSLock()
     private var seen: Set<String> = []

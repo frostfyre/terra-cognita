@@ -1,7 +1,7 @@
 # Terra Cognita
 
 A native Apple-platform workbench (macOS, iPad, iPhone) that treats a
-heritage graph — a markdown vault of people, events, institutions,
+heritage graph — a markdown atlas of people, events, institutions,
 works, and concepts — as the primary work surface. Navigable,
 queryable, AI-augmented, and meant to feel like *moving through a
 place* rather than reading a document.
@@ -40,7 +40,7 @@ require macOS 26 / iOS 26.
   (community detection).
 - **No-overlap toggle** — optional iterative push-apart post-pass
   on any layout; pinned nodes stay anchored.
-- Layout choice + no-overlap preference persist per-vault.
+- Layout choice + no-overlap preference persist per-atlas.
 - Era-driven **depth axis** with parallax-on-pan: older eras drift in
   the background, current era sits forward
 - **Ambient drift** + **idle puff** so the field feels alive even when
@@ -65,16 +65,16 @@ require macOS 26 / iOS 26.
   selected node. Text at ~82% warm white.
 - Depth-aware drop shadows on nodes.
 
-**Vault I/O**
-- Loads any Obsidian-style markdown vault — YAML front-matter as node
+**Atlas I/O**
+- Loads any Obsidian-style markdown atlas — YAML front-matter as node
   attributes, `[[wikilinks]]` + Dataview `key:: [[target]]` as typed edges
-- Bundled **Miyazaki demo vault** ships with both app targets
-- Open / Create New Vault via folder picker; drag-folder-onto-canvas
+- Bundled **Miyazaki demo atlas** ships with both app targets
+- Open / Create New Atlas via folder picker; drag-folder-onto-canvas
   works on macOS and iPadOS Stage Manager
 - Security-scoped bookmarks for cross-launch persistence
-- Recent-vaults library (LRU-12)
+- Recent-atlases library (LRU-12)
 - Read-only refusal on the bundled demo (creation routes through
-  Create-New-Vault)
+  Create-New-Atlas)
 
 **Navigation & focus**
 - Lens picker: All / People / Concepts / Institutions / Events / Works /
@@ -98,16 +98,16 @@ require macOS 26 / iOS 26.
   auto-pinned, auto-framed
 - **Inline note editing** — pencil icon in the Inspector's Note
   section opens a TextEditor seeded with the current body. Save
-  (⌘S) writes through `VaultEditor.replaceBody`; Cancel discards.
+  (⌘S) writes through `AtlasEditor.replaceBody`; Cancel discards.
   Materializes a fresh file if the node is in-memory-only.
 - **Mic-driven dictation** in the inspector edit mode — same
   `SpeechRecognizer` as Capture, appends to whatever's already typed.
 - Compose-time dedup — normalized-slug collisions block the write and
   offer "Open existing / Rename"
 - **Inspector ⋯ menu** — Delete this node (with `.bak` snapshot) and
-  Merge into… (vault-wide `[[loser]] → [[winner]]` rewrite, body
+  Merge into… (atlas-wide `[[loser]] → [[winner]]` rewrite, body
   append, edge re-targeting)
-- **Duplicate-cluster banner** on vault load with one-click merge review
+- **Duplicate-cluster banner** on atlas load with one-click merge review
 
 **AI integration (FoundationModels, macOS 26 / iOS 26)**
 - Free-form chat per node ("Ask about this node…")
@@ -133,8 +133,8 @@ require macOS 26 / iOS 26.
 - Compose-time dedup prevents silent `" 2"` filename collisions
 - AI link operations constrain candidates to labels that actually
   exist in the graph (no inventing nodes that don't exist)
-- Read-only vault refusal — the `+` and **Capture** buttons stay
-  disabled until a writable vault is open
+- Read-only atlas refusal — the `+` and **Capture** buttons stay
+  disabled until a writable atlas is open
 - All speech recognition strictly on-device
 
 **Cross-platform parity**
@@ -163,11 +163,11 @@ See [`PLAN.md`](PLAN.md) for the phased roadmap. Headline gaps:
 - **Cluster layout** (Phase 3) — gated on community detection
   landing in `GraphAnalysis.swift`.
 - **Import Recipes** (Phase 3) — NL → schema → deterministic
-  executor for Markdown Vault + Code Repo importers.
+  executor for Markdown Atlas + Code Repo importers.
 - **Display Settings panel** (Phase 3.5) — surface edge / pill /
   gradient constants the user has been driving via taste.
-- **Live vault watch** — external edits to .md files don't show
-  until next vault load.
+- **Live atlas watch** — external edits to .md files don't show
+  until next atlas load.
 - **No edge editing UI** — the `Provenance` model exists (7 categories)
   but isn't surfaced. Edges now carry `era` / `date` fields ready
   for the Phase 3 Timeline lens; UI to set them is still TODO.
@@ -221,7 +221,7 @@ require macOS 26 / iOS 26 (Foundation Models).
 |--------------------------|---------------------------------------------------|
 | Back / Forward           | Chevrons · ⌘[ / ⌘]                                |
 | Lens picker              | Dropdown                                          |
-| Vault menu               | Folder icon → Open / Create New / Recent          |
+| Atlas menu               | Folder icon → Open / Create New / Recent          |
 | Add to graph (+ menu)    | Capture (⌘⇧N) / New Node (⌘N)                     |
 | Find                     | Magnifier · ⌘F                                    |
 | Fit to window            | Viewfinder · ⌘0                                   |
@@ -264,7 +264,7 @@ AppFocus/
 │   ├── TerraCognitaKit/         — Library target (the whole product)
 │   │   ├── GraphView.swift              — Top-level view; top bar; all sheets
 │   │   ├── GraphCanvasView.swift        — Canvas renderer; gestures; layout pipeline
-│   │   ├── GraphStore.swift             — @MainActor graph state; vault I/O; ingestion
+│   │   ├── GraphStore.swift             — @MainActor graph state; atlas I/O; ingestion
 │   │   ├── NodeInspectorView.swift      — Inspector with AI ops + proposal chips
 │   │   ├── NodeIntelligence.swift       — Foundation Models orchestration
 │   │   ├── NodeComposer.swift           — New-node sheet
@@ -276,17 +276,17 @@ AppFocus/
 │   │   ├── ForceDirectedLayout.swift    — Background FA2-ish solver
 │   │   ├── LayoutEngine.swift           — Radial / Hierarchical / Grid + no-overlap
 │   │   ├── LayoutAlgorithm.swift        — Enum of layout choices (+ SF symbols)
-│   │   ├── LayoutPersistence.swift      — Per-vault layout snapshots
+│   │   ├── LayoutPersistence.swift      — Per-atlas layout snapshots
 │   │   ├── Mode.swift                   — Mode enum (Phase 0 — single .continuity)
 │   │   ├── GraphAnalysis.swift          — Stub for Phase 3 topology utils
 │   │   ├── FolderPicker.swift           — iOS UIDocumentPickerViewController wrapper
 │   │   ├── Era.swift                    — Era taxonomy + depth derivation
-│   │   ├── VaultLoader.swift            — Markdown vault → Graph
-│   │   ├── VaultWriter.swift            — New-note creation + slug
-│   │   ├── VaultEditor.swift            — In-place note edits + .bak safety
-│   │   ├── VaultBookmark.swift          — Active-vault security-scoped bookmark
-│   │   ├── VaultLibrary.swift           — Recent-vaults LRU
-│   │   ├── VaultDropHandler.swift       — Folder drag-drop onto canvas
+│   │   ├── AtlasLoader.swift            — Markdown atlas → Graph
+│   │   ├── AtlasWriter.swift            — New-note creation + slug
+│   │   ├── AtlasEditor.swift            — In-place note edits + .bak safety
+│   │   ├── AtlasBookmark.swift          — Active-atlas security-scoped bookmark
+│   │   ├── AtlasLibrary.swift           — Recent-atlases LRU
+│   │   ├── AtlasDropHandler.swift       — Folder drag-drop onto canvas
 │   │   ├── WebEnrichment.swift          — Wikipedia REST summary client
 │   │   ├── SpeechRecognizer.swift       — On-device SFSpeechRecognizer wrapper
 │   │   ├── NodeSearchView.swift         — ⌘F popover
@@ -296,9 +296,9 @@ AppFocus/
 │   │   ├── Node.swift / Edge.swift / Provenance.swift — Domain types
 │   │   ├── Node+File.swift              — Bundle URL lookups
 │   │   ├── WebView+FileURL.swift        — Cross-platform open-in-default-app
-│   │   └── Resources/miyazaki-vault/    — Bundled demo vault
+│   │   └── Resources/miyazaki-vault/    — Bundled demo atlas
 │   └── TerraCognita/                    — Dev exec @main shell
-├── Data/heritage-vault/         — Personal heritage vault (the dev dataset)
+├── Data/heritage-vault/         — Personal heritage atlas (the dev dataset)
 ├── Design/DESIGN.md             — Original vision document
 └── scripts/
     ├── generate_xcodeproj.rb    — Project generator (xcodeproj gem)
@@ -316,10 +316,10 @@ roadmap:
 | Area                                  | Completeness |
 |---------------------------------------|--------------|
 | Canvas rendering & feel               | **~95%** — depth, drift, parallax, dive-in pill, hover, idle puff |
-| Vault I/O (load, create, recent)      | **~90%** — only missing live filesystem watch |
+| Atlas I/O (load, create, recent)      | **~90%** — only missing live filesystem watch |
 | Node ingestion (manual + AI)          | **~90%** — composer, long-press, dedup, Capture flow with voice + Wikipedia all in |
 | AI integration (per-node ops)         | **~90%** — 8 ops + chat; missing graph-wide "Ask Terra Cognita" |
-| AI integration (graph-wide / agentic) | **~10%** — Tool-protocol support and cross-vault AI yet to come |
+| AI integration (graph-wide / agentic) | **~10%** — Tool-protocol support and cross-atlas AI yet to come |
 | Lens system                           | **~70%** — six lenses live; provenance-driven and saved-view lenses still to come |
 | Edge editing & provenance UI          | **~10%** — model exists, no UI |
 | Navigation & focus management         | **~95%** — forward/back, inspector toggle, subnet dive, ESC exits, ⌘F find |
@@ -345,7 +345,7 @@ See [`PLAN.md`](PLAN.md) for the phased plan. Short version:
 - **Phase 1** *(landed)* — Layout selector with five algorithms +
   No-overlap toggle. Cluster reserved for Phase 3.
 - **Phase 2** *(next)* — Modes + launch templates. Promotes `Mode`
-  enum to its three real cases, adds the mode picker on vault
+  enum to its three real cases, adds the mode picker on atlas
   creation + a discreet toolbar pill, wires the template registry.
 - **Phase 3** — Lens expansion (Timeline, Radial, Systems) + Import
   Recipes (NL → typed schema → deterministic executor). Backs the
@@ -355,7 +355,7 @@ See [`PLAN.md`](PLAN.md) for the phased plan. Short version:
 - **Phase 4** *(later)* — Pro tier: sync, cloud AI augmentation,
   large-graph background workers. Pro never gates data access.
 
-Cross-cutting follow-ups regardless of phase: live vault watch,
+Cross-cutting follow-ups regardless of phase: live atlas watch,
 edge editing UI (surface `era` / `date` / `Provenance`), spatial
 Capture preview, graph-wide AI, Barnes-Hut layout, 3D time-axis
 mode.

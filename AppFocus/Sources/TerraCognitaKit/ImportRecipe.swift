@@ -9,7 +9,7 @@ import Foundation
 /// orange, asset nodes blue. Link textures to assets by name
 /// reference." → `RecipeInterpreter` parses it into an
 /// `ImportRecipe` → user reviews / edits → `RecipeExecutor` walks
-/// the source folder and materializes a vault.
+/// the source folder and materializes an atlas.
 struct ImportRecipe: Codable, Equatable {
     /// One-sentence summary of what the recipe does. Shown to the
     /// user during review.

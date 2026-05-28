@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Modal composer for creating a new node in the active vault. Used by
+/// Modal composer for creating a new node in the active atlas. Used by
 /// both the long-press-on-canvas flow (spatial entry) and the `+`
 /// top-bar button (near-selection / center). The composer doesn't know
 /// *where* the node will land — it just captures content and hands it
@@ -23,8 +23,8 @@ struct NodeComposer: View {
     var onOpenExisting: (String) -> Void
 
     @State private var label: String = ""
-    /// Current type choice — the name of a `VaultConfig.TypeSpec`.
-    /// Initialized to the vault's first type on appear.
+    /// Current type choice — the name of a `AtlasConfig.TypeSpec`.
+    /// Initialized to the atlas's first type on appear.
     @State private var typeChoice: String = ""
     @State private var era: String = ""
     @State private var body_: String = ""
@@ -162,5 +162,5 @@ struct NodeComposer: View {
     }
 }
 
-// Note: type vocabulary is now config-driven via VaultConfig.types.
+// Note: type vocabulary is now config-driven via AtlasConfig.types.
 // The old hardcoded NodeType enum was removed when custom types shipped.

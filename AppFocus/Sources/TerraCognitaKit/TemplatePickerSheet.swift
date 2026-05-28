@@ -1,12 +1,12 @@
 import SwiftUI
 
-/// Sheet that appears on Create New Vault. Shows the shipped templates
-/// grouped by mode; the picked template determines the vault's mode,
+/// Sheet that appears on Create New Atlas. Shows the shipped templates
+/// grouped by mode; the picked template determines the atlas's mode,
 /// default node types, era taxonomy, and starter subfolders.
 ///
 /// Picking a template fires `onPick(_:)`, dismisses the sheet, and
 /// the host (`GraphView`) then opens the folder picker so the user
-/// can choose where the new vault lives on disk.
+/// can choose where the new atlas lives on disk.
 struct TemplatePickerSheet: View {
     @Binding var isPresented: Bool
     let onPick: (Template) -> Void
@@ -25,7 +25,7 @@ struct TemplatePickerSheet: View {
                 }
                 .padding()
             }
-            .navigationTitle("New Vault")
+            .navigationTitle("New Atlas")
             #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
             #endif

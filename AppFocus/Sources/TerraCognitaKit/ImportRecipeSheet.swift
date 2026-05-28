@@ -175,7 +175,7 @@ struct ImportRecipeSheet: View {
     }
 
     private func swatch(_ raw: String) -> Color {
-        VaultConfig.parseColor(raw) ?? .secondary
+        AtlasConfig.parseColor(raw) ?? .secondary
     }
 
     // MARK: - Stage 4: Running / Done
@@ -183,7 +183,7 @@ struct ImportRecipeSheet: View {
     private var runningPane: some View {
         VStack(spacing: 14) {
             ProgressView().controlSize(.large)
-            Text("Materializing vault…").foregroundStyle(.secondary)
+            Text("Materializing atlas…").foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -245,14 +245,14 @@ struct ImportRecipeSheet: View {
     private func runRecipe(_ recipe: ImportRecipe) async {
         #if os(macOS)
         guard let source = await pickFolder(prompt: "Pick the SOURCE folder to import from") else { return }
-        guard let destination = await pickFolder(prompt: "Pick a DESTINATION folder for the new vault") else { return }
+        guard let destination = await pickFolder(prompt: "Pick a DESTINATION folder for the new atlas") else { return }
         stage = .running
         do {
             let outcome = try RecipeExecutor.execute(recipe,
                                                      source: source,
                                                      destination: destination)
             stage = .done(outcome, destination: destination)
-            // Open the new vault automatically.
+            // Open the new atlas automatically.
             store.load(from: destination)
         } catch {
             stage = .failure(error.localizedDescription)

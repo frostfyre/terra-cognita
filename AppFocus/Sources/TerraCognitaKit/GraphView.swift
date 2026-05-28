@@ -10,7 +10,7 @@ public struct GraphView: View {
     @State private var activeLens: Lens = .all
     @State private var showingSearch: Bool = false
     /// One modal sheet at a time. Folds six previously-separate
-    /// `showing*` booleans (Capture, Composer, VaultSettings,
+    /// `showing*` booleans (Capture, Composer, AtlasSettings,
     /// ImportRecipe, TemplatePicker, DuplicateReview) into one
     /// optional — enforces mutual exclusion structurally and
     /// collapses the GraphView state count. Sub-sheets keep their
@@ -21,7 +21,7 @@ public struct GraphView: View {
     enum ActiveSheet: Identifiable, Hashable {
         case capture
         case composer
-        case vaultSettings
+        case atlasSettings
         case importRecipe
         case templatePicker
         case duplicateReview
@@ -38,8 +38,8 @@ public struct GraphView: View {
     @State private var showingFolderPicker: Bool = false
 
     enum FolderPickerMode {
-        case openVault
-        case createNewVault
+        case openAtlas
+        case createNewAtlas
     }
 
     /// Drives the GEXF file picker. After the user picks, we parse the
@@ -72,7 +72,7 @@ public struct GraphView: View {
     @State private var layoutRequest: LayoutAlgorithm? = nil
 
     /// Selection-highlight radius in BFS hops (1...4). Persisted
-    /// per-vault via `LayoutPersistence`. Driven from the radial
+    /// per-atlas via `LayoutPersistence`. Driven from the radial
     /// Hops dial; the canvas restores it on load and reads on each
     /// frame.
     @State private var highlightDepth: Int = 1
@@ -134,7 +134,7 @@ public struct GraphView: View {
         let screen: CGPoint
     }
 
-    /// Duplicate clusters surfaced by the vault-load review banner.
+    /// Duplicate clusters surfaced by the atlas-load review banner.
     @State private var duplicateClusters: [[String]] = []
     /// Set to true once the user has dismissed the banner this session
     /// (or opened the review modal). Prevents the banner from popping
@@ -182,10 +182,10 @@ public struct GraphView: View {
 
     public var body: some View {
         canvasStack
-        .onAppear { store.loadDefaultVault() }
+        .onAppear { store.loadDefaultAtlas() }
         .onChange(of: store.graph.nodes.count) { oldCount, newCount in
             // Recompute duplicate clusters whenever the graph changes
-            // (vault load, create, delete, merge). Reset the dismissal
+            // (atlas load, create, delete, merge). Reset the dismissal
             // flag only on growth — shrinking after a merge shouldn't
             // re-pop the banner.
             let newClusters = store.duplicateClusters()
@@ -283,9 +283,9 @@ public struct GraphView: View {
                 }
             )
         }
-        .sheet(isPresented: sheetBinding(for: .vaultSettings)) {
-            VaultSettingsSheet(store: store,
-                               isPresented: sheetBinding(for: .vaultSettings))
+        .sheet(isPresented: sheetBinding(for: .atlasSettings)) {
+            AtlasSettingsSheet(store: store,
+                               isPresented: sheetBinding(for: .atlasSettings))
         }
         .sheet(isPresented: sheetBinding(for: .importRecipe)) {
             ImportRecipeSheet(store: store,
@@ -302,7 +302,7 @@ public struct GraphView: View {
                     // present animation — same Menu/sheet race we
                     // handled in `presentFolderPicker`.
                     DispatchQueue.main.async {
-                        presentFolderPicker(.createNewVault)
+                        presentFolderPicker(.createNewAtlas)
                     }
                 }
             )
@@ -342,11 +342,11 @@ public struct GraphView: View {
             )
         }
         // Drag a folder from Finder (macOS) or Files (iPad) onto the
-        // canvas to load it as a vault. On iOS this is mostly useful
+        // canvas to load it as an atlas. On iOS this is mostly useful
         // alongside Stage Manager and the system file browser; iPhone
         // users will keep using the picker.
         .onDrop(of: [.fileURL], isTargeted: nil) { providers in
-            VaultDropHandler.handle(providers, store: store)
+            AtlasDropHandler.handle(providers, store: store)
         }
         .modifier(InspectorPresentation(
             isPresented: $inspectorVisible,
@@ -367,7 +367,7 @@ public struct GraphView: View {
             refreshBridgeNodesIfNeeded()
         }
         .onChange(of: highlightDepth) { _, newValue in
-            // Persist immediately so the per-vault hop dial survives
+            // Persist immediately so the per-atlas hop dial survives
             // a restart even if the user never triggers a new layout
             // pass (which is the only other write path).
             var snapshot = LayoutPersistence.load() ?? PersistedLayout()
@@ -408,9 +408,9 @@ public struct GraphView: View {
     ///     too much of the canvas
     ///   - iPad compact (split view / Slide Over) + iPhone: sheet
     ///     with detents
-    /// Compact pill in the toolbar showing the vault's current mode.
-    /// Pure display today — mode is set at vault creation via the
-    /// template picker; switching modes mid-vault is out of scope for
+    /// Compact pill in the toolbar showing the atlas's current mode.
+    /// Pure display today — mode is set at atlas creation via the
+    /// template picker; switching modes mid-atlas is out of scope for
     /// Phase 2.
     @ViewBuilder
     private var modePill: some View {
@@ -427,7 +427,7 @@ public struct GraphView: View {
             Capsule().fill(Color.secondary.opacity(0.15))
         )
         .foregroundStyle(.secondary)
-        .help("This vault is in \(mode.displayName) mode.")
+        .help("This atlas is in \(mode.displayName) mode.")
     }
 
     private var useSheetForInspector: Bool {
@@ -475,7 +475,7 @@ public struct GraphView: View {
     /// presentation is deferred by one runloop tick so the host
     /// `Menu` has time to dismiss before the picker mounts — on iOS,
     /// firing them in the same tick causes the picker to silently
-    /// drop, which is why "Open Vault Folder…" appeared to do nothing.
+    /// drop, which is why "Open Atlas Folder…" appeared to do nothing.
     private func presentFolderPicker(_ mode: FolderPickerMode) {
         folderPickerMode = mode
         DispatchQueue.main.async {
@@ -491,9 +491,9 @@ public struct GraphView: View {
         folderPickerMode = nil
         guard let url else { return }
         switch mode {
-        case .openVault:
+        case .openAtlas:
             store.load(from: url)
-        case .createNewVault:
+        case .createNewAtlas:
             // The user picked a parent folder; materialize a child
             // named after the chosen template inside it (or use the
             // chosen folder directly if it's already empty). Template
@@ -503,8 +503,8 @@ public struct GraphView: View {
             defer { if didStart { url.stopAccessingSecurityScopedResource() } }
             let template = pendingTemplate
             pendingTemplate = nil
-            let folderName = template.map { "\($0.name) Vault" }
-                ?? "Terra Cognita Vault"
+            let folderName = template.map { "\($0.name) Atlas" }
+                ?? "Terra Cognita Atlas"
             let target: URL = {
                 let fm = FileManager.default
                 if let items = try? fm.contentsOfDirectory(at: url,
@@ -515,14 +515,14 @@ public struct GraphView: View {
                 }
                 return url.appendingPathComponent(folderName)
             }()
-            store.createNewVault(at: target, template: template)
+            store.createNewAtlas(at: target, template: template)
         case .none:
             break
         }
     }
 
     /// Step 2 of GEXF import: ask the user where to materialize the
-    /// new vault. Uses NSOpenPanel directly on macOS — SwiftUI's
+    /// new atlas. Uses NSOpenPanel directly on macOS — SwiftUI's
     /// `.fileImporter` runs into mount conflicts when fired
     /// back-to-back with another importer. On iOS this is a no-op for
     /// now; iPad GEXF import can layer on UIDocumentPicker later.
@@ -531,7 +531,7 @@ public struct GraphView: View {
               let basename = pendingGEXFName else { return }
         #if os(macOS)
         let panel = NSOpenPanel()
-        panel.title = "Choose a folder for the imported vault"
+        panel.title = "Choose a folder for the imported atlas"
         panel.message = "A new folder named \"\(basename)\" will be created here, with one .md per GEXF node."
         panel.prompt = "Import"
         panel.canChooseFiles = false
@@ -705,7 +705,7 @@ public struct GraphView: View {
     /// (long-press blank for the global wheel, long-press a node
     /// for the per-node one). What stays here is navigation + the
     /// affordances the user wants at the periphery while reading:
-    /// back / forward, mode, vault, find, inspector.
+    /// back / forward, mode, atlas, find, inspector.
     @ViewBuilder
     private var topBar: some View {
         HStack(spacing: 8) {
@@ -730,7 +730,7 @@ public struct GraphView: View {
             }
             modePill
             Spacer()
-            vaultMenu
+            atlasMenu
 
             Button {
                 showingSearch = true
@@ -787,18 +787,18 @@ public struct GraphView: View {
     }
 
     @ViewBuilder
-    private var vaultMenu: some View {
+    private var atlasMenu: some View {
         Menu {
             Button {
-                presentFolderPicker(.openVault)
+                presentFolderPicker(.openAtlas)
             } label: {
-                Label("Open Vault Folder…", systemImage: "folder")
+                Label("Open Atlas Folder…", systemImage: "folder")
             }
             .keyboardShortcut("o", modifiers: .command)
             Button {
                 activeSheet = .templatePicker
             } label: {
-                Label("Create New Vault…", systemImage: "folder.badge.plus")
+                Label("Create New Atlas…", systemImage: "folder.badge.plus")
             }
             Button {
                 showingGEXFPicker = true
@@ -812,9 +812,9 @@ public struct GraphView: View {
             }
             Divider()
             Button {
-                activeSheet = .vaultSettings
+                activeSheet = .atlasSettings
             } label: {
-                Label("Vault Settings…", systemImage: "gearshape")
+                Label("Atlas Settings…", systemImage: "gearshape")
             }
             .disabled(!store.canIngest)
 
@@ -847,16 +847,16 @@ public struct GraphView: View {
 
             Divider()
             Button {
-                store.resetToDefaultVault()
+                store.resetToDefaultAtlas()
             } label: {
                 Label("Use Default (Miyazaki)", systemImage: "sparkles")
             }
         } label: {
-            Label("Vault", systemImage: "folder")
+            Label("Atlas", systemImage: "folder")
         }
         .menuStyle(.borderlessButton)
         .fixedSize()
-        .help("Open a markdown vault folder (⌘O)")
+        .help("Open a markdown atlas folder (⌘O)")
     }
 
     /// Inspector body, factored out of `body` so SwiftUI's type
@@ -1288,7 +1288,7 @@ private struct InspectorPresentation<InspectorContent: View>: ViewModifier {
 
 // MARK: - Subnet badge
 
-/// Modal that reviews duplicate-slug clusters found at vault load and
+/// Modal that reviews duplicate-slug clusters found at atlas load and
 /// offers one-click merge (with side-by-side preview). The "winner" of
 /// each merge is the node the user taps as the keeper.
 private struct DuplicateReviewSheet: View {
@@ -1372,13 +1372,13 @@ struct PendingNewNode: Equatable {
 // MARK: - Lenses
 
 /// A semantic view over the graph. `all` is always present; the
-/// per-type lenses are generated dynamically from the vault's
-/// `VaultConfig.types` so a custom ontology surfaces correctly in the
+/// per-type lenses are generated dynamically from the atlas's
+/// `AtlasConfig.types` so a custom ontology surfaces correctly in the
 /// picker.
 struct Lens: Hashable, Identifiable {
     enum Kind: Hashable {
         case all
-        case type(String)   // type name from VaultConfig.types
+        case type(String)   // type name from AtlasConfig.types
         /// Systems lens: doesn't filter nodes, but signals to the
         /// canvas that bridge nodes (members of one community with
         /// edges into another) should be visually emphasized.
@@ -1398,10 +1398,10 @@ struct Lens: Hashable, Identifiable {
                               label: "Systems",
                               icon: "network")
 
-    /// All lenses available for the active vault: `all`, then one per
+    /// All lenses available for the active atlas: `all`, then one per
     /// declared type, then `Systems` as the topology view. Order
     /// matters for the picker.
-    static func all(for config: VaultConfig) -> [Lens] {
+    static func all(for config: AtlasConfig) -> [Lens] {
         var list: [Lens] = [.all]
         for t in config.types {
             list.append(Lens(

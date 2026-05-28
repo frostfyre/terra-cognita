@@ -12,7 +12,7 @@ import PDFKit
 import AVKit
 #endif
 
-/// Lightweight block-level renderer for the vault's markdown notes.
+/// Lightweight block-level renderer for the atlas's markdown notes.
 ///
 /// SwiftUI's built-in `Text(_ markdown: LocalizedStringKey)` renders inline
 /// markdown (bold/italic/links/code) but ignores block constructs like
@@ -32,14 +32,14 @@ struct MarkdownBodyView: View {
     var onWikilinkClick: ((String) -> Void)?
     /// Resolve an embed filename (e.g. `sketch_bar.png`) to a file URL.
     /// `nil` skips rendering. Closure usually searches the node file's
-    /// directory and the vault root.
+    /// directory and the atlas root.
     var resolveEmbed: ((String) -> URL?)? = nil
-    /// The currently-open vault URL, when available. Used to bracket
+    /// The currently-open atlas URL, when available. Used to bracket
     /// security-scoped access around image embed loads — without
-    /// this, iOS silently fails to read files inside the vault even
+    /// this, iOS silently fails to read files inside the atlas even
     /// though the URL is correct. macOS treats the bracket as a
     /// no-op for non-sandboxed apps, so it's safe across platforms.
-    var vaultURL: URL? = nil
+    var atlasURL: URL? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -121,7 +121,7 @@ struct MarkdownBodyView: View {
             switch ext {
             case "png", "jpg", "jpeg", "gif", "heic", "webp", "bmp", "tiff":
                 ScopedImageView(url: url,
-                                vaultURL: vaultURL,
+                                atlasURL: atlasURL,
                                 fallback: { embedFallback(filename, url: url, alt: alt) })
                 if let alt, !alt.isEmpty {
                     Text(alt).font(.caption2).foregroundStyle(.secondary)
@@ -470,13 +470,13 @@ struct PDFThumbView: View {
 
 /// Inline image embed that handles iOS security-scoped resource
 /// access. SwiftUI's `AsyncImage(url:)` uses `URLSession.shared`
-/// under the hood, which cannot read from sandboxed vault folders
+/// under the hood, which cannot read from sandboxed atlas folders
 /// on iOS — the load silently fails. This view brackets
-/// `startAccessingSecurityScopedResource()` on the vault URL,
+/// `startAccessingSecurityScopedResource()` on the atlas URL,
 /// reads the bytes, builds a platform image, and renders.
 private struct ScopedImageView<Fallback: View>: View {
     let url: URL
-    let vaultURL: URL?
+    let atlasURL: URL?
     let fallback: () -> Fallback
 
     @State private var image: Image?
@@ -503,11 +503,11 @@ private struct ScopedImageView<Fallback: View>: View {
 
     private func loadImage() async {
         let target = url
-        let vault = vaultURL
+        let atlas = atlasURL
         let loaded: Image? = await Task.detached(priority: .userInitiated) {
-            let didStart = vault?.startAccessingSecurityScopedResource() ?? false
+            let didStart = atlas?.startAccessingSecurityScopedResource() ?? false
             defer {
-                if didStart { vault?.stopAccessingSecurityScopedResource() }
+                if didStart { atlas?.stopAccessingSecurityScopedResource() }
             }
             guard let data = try? Data(contentsOf: target) else { return nil }
             #if canImport(AppKit)

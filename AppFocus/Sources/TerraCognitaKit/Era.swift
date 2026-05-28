@@ -1,6 +1,6 @@
 import Foundation
 
-/// Chronological ordering for the vault's era taxonomy.
+/// Chronological ordering for the atlas's era taxonomy.
 ///
 /// `era:` is the most consistently-populated dateish field on heritage
 /// notes (`pre-conscious`, `blizzard-era`, `current`, etc.). This enum
@@ -70,15 +70,15 @@ extension Node {
     /// recognised era so they sit slightly forward of the deep past
     /// but behind the explicitly-present. Uses the built-in heritage
     /// era enum — the canvas calls `depth(in: config)` instead so
-    /// custom vaults get their own taxonomy.
+    /// custom atlases get their own taxonomy.
     var depth: Double {
         depth(in: nil)
     }
 
-    /// Config-aware depth. When a `VaultConfig` is supplied, era
+    /// Config-aware depth. When a `AtlasConfig` is supplied, era
     /// resolution uses *its* taxonomy and weights. Without a config,
     /// falls back to the built-in heritage `Era` enum.
-    func depth(in config: VaultConfig?) -> Double {
+    func depth(in config: AtlasConfig?) -> Double {
         let raw = attributes["era"] ?? attributes["peak-era"] ?? ""
         guard !raw.isEmpty else { return 0.55 }
         // Era values are comma-joined lists like "blizzard-era, ongoing".

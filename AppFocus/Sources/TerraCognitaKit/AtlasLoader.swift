@@ -1,28 +1,28 @@
 import Foundation
 
-/// Builds a `Graph` (nodes + edges) from an Obsidian-style markdown vault.
+/// Builds a `Graph` (nodes + edges) from an Obsidian-style markdown atlas.
 ///
 /// Per DESIGN.md: "Markdown files remain the canonical backing store, while
 /// the graph becomes the primary interaction model." Each `.md` file becomes
 /// a node; YAML front-matter becomes node attributes; `[[wikilinks]]` in the
 /// body become edges. Inline Dataview-style `key:: [[target]]` lines become
 /// typed edges (the `key` is stored as `relationshipType`).
-struct VaultLoader {
-    let vaultURL: URL
-    /// Per-vault ontology + extractor toggles. Defaults preserve the
+struct AtlasLoader {
+    let atlasURL: URL
+    /// Per-atlas ontology + extractor toggles. Defaults preserve the
     /// original behavior; the JackalopeJunction-style case (tag- /
-    /// embed-heavy vaults with few wikilinks) wants the extractors on.
-    var config: VaultConfig = .default
+    /// embed-heavy atlases with few wikilinks) wants the extractors on.
+    var config: AtlasConfig = .default
 
-    /// Resolves a vault directory by trying, in order:
-    ///   1. The Miyazaki demo vault bundled with TerraCognitaKit (`Bundle.module`)
-    ///   2. The current working directory + `Data/heritage-vault/heritage-vault`
-    ///      (where the development heritage vault lives on macOS via swift run)
+    /// Resolves an atlas directory by trying, in order:
+    ///   1. The Miyazaki demo atlas bundled with TerraCognitaKit (`Bundle.module`)
+    ///   2. The current working directory + `Data/heritage-atlas/heritage-atlas`
+    ///      (where the development heritage atlas lives on macOS via swift run)
     ///   3. The executable's parent chain (walks up 8 levels)
-    static func defaultVault() -> URL? {
+    static func defaultAtlas() -> URL? {
         let fm = FileManager.default
 
-        // 1. Library-bundled Miyazaki demo vault. Always present on iOS
+        // 1. Library-bundled Miyazaki demo atlas. Always present on iOS
         //    and any Xcode app target; first preference everywhere.
         if let bundled = Bundle.module.url(forResource: "miyazaki-vault",
                                            withExtension: nil) {
@@ -56,14 +56,14 @@ struct VaultLoader {
     /// Per-load counts useful when the graph comes back empty —
     /// distinguishes "enumerator couldn't open the URL at all" (iOS
     /// sandboxing / wrong-folder) from "walked but found no .md"
-    /// (user picked a parent above the actual vault).
+    /// (user picked a parent above the actual atlas).
     struct Diagnostics {
         var itemsWalked: Int = 0
         var mdFilesFound: Int = 0
         var enumeratorFailed: Bool = false
     }
 
-    /// Loads the entire vault into a `Graph`. The four extraction
+    /// Loads the entire atlas into a `Graph`. The four extraction
     /// passes run in order:
     ///   1. Walk `.md` files → first-class nodes
     ///   2. Resolve `[[wikilinks]]` → edges between existing nodes
@@ -74,7 +74,7 @@ struct VaultLoader {
         let fm = FileManager.default
         var diag = Diagnostics()
         guard let enumerator = fm.enumerator(
-            at: vaultURL,
+            at: atlasURL,
             includingPropertiesForKeys: [.isRegularFileKey],
             options: [.skipsHiddenFiles]
         ) else {
@@ -96,7 +96,7 @@ struct VaultLoader {
             guard url.pathExtension.lowercased() == "md" else { continue }
             diag.mdFilesFound += 1
             let id = url.deletingPathExtension().lastPathComponent
-            // Skip README and top-level vault docs.
+            // Skip README and top-level atlas docs.
             if id.uppercased() == "README" { continue }
 
             // Encoding fallback chain. UTF-8 is the expected case;
@@ -230,7 +230,7 @@ struct VaultLoader {
 
 // MARK: - Markdown note parsing
 
-/// Lightweight parser for the vault's note format: YAML front-matter,
+/// Lightweight parser for the atlas's note format: YAML front-matter,
 /// a `# Heading`, body text, and Obsidian/Dataview wikilinks.
 enum MarkdownNoteParser {
     struct Parsed {

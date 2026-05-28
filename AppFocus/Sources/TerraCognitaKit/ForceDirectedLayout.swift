@@ -10,7 +10,7 @@ import CoreGraphics
 /// `Task` and hand the result back to the main actor.
 struct ForceDirectedLayout: Sendable {
     /// Iteration count. The simulation converges visibly by ~120 on
-    /// the vault scale we ship at; the rest of the runs just refine
+    /// the atlas scale we ship at; the rest of the runs just refine
     /// the look. 160 strikes the balance between snappy and pretty.
     var iterations: Int = 160
     /// Ideal edge length. Bigger value = more spread.

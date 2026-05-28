@@ -7,7 +7,7 @@ import UniformTypeIdentifiers
 /// for use inside SwiftUI. We need this on iOS because SwiftUI's
 /// `.fileImporter` with `.folder` has been observed to silently no-op
 /// when presented from inside a `Menu` button action — common iPhone
-/// vault-open flow. UIKit picker doesn't have that race.
+/// atlas-open flow. UIKit picker doesn't have that race.
 ///
 /// The picked folder URL is delivered as a security-scoped resource:
 /// callers must `startAccessingSecurityScopedResource()` before reading

@@ -6,79 +6,79 @@ import SwiftUI
 public final class GraphStore: ObservableObject {
     @Published var graph: Graph
     @Published var loadStatus: String = ""
-    /// Recent vaults the user has opened. Mutated when a load
+    /// Recent atlases the user has opened. Mutated when a load
     /// succeeds; persisted to UserDefaults.
-    @Published var library: VaultLibrary
+    @Published var library: AtlasLibrary
 
-    /// The currently-active vault folder if it's writable. `nil` while
+    /// The currently-active atlas folder if it's writable. `nil` while
     /// the app is showing the bundled Miyazaki demo (bundle resources
     /// are read-only). Drives `canIngest`.
-    @Published var writableVaultURL: URL?
+    @Published var writableAtlasURL: URL?
 
-    /// Per-vault ontology (custom types + eras). Falls back to
-    /// `VaultConfig.default` for vaults that don't declare a config.
-    @Published var config: VaultConfig = .default
+    /// Per-atlas ontology (custom types + eras). Falls back to
+    /// `AtlasConfig.default` for atlases that don't declare a config.
+    @Published var config: AtlasConfig = .default
 
-    /// True if node ingestion is allowed against the current vault.
-    var canIngest: Bool { writableVaultURL != nil }
+    /// True if node ingestion is allowed against the current atlas.
+    var canIngest: Bool { writableAtlasURL != nil }
 
     /// Per-store `.bak` snapshot tracker. Was a process-global static
-    /// on `VaultEditor`; lives here so each `GraphStore` (current
-    /// usage: one per session, future usage: potentially per-vault)
+    /// on `AtlasEditor`; lives here so each `GraphStore` (current
+    /// usage: one per session, future usage: potentially per-atlas)
     /// gets its own scope. Reference type so the value-typed
-    /// `VaultEditor` can hold a shared handle.
+    /// `AtlasEditor` can hold a shared handle.
     private let snapshots = SnapshotTracker()
 
-    /// Construct a `VaultEditor` wired to this store's snapshot
+    /// Construct a `AtlasEditor` wired to this store's snapshot
     /// tracker. Every mutation site in GraphStore should route
     /// through here so they all share the same `.bak`-once-per-file
     /// semantics.
-    private func makeEditor(_ vaultURL: URL) -> VaultEditor {
-        var editor = VaultEditor(vaultURL: vaultURL)
+    private func makeEditor(_ atlasURL: URL) -> AtlasEditor {
+        var editor = AtlasEditor(atlasURL: atlasURL)
         editor.snapshots = snapshots
         return editor
     }
 
-    /// Empty store. The app's `GraphView` calls `loadDefaultVault()` to
-    /// populate it from the heritage vault on disk.
+    /// Empty store. The app's `GraphView` calls `loadDefaultAtlas()` to
+    /// populate it from the heritage atlas on disk.
     public init() {
         self.graph = Graph(nodes: [:], edges: [])
-        self.library = VaultLibrary.load()
+        self.library = AtlasLibrary.load()
     }
 
     init(graph: Graph) {
         self.graph = graph
-        self.library = VaultLibrary.load()
+        self.library = AtlasLibrary.load()
     }
 
-    /// Loads the default vault: previously-bookmarked user folder if
+    /// Loads the default atlas: previously-bookmarked user folder if
     /// one is saved, otherwise the bundled Miyazaki demo, otherwise the
-    /// development heritage vault on disk.
-    func loadDefaultVault() {
-        if let url = VaultBookmark.load() {
+    /// development heritage atlas on disk.
+    func loadDefaultAtlas() {
+        if let url = AtlasBookmark.load() {
             load(from: url, fromBookmark: true)
         } else {
             Task {
                 do {
-                    let (vaultName, g, isWritable, url) = try await Self.loadFromDefaultVault()
+                    let (atlasName, g, isWritable, url) = try await Self.loadFromDefaultAtlas()
                     self.graph = g
-                    self.config = VaultConfig.load(from: url)
-                    self.loadStatus = "Loaded \(g.nodes.count) nodes / \(g.edges.count) edges from \(vaultName)"
-                    self.writableVaultURL = isWritable ? url : nil
-                } catch VaultError.notFound {
-                    self.loadStatus = "Vault not found — looked relative to CWD and the executable directory."
-                    self.writableVaultURL = nil
+                    self.config = AtlasConfig.load(from: url)
+                    self.loadStatus = "Loaded \(g.nodes.count) nodes / \(g.edges.count) edges from \(atlasName)"
+                    self.writableAtlasURL = isWritable ? url : nil
+                } catch AtlasError.notFound {
+                    self.loadStatus = "Atlas not found — looked relative to CWD and the executable directory."
+                    self.writableAtlasURL = nil
                 } catch {
-                    self.loadStatus = "Vault load failed: \(error.localizedDescription)"
-                    self.writableVaultURL = nil
+                    self.loadStatus = "Atlas load failed: \(error.localizedDescription)"
+                    self.writableAtlasURL = nil
                 }
             }
         }
     }
 
-    /// Load a vault from a user-chosen folder URL. Manages the
-    /// security-scoped resource, saves a current-vault bookmark, and
-    /// touches the recent-vaults library.
+    /// Load an atlas from a user-chosen folder URL. Manages the
+    /// security-scoped resource, saves a current-atlas bookmark, and
+    /// touches the recent-atlases library.
     func load(from url: URL, fromBookmark: Bool = false) {
         let didStart = url.startAccessingSecurityScopedResource()
         Task {
@@ -86,7 +86,7 @@ public final class GraphStore: ObservableObject {
             do {
                 // Load the config first so the loader's extractor
                 // toggles + custom types come into play during the walk.
-                let cfg = VaultConfig.load(from: url)
+                let cfg = AtlasConfig.load(from: url)
                 let (g, diag) = try await Task.detached(priority: .userInitiated) {
                     try Self.coordinatedLoad(at: url, config: cfg)
                 }.value
@@ -95,7 +95,7 @@ public final class GraphStore: ObservableObject {
                 if g.nodes.isEmpty {
                     // Explain *why* the load came back empty so the
                     // user can act — most often this is a wrong-folder
-                    // pick on iOS (parent of the actual vault) or a
+                    // pick on iOS (parent of the actual atlas) or a
                     // sandbox failure if the picker URL didn't grant
                     // recursive read access.
                     if diag.enumeratorFailed {
@@ -110,9 +110,9 @@ public final class GraphStore: ObservableObject {
                 } else {
                     self.loadStatus = "Loaded \(g.nodes.count) nodes / \(g.edges.count) edges from \(url.lastPathComponent)"
                 }
-                self.writableVaultURL = url
+                self.writableAtlasURL = url
                 if !fromBookmark {
-                    VaultBookmark.save(url)
+                    AtlasBookmark.save(url)
                 }
                 self.library.touch(url,
                                    nodeCount: g.nodes.count,
@@ -120,42 +120,42 @@ public final class GraphStore: ObservableObject {
                 self.library.save()
             } catch {
                 self.loadStatus = "Couldn't read \(url.lastPathComponent): \(error.localizedDescription)"
-                self.writableVaultURL = nil
+                self.writableAtlasURL = nil
             }
         }
     }
 
-    /// Open a recent-vaults library entry. Resolves the saved bookmark
+    /// Open a recent-atlases library entry. Resolves the saved bookmark
     /// and routes through `load(from:)`.
     func openLibraryEntry(_ entryID: UUID) {
         if let url = library.resolve(entryID: entryID) {
             library.save()
             load(from: url)
         } else {
-            loadStatus = "Couldn't resolve that vault — the folder may have moved."
+            loadStatus = "Couldn't resolve that atlas — the folder may have moved."
             library.remove(entryID: entryID)
             library.save()
         }
     }
 
-    /// Drop an entry from the recent-vaults library.
+    /// Drop an entry from the recent-atlases library.
     func forgetLibraryEntry(_ entryID: UUID) {
         library.remove(entryID: entryID)
         library.save()
     }
 
-    /// Forget the user-chosen vault and revert to the default search.
-    func resetToDefaultVault() {
-        VaultBookmark.clear()
-        loadDefaultVault()
+    /// Forget the user-chosen atlas and revert to the default search.
+    func resetToDefaultAtlas() {
+        AtlasBookmark.clear()
+        loadDefaultAtlas()
     }
 
     // MARK: - Ingestion
 
     /// Result of a node-creation attempt.
     enum CreateError: LocalizedError {
-        case noWritableVault
-        case writer(VaultWriter.WriteError)
+        case noWritableAtlas
+        case writer(AtlasWriter.WriteError)
         /// A node with a normalized-equal label already exists. The
         /// associated value is the existing node's id so the UI can
         /// offer "Open existing instead".
@@ -163,8 +163,8 @@ public final class GraphStore: ObservableObject {
 
         var errorDescription: String? {
             switch self {
-            case .noWritableVault:
-                return "Open or create a writable vault folder first."
+            case .noWritableAtlas:
+                return "Open or create a writable atlas folder first."
             case .writer(let inner):
                 return inner.errorDescription
             case .duplicate(let id):
@@ -185,7 +185,7 @@ public final class GraphStore: ObservableObject {
         }
     }
 
-    /// Create a new node in the active vault. Writes a markdown file with
+    /// Create a new node in the active atlas. Writes a markdown file with
     /// matching front-matter / title / body, then appends a `Node` to the
     /// in-memory graph immediately so the canvas can frame it without
     /// waiting for a re-scan. Returns the new node's id on success.
@@ -195,8 +195,8 @@ public final class GraphStore: ObservableObject {
                     era: String?,
                     body: String,
                     isPrivate: Bool = false) -> Result<String, CreateError> {
-        guard let vaultURL = writableVaultURL else {
-            return .failure(.noWritableVault)
+        guard let atlasURL = writableAtlasURL else {
+            return .failure(.noWritableAtlas)
         }
 
         // Compose-time dedup: refuse the write if a node with a
@@ -213,9 +213,9 @@ public final class GraphStore: ObservableObject {
             }
         }
 
-        let writer = VaultWriter(vaultURL: vaultURL)
-        let didStart = vaultURL.startAccessingSecurityScopedResource()
-        defer { if didStart { vaultURL.stopAccessingSecurityScopedResource() } }
+        let writer = AtlasWriter(atlasURL: atlasURL)
+        let didStart = atlasURL.startAccessingSecurityScopedResource()
+        defer { if didStart { atlasURL.stopAccessingSecurityScopedResource() } }
 
         do {
             let (fileURL, slug) = try writer.createNote(
@@ -227,13 +227,13 @@ public final class GraphStore: ObservableObject {
             )
 
             // Append to the in-memory graph. The id is the file's
-            // basename (matching VaultLoader). Resolve any wikilinks in
+            // basename (matching AtlasLoader). Resolve any wikilinks in
             // the body so the new node arrives with edges already wired.
             var node = Node(id: slug, label: label.trimmingCharacters(in: .whitespacesAndNewlines))
             var attrs: [String: String] = [:]
             if let type, !type.isEmpty { attrs["type"] = type }
             if let era,  !era.isEmpty  { attrs["era"]  = era }
-            if let sub = type.flatMap(VaultWriter.subfolder(for:)) {
+            if let sub = type.flatMap(AtlasWriter.subfolder(for:)) {
                 attrs["folder"] = sub
             }
             if isPrivate { attrs["private"] = "true" }
@@ -264,7 +264,7 @@ public final class GraphStore: ObservableObject {
 
             loadStatus = "Created \"\(node.label)\""
             return .success(slug)
-        } catch let err as VaultWriter.WriteError {
+        } catch let err as AtlasWriter.WriteError {
             return .failure(.writer(err))
         } catch {
             return .failure(.writer(.writeFailed(error.localizedDescription)))
@@ -277,8 +277,8 @@ public final class GraphStore: ObservableObject {
     /// write so the canvas reflects the change without a re-scan.
     @discardableResult
     func applyProposal(_ proposal: NodeProposal, to nodeID: String) -> String? {
-        guard let vaultURL = writableVaultURL else {
-            return "Open or create a writable vault first."
+        guard let atlasURL = writableAtlasURL else {
+            return "Open or create a writable atlas first."
         }
         guard var node = graph.nodes[nodeID] else {
             return "Selected node no longer exists."
@@ -287,10 +287,10 @@ public final class GraphStore: ObservableObject {
             return "Selected node has no backing file."
         }
         let fileURL = URL(fileURLWithPath: pathString)
-        let didStart = vaultURL.startAccessingSecurityScopedResource()
-        defer { if didStart { vaultURL.stopAccessingSecurityScopedResource() } }
+        let didStart = atlasURL.startAccessingSecurityScopedResource()
+        defer { if didStart { atlasURL.stopAccessingSecurityScopedResource() } }
 
-        let editor = makeEditor(vaultURL)
+        let editor = makeEditor(atlasURL)
         do {
             switch proposal.kind {
             case .addLink(let target, let rel):
@@ -333,7 +333,7 @@ public final class GraphStore: ObservableObject {
                 graph.nodes[nodeID] = node
             }
             return nil
-        } catch let err as VaultEditor.EditError {
+        } catch let err as AtlasEditor.EditError {
             return err.errorDescription
         } catch {
             return error.localizedDescription
@@ -341,35 +341,35 @@ public final class GraphStore: ObservableObject {
     }
 
     /// Replace the body of an existing node with `newBody`. Frontmatter
-    /// is preserved by `VaultEditor.replaceBody`. The caller is expected
+    /// is preserved by `AtlasEditor.replaceBody`. The caller is expected
     /// to include the `# Title` heading line if they want one — the
     /// inspector's edit flow stitches the node's display label back in
     /// before calling this so the title stays intact across round-trips.
     ///
     /// When the node has no backing file yet (Constellation-created or
     /// otherwise materialized-in-memory-only), we create one via
-    /// `VaultWriter` first using the node's current type / era / label,
+    /// `AtlasWriter` first using the node's current type / era / label,
     /// then write the body into it. The node's `filePath` is patched
     /// in place so subsequent edits go through the normal path.
     @discardableResult
     func updateNodeBody(_ nodeID: String, body newBody: String) -> String? {
-        guard let vaultURL = writableVaultURL else {
-            return "Open or create a writable vault first."
+        guard let atlasURL = writableAtlasURL else {
+            return "Open or create a writable atlas first."
         }
         guard var node = graph.nodes[nodeID] else {
             return "Selected node no longer exists."
         }
-        return vaultURL.withSecurityScope {
-            let editor = makeEditor(vaultURL)
+        return atlasURL.withSecurityScope {
+            let editor = makeEditor(atlasURL)
             let fileURL: URL
             if let pathString = node.filePath {
                 fileURL = URL(fileURLWithPath: pathString)
             } else {
                 // No backing file yet — materialize one. We write an empty
-                // body first so `VaultWriter` sets up the front-matter and
+                // body first so `AtlasWriter` sets up the front-matter and
                 // picks the right subfolder for the type; `replaceBody`
                 // below then fills in the user's content.
-                let writer = VaultWriter(vaultURL: vaultURL)
+                let writer = AtlasWriter(atlasURL: atlasURL)
                 do {
                     let created = try writer.createNote(
                         label: node.label,
@@ -379,7 +379,7 @@ public final class GraphStore: ObservableObject {
                     )
                     fileURL = created.fileURL
                     node.filePath = created.fileURL.path
-                } catch let err as VaultWriter.WriteError {
+                } catch let err as AtlasWriter.WriteError {
                     return err.errorDescription
                 } catch {
                     return error.localizedDescription
@@ -391,7 +391,7 @@ public final class GraphStore: ObservableObject {
                 node.markdownContent = updated
                 graph.nodes[nodeID] = node
                 return nil
-            } catch let err as VaultEditor.EditError {
+            } catch let err as AtlasEditor.EditError {
                 return err.errorDescription
             } catch {
                 return error.localizedDescription
@@ -402,7 +402,7 @@ public final class GraphStore: ObservableObject {
     /// Promote a synthetic placeholder node (created by the loader's
     /// dangling-wikilink extractor) to a real, typed node backed by
     /// a fresh `.md` file. The new file lands in the subfolder
-    /// implied by `typeName` (per `VaultWriter.subfolder(for:)`) with
+    /// implied by `typeName` (per `AtlasWriter.subfolder(for:)`) with
     /// the placeholder's label as the title. Edges that pointed at
     /// the placeholder id are re-targeted to the new slug.
     ///
@@ -411,16 +411,16 @@ public final class GraphStore: ObservableObject {
     /// new node so focus is preserved across the slug rename.
     func promoteNode(_ placeholderID: String,
                      to typeName: String) -> Result<String, NodeError> {
-        guard let vaultURL = writableVaultURL else {
-            return .failure(.message("Open or create a writable vault first."))
+        guard let atlasURL = writableAtlasURL else {
+            return .failure(.message("Open or create a writable atlas first."))
         }
         guard let placeholder = graph.nodes[placeholderID] else {
             return .failure(.message("Node no longer exists."))
         }
-        let didStart = vaultURL.startAccessingSecurityScopedResource()
-        defer { if didStart { vaultURL.stopAccessingSecurityScopedResource() } }
+        let didStart = atlasURL.startAccessingSecurityScopedResource()
+        defer { if didStart { atlasURL.stopAccessingSecurityScopedResource() } }
 
-        let writer = VaultWriter(vaultURL: vaultURL)
+        let writer = AtlasWriter(atlasURL: atlasURL)
         let created: (fileURL: URL, slug: String)
         do {
             created = try writer.createNote(
@@ -429,7 +429,7 @@ public final class GraphStore: ObservableObject {
                 era: nil,
                 body: ""
             )
-        } catch let err as VaultWriter.WriteError {
+        } catch let err as AtlasWriter.WriteError {
             return .failure(.message(err.errorDescription
                                      ?? "Couldn't create note."))
         } catch {
@@ -497,8 +497,8 @@ public final class GraphStore: ObservableObject {
     /// on success or a user-readable error.
     @discardableResult
     func setEra(in nodeID: String, to era: String?) -> String? {
-        guard let vaultURL = writableVaultURL else {
-            return "Open or create a writable vault first."
+        guard let atlasURL = writableAtlasURL else {
+            return "Open or create a writable atlas first."
         }
         guard var node = graph.nodes[nodeID] else {
             return "Selected node no longer exists."
@@ -507,11 +507,11 @@ public final class GraphStore: ObservableObject {
             return "Selected node has no backing file."
         }
         let fileURL = URL(fileURLWithPath: pathString)
-        return vaultURL.withSecurityScope {
-            let editor = makeEditor(vaultURL)
+        return atlasURL.withSecurityScope {
+            let editor = makeEditor(atlasURL)
             let trimmed = era?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             do {
-                // VaultEditor.setFrontMatter is upsert-only; setting to an
+                // AtlasEditor.setFrontMatter is upsert-only; setting to an
                 // empty string is fine for our purposes (the loader treats
                 // empty era the same as missing era).
                 let updated = try editor.setFrontMatter(in: fileURL,
@@ -525,7 +525,7 @@ public final class GraphStore: ObservableObject {
                 }
                 graph.nodes[nodeID] = node
                 return nil
-            } catch let err as VaultEditor.EditError {
+            } catch let err as AtlasEditor.EditError {
                 return err.errorDescription
             } catch {
                 return error.localizedDescription
@@ -539,23 +539,23 @@ public final class GraphStore: ObservableObject {
     /// loader's path-based id derivation. Type is just a metadata
     /// reclassification; the file stays put. If the node has no
     /// backing file yet (Constellation-created), one is materialized
-    /// via `VaultWriter.createNote` first, same pattern as
+    /// via `AtlasWriter.createNote` first, same pattern as
     /// `updateNodeBody`.
     @discardableResult
     func setType(in nodeID: String, to typeName: String) -> String? {
-        guard let vaultURL = writableVaultURL else {
-            return "Open or create a writable vault first."
+        guard let atlasURL = writableAtlasURL else {
+            return "Open or create a writable atlas first."
         }
         guard var node = graph.nodes[nodeID] else {
             return "Selected node no longer exists."
         }
-        return vaultURL.withSecurityScope {
-            let editor = makeEditor(vaultURL)
+        return atlasURL.withSecurityScope {
+            let editor = makeEditor(atlasURL)
             let fileURL: URL
             if let pathString = node.filePath {
                 fileURL = URL(fileURLWithPath: pathString)
             } else {
-                let writer = VaultWriter(vaultURL: vaultURL)
+                let writer = AtlasWriter(atlasURL: atlasURL)
                 do {
                     let created = try writer.createNote(
                         label: node.label,
@@ -565,7 +565,7 @@ public final class GraphStore: ObservableObject {
                     )
                     fileURL = created.fileURL
                     node.filePath = created.fileURL.path
-                } catch let err as VaultWriter.WriteError {
+                } catch let err as AtlasWriter.WriteError {
                     return err.errorDescription
                 } catch {
                     return error.localizedDescription
@@ -582,7 +582,7 @@ public final class GraphStore: ObservableObject {
                 node.attributes.removeValue(forKey: "synthetic")
                 graph.nodes[nodeID] = node
                 return nil
-            } catch let err as VaultEditor.EditError {
+            } catch let err as AtlasEditor.EditError {
                 return err.errorDescription
             } catch {
                 return error.localizedDescription
@@ -603,8 +603,8 @@ public final class GraphStore: ObservableObject {
     /// source note manually.
     @discardableResult
     func setEdgeRelationship(_ edge: Edge, to newRelationship: String?) -> String? {
-        guard let vaultURL = writableVaultURL else {
-            return "Open or create a writable vault first."
+        guard let atlasURL = writableAtlasURL else {
+            return "Open or create a writable atlas first."
         }
         guard let sourceNode = graph.nodes[edge.sourceID],
               let pathString = sourceNode.filePath else {
@@ -614,8 +614,8 @@ public final class GraphStore: ObservableObject {
             return "Target node no longer exists."
         }
         let fileURL = URL(fileURLWithPath: pathString)
-        return vaultURL.withSecurityScope {
-            let editor = makeEditor(vaultURL)
+        return atlasURL.withSecurityScope {
+            let editor = makeEditor(atlasURL)
             let trimmedNew = newRelationship?
                 .trimmingCharacters(in: .whitespacesAndNewlines)
             let effectiveNew = (trimmedNew?.isEmpty == true) ? nil : trimmedNew
@@ -643,7 +643,7 @@ public final class GraphStore: ObservableObject {
                 rebuilt.date = edge.date
                 graph.edges.append(rebuilt)
                 return nil
-            } catch let err as VaultEditor.EditError {
+            } catch let err as AtlasEditor.EditError {
                 return err.errorDescription
             } catch {
                 return error.localizedDescription
@@ -656,8 +656,8 @@ public final class GraphStore: ObservableObject {
     /// only bare edge lines are editable.
     @discardableResult
     func removeEdge(_ edge: Edge) -> String? {
-        guard let vaultURL = writableVaultURL else {
-            return "Open or create a writable vault first."
+        guard let atlasURL = writableAtlasURL else {
+            return "Open or create a writable atlas first."
         }
         guard let sourceNode = graph.nodes[edge.sourceID],
               let pathString = sourceNode.filePath else {
@@ -667,8 +667,8 @@ public final class GraphStore: ObservableObject {
             return "Target node no longer exists."
         }
         let fileURL = URL(fileURLWithPath: pathString)
-        return vaultURL.withSecurityScope {
-            let editor = makeEditor(vaultURL)
+        return atlasURL.withSecurityScope {
+            let editor = makeEditor(atlasURL)
             do {
                 _ = try editor.removeEdge(
                     in: fileURL,
@@ -677,7 +677,7 @@ public final class GraphStore: ObservableObject {
                 )
                 graph.edges.removeAll { $0.id == edge.id }
                 return nil
-            } catch let err as VaultEditor.EditError {
+            } catch let err as AtlasEditor.EditError {
                 return err.errorDescription
             } catch {
                 return error.localizedDescription
@@ -694,8 +694,8 @@ public final class GraphStore: ObservableObject {
     func applyConstellation(_ constellation: Constellation) -> String? {
         let accepted = constellation.nodes.filter { $0.accepted }
         guard !accepted.isEmpty else { return nil }
-        guard writableVaultURL != nil else {
-            loadStatus = "Open or create a writable vault first."
+        guard writableAtlasURL != nil else {
+            loadStatus = "Open or create a writable atlas first."
             return nil
         }
 
@@ -733,10 +733,10 @@ public final class GraphStore: ObservableObject {
         // Phase 2: append wikilinks. We resolve each link via the
         // newLabelToID map first (to catch internal links between just-
         // created nodes), then fall back to the existing graph.
-        guard let vaultURL = writableVaultURL else { return firstCreatedID }
-        let didStart = vaultURL.startAccessingSecurityScopedResource()
-        defer { if didStart { vaultURL.stopAccessingSecurityScopedResource() } }
-        let editor = makeEditor(vaultURL)
+        guard let atlasURL = writableAtlasURL else { return firstCreatedID }
+        let didStart = atlasURL.startAccessingSecurityScopedResource()
+        defer { if didStart { atlasURL.stopAccessingSecurityScopedResource() } }
+        let editor = makeEditor(atlasURL)
 
         for (_, sourceID, links) in created {
             guard var node = graph.nodes[sourceID],
@@ -773,7 +773,7 @@ public final class GraphStore: ObservableObject {
     /// Delete a node: removes its `.md` file (if present) and drops the
     /// node + every edge touching it from the in-memory graph. Wikilinks
     /// to it in other files are left in place — the loader already
-    /// tolerates dangling links, and rewriting every file in the vault
+    /// tolerates dangling links, and rewriting every file in the atlas
     /// is the merge operation's responsibility, not delete's.
     /// Returns `nil` on success or a user-readable error.
     @discardableResult
@@ -781,16 +781,16 @@ public final class GraphStore: ObservableObject {
         guard let node = graph.nodes[nodeID] else {
             return "Node not found."
         }
-        guard let vaultURL = writableVaultURL else {
-            return "Open or create a writable vault first."
+        guard let atlasURL = writableAtlasURL else {
+            return "Open or create a writable atlas first."
         }
-        let didStart = vaultURL.startAccessingSecurityScopedResource()
-        defer { if didStart { vaultURL.stopAccessingSecurityScopedResource() } }
+        let didStart = atlasURL.startAccessingSecurityScopedResource()
+        defer { if didStart { atlasURL.stopAccessingSecurityScopedResource() } }
 
         if let path = node.filePath {
             let fileURL = URL(fileURLWithPath: path)
             // Snapshot the file before deleting in case the user wants
-            // it back — same .bak convention VaultEditor uses.
+            // it back — same .bak convention AtlasEditor uses.
             if let raw = try? String(contentsOf: fileURL, encoding: .utf8) {
                 let bak = fileURL.appendingPathExtension("bak")
                 try? raw.write(to: bak, atomically: true, encoding: .utf8)
@@ -809,7 +809,7 @@ public final class GraphStore: ObservableObject {
 
     /// Merge `loserID` into `winnerID`:
     ///   1. Append loser's body onto winner's body (with a separator).
-    ///   2. Rewrite every `[[loser]]` wikilink across the entire vault
+    ///   2. Rewrite every `[[loser]]` wikilink across the entire atlas
     ///      to point at the winner's label.
     ///   3. Delete loser's .md file.
     ///   4. Re-target/re-source loser's in-memory edges onto winner.
@@ -819,18 +819,18 @@ public final class GraphStore: ObservableObject {
         guard loserID != winnerID else { return "Can't merge a node into itself." }
         guard let loser = graph.nodes[loserID],
               let winner = graph.nodes[winnerID] else { return "Both nodes must exist." }
-        guard let vaultURL = writableVaultURL else {
-            return "Open or create a writable vault first."
+        guard let atlasURL = writableAtlasURL else {
+            return "Open or create a writable atlas first."
         }
-        let didStart = vaultURL.startAccessingSecurityScopedResource()
-        defer { if didStart { vaultURL.stopAccessingSecurityScopedResource() } }
+        let didStart = atlasURL.startAccessingSecurityScopedResource()
+        defer { if didStart { atlasURL.stopAccessingSecurityScopedResource() } }
 
         // 1. Append loser's body to winner's body (file write).
         if let winnerPath = winner.filePath,
            let loserBody = loser.markdownContent,
            let winnerRaw = try? String(contentsOf: URL(fileURLWithPath: winnerPath), encoding: .utf8) {
-            let (fm, winnerBody) = VaultEditor.splitFrontMatter(winnerRaw)
-            let (_, loserBodyStripped) = VaultEditor.splitFrontMatter(loserBody)
+            let (fm, winnerBody) = AtlasEditor.splitFrontMatter(winnerRaw)
+            let (_, loserBodyStripped) = AtlasEditor.splitFrontMatter(loserBody)
             var merged = ""
             if let fm, !fm.isEmpty { merged += "---\n\(fm)\n---\n\n" }
             merged += winnerBody.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -850,9 +850,9 @@ public final class GraphStore: ObservableObject {
             }
         }
 
-        // 2. Rewrite [[loser]] → [[winner]] across every .md in the vault.
+        // 2. Rewrite [[loser]] → [[winner]] across every .md in the atlas.
         let rewriteCount = Self.rewriteWikilinks(
-            in: vaultURL,
+            in: atlasURL,
             from: loser.label,
             to: winner.label,
             skipping: loser.filePath.map { URL(fileURLWithPath: $0) }
@@ -888,20 +888,20 @@ public final class GraphStore: ObservableObject {
         graph.edges = newEdges
         graph.nodes.removeValue(forKey: loserID)
 
-        loadStatus = "Merged \"\(loser.label)\" into \"\(winner.label)\" — \(rewriteCount) cross-vault links rewritten"
+        loadStatus = "Merged \"\(loser.label)\" into \"\(winner.label)\" — \(rewriteCount) cross-atlas links rewritten"
         return nil
     }
 
-    /// Walk every `.md` in `vaultURL` and rewrite `[[oldLabel]]` to
+    /// Walk every `.md` in `atlasURL` and rewrite `[[oldLabel]]` to
     /// `[[newLabel]]` (case-insensitive match on the inner content).
     /// Returns the total number of replacements made. Skips `skipping`
     /// so we don't rewrite the file we're about to delete.
-    private static func rewriteWikilinks(in vaultURL: URL,
+    private static func rewriteWikilinks(in atlasURL: URL,
                                          from oldLabel: String,
                                          to newLabel: String,
                                          skipping: URL?) -> Int {
         let fm = FileManager.default
-        guard let enumerator = fm.enumerator(at: vaultURL,
+        guard let enumerator = fm.enumerator(at: atlasURL,
                                              includingPropertiesForKeys: nil,
                                              options: [.skipsHiddenFiles]) else {
             return 0
@@ -946,7 +946,7 @@ public final class GraphStore: ObservableObject {
     }
 
     /// Find clusters of nodes whose normalized slugs match. Used by the
-    /// duplicate-detection banner on vault load. Each cluster contains
+    /// duplicate-detection banner on atlas load. Each cluster contains
     /// two or more node ids.
     ///
     /// We bucket by id-normalized form only (e.g. "Usenet job posting"
@@ -984,17 +984,17 @@ public final class GraphStore: ObservableObject {
         graph.edges.append(edge)
     }
 
-    /// Materialize an already-parsed GEXF document as a vault at
+    /// Materialize an already-parsed GEXF document as an atlas at
     /// `destination`. The GEXF was parsed earlier (while the picker's
     /// security scope was alive) so we no longer need access to the
-    /// source file. After write, the new vault is loaded as usual.
+    /// source file. After write, the new atlas is loaded as usual.
     func importGEXFDocument(_ document: GEXFImporter.Document, into destination: URL) {
         let didStart = destination.startAccessingSecurityScopedResource()
         Task {
             defer { if didStart { destination.stopAccessingSecurityScopedResource() } }
             do {
-                let written = try GEXFImporter.writeVault(document, to: destination)
-                loadStatus = "Imported \(written) nodes — loading vault…"
+                let written = try GEXFImporter.writeAtlas(document, to: destination)
+                loadStatus = "Imported \(written) nodes — loading atlas…"
             } catch {
                 loadStatus = "GEXF import failed: \(error.localizedDescription)"
                 return
@@ -1003,52 +1003,52 @@ public final class GraphStore: ObservableObject {
         }
     }
 
-    /// Initialize an empty vault at `url` (creates folder + subfolders +
+    /// Initialize an empty atlas at `url` (creates folder + subfolders +
     /// stub README) and load it. Caller is responsible for having
     /// started the security scope on `url` if it came from a picker.
-    func createNewVault(at url: URL, template: Template? = nil) {
+    func createNewAtlas(at url: URL, template: Template? = nil) {
         let didStart = url.startAccessingSecurityScopedResource()
         Task {
             defer { if didStart { url.stopAccessingSecurityScopedResource() } }
             do {
-                try VaultWriter.initializeEmptyVault(at: url, template: template)
+                try AtlasWriter.initializeEmptyAtlas(at: url, template: template)
             } catch {
-                loadStatus = "Couldn't create vault: \(error.localizedDescription)"
+                loadStatus = "Couldn't create atlas: \(error.localizedDescription)"
                 return
             }
             // Hand off to the normal load path so we pick up the new
             // empty graph + register the bookmark + library entry.
             // The template's mode + types are already in
             // `.terracognita/config.yaml`, so `load(from:)` reads them
-            // through `VaultConfig.load` and the toolbar mode pill
+            // through `AtlasConfig.load` and the toolbar mode pill
             // updates automatically.
             load(from: url)
         }
     }
 
-    private enum VaultError: Error { case notFound }
+    private enum AtlasError: Error { case notFound }
 
     /// Non-isolated worker — runs on a background thread when awaited.
-    /// Returns (vault-name, graph, isWritable, vaultURL). The bundled
-    /// Miyazaki demo is read-only; on-disk dev vaults are writable.
-    /// Load a vault folder under an NSFileCoordinator read on iOS so
+    /// Returns (atlas-name, graph, isWritable, atlasURL). The bundled
+    /// Miyazaki demo is read-only; on-disk dev atlases are writable.
+    /// Load an atlas folder under an NSFileCoordinator read on iOS so
     /// `FileManager.enumerator` reliably sees the contents of
     /// Files-app / iCloud-Drive folders — the security-scoped
     /// bracket alone is not always enough for provider-backed URLs.
     /// macOS doesn't need the coordinator wrap, so we fall through
     /// directly there to avoid the extra ceremony.
     nonisolated private static func coordinatedLoad(at url: URL,
-                                                    config: VaultConfig) throws -> (Graph, VaultLoader.Diagnostics) {
+                                                    config: AtlasConfig) throws -> (Graph, AtlasLoader.Diagnostics) {
         #if canImport(UIKit)
         let coordinator = NSFileCoordinator(filePresenter: nil)
         var coordError: NSError?
-        var loadResult: (Graph, VaultLoader.Diagnostics)?
+        var loadResult: (Graph, AtlasLoader.Diagnostics)?
         var loadError: Error?
         coordinator.coordinate(readingItemAt: url,
                                options: [],
                                error: &coordError) { coordURL in
             do {
-                loadResult = try VaultLoader(vaultURL: coordURL,
+                loadResult = try AtlasLoader(atlasURL: coordURL,
                                              config: config).load()
             } catch {
                 loadError = error
@@ -1057,24 +1057,24 @@ public final class GraphStore: ObservableObject {
         if let err = coordError { throw err }
         if let err = loadError { throw err }
         if let result = loadResult { return result }
-        return (Graph(nodes: [:], edges: []), VaultLoader.Diagnostics())
+        return (Graph(nodes: [:], edges: []), AtlasLoader.Diagnostics())
         #else
-        return try VaultLoader(vaultURL: url, config: config).load()
+        return try AtlasLoader(atlasURL: url, config: config).load()
         #endif
     }
 
-    private static func loadFromDefaultVault() async throws -> (String, Graph, Bool, URL) {
-        guard let vaultURL = VaultLoader.defaultVault() else {
-            throw VaultError.notFound
+    private static func loadFromDefaultAtlas() async throws -> (String, Graph, Bool, URL) {
+        guard let atlasURL = AtlasLoader.defaultAtlas() else {
+            throw AtlasError.notFound
         }
-        let cfg = VaultConfig.load(from: vaultURL)
-        let loader = VaultLoader(vaultURL: vaultURL, config: cfg)
+        let cfg = AtlasConfig.load(from: atlasURL)
+        let loader = AtlasLoader(atlasURL: atlasURL, config: cfg)
         let (g, _) = try loader.load()
         // Bundle resources live under .../Resources/ inside the app
         // bundle and aren't writable. Anything else we resolved (the
-        // dev heritage vault, etc.) is treated as writable.
-        let isBundle = vaultURL.path.contains("/Resources/")
-        return (vaultURL.lastPathComponent, g, !isBundle, vaultURL)
+        // dev heritage atlas, etc.) is treated as writable.
+        let isBundle = atlasURL.path.contains("/Resources/")
+        return (atlasURL.lastPathComponent, g, !isBundle, atlasURL)
     }
 }
 

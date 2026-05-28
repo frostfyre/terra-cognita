@@ -4,7 +4,7 @@ import Foundation
 /// and Cluster layout.
 ///
 /// All entry points are synchronous and pure — caller is expected to
-/// dispatch heavy work to a background `Task` if needed. On vault
+/// dispatch heavy work to a background `Task` if needed. On atlas
 /// scale (a few hundred nodes / few thousand edges) the algorithms
 /// run in single-digit milliseconds.
 enum GraphAnalysis {

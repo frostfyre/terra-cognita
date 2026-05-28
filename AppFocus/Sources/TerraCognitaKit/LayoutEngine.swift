@@ -246,7 +246,7 @@ enum LayoutEngine {
     /// era" column on the far right.
     ///
     /// `eraWeights` should be the same `(name → weight)` mapping the
-    /// canvas uses for depth — pass `VaultConfig.eras` flattened.
+    /// canvas uses for depth — pass `AtlasConfig.eras` flattened.
     /// Nodes whose era isn't in the table fall through to the "no
     /// era" column too.
     static func timeline(nodes: [Node],
@@ -292,7 +292,7 @@ enum LayoutEngine {
     /// Iteratively push colliding nodes apart until no pair sits closer
     /// than `minDistance`. Position-stable for non-overlapping nodes
     /// (idempotent when there's nothing to fix). Runs in O(n² · iters)
-    /// — fine for vault scale.
+    /// — fine for atlas scale.
     ///
     /// Default `minDistance` of 130 is calibrated to clear the label
     /// pills (≈120pt wide at default zoom) rather than just the node

@@ -15,8 +15,8 @@ struct MarkdownView: View {
     private func loadMarkdown() {
         let fileManager = FileManager.default
         let currentDirectoryURL = URL(fileURLWithPath: fileManager.currentDirectoryPath)
-        let vaultURL = currentDirectoryURL.appendingPathComponent("Data/heritage-vault/heritage-vault")
-        let markdownURL = vaultURL.appendingPathComponent(file)
+        let atlasURL = currentDirectoryURL.appendingPathComponent("Data/heritage-vault/heritage-vault")
+        let markdownURL = atlasURL.appendingPathComponent(file)
 
         do {
             self.markdownContent = try String(contentsOf: markdownURL)

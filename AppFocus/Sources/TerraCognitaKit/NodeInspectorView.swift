@@ -292,7 +292,7 @@ struct NodeInspectorView: View {
 
     /// Tappable era pill — opens a menu with every era taxonomy value
     /// plus a "Clear" affordance. Edits write through to the .md file
-    /// Tappable type pill — opens a menu of the vault's configured
+    /// Tappable type pill — opens a menu of the atlas's configured
     /// types so the user can reclassify a node without leaving the
     /// inspector. The physical file does NOT move between subfolders
     /// (would invalidate every wikilink pointing at it); only the
@@ -526,7 +526,7 @@ struct NodeInspectorView: View {
         return store.graph.nodes[edge.targetID]?.isSynthetic == true
     }
 
-    /// Tappable relationship pill. Menu offers the vault's known
+    /// Tappable relationship pill. Menu offers the atlas's known
     /// edge labels (mined from existing edges in the graph), a
     /// "Clear" affordance, and a "Custom…" route via an alert.
     @ViewBuilder
@@ -816,7 +816,7 @@ struct NodeInspectorView: View {
 
     /// Banner shown only for synthetic placeholder nodes (created by
     /// the loader's dangling-wikilink extractor). Lets the user
-    /// promote the placeholder to one of the vault's configured
+    /// promote the placeholder to one of the atlas's configured
     /// real types — materializes a fresh `.md` file and re-targets
     /// edges in-memory so focus survives the transition.
     @ViewBuilder
@@ -864,7 +864,7 @@ struct NodeInspectorView: View {
 
     /// User-visible types (excludes the synthetic tag / embed /
     /// placeholder entries the config carries for the loader).
-    private func promotableTypes() -> [VaultConfig.TypeSpec] {
+    private func promotableTypes() -> [AtlasConfig.TypeSpec] {
         let synthetic: Set<String> = ["tag", "embed", "placeholder"]
         return store.config.types.filter {
             !synthetic.contains($0.name.lowercased())
@@ -917,7 +917,7 @@ struct NodeInspectorView: View {
                     resolveEmbed: { filename in
                         resolveEmbed(filename, for: node)
                     },
-                    vaultURL: store.writableVaultURL
+                    atlasURL: store.writableAtlasURL
                 )
             } else {
                 VStack(alignment: .leading, spacing: 4) {
@@ -1020,7 +1020,7 @@ struct NodeInspectorView: View {
                 .disabled(!store.canIngest)
                 .help(store.canIngest
                       ? "Edit note"
-                      : "Open or create a writable vault to edit.")
+                      : "Open or create a writable atlas to edit.")
             }
         }
     }
@@ -1132,7 +1132,7 @@ struct NodeInspectorView: View {
         }
         // Drop any leading blank lines BEFORE looking for the title.
         // GEXF-imported bodies arrive with a `\n# Title…` prefix (the
-        // VaultLoader's frontmatter strip only consumes one leading
+        // AtlasLoader's frontmatter strip only consumes one leading
         // `\n`), and without this skip the title-strip below sees an
         // empty first line and bails — leaving `# Title` to render as
         // a duplicate H1 inside the Note pane.
@@ -1158,9 +1158,9 @@ struct NodeInspectorView: View {
     /// Resolve an Obsidian embed reference (`sketch.png`, `subfolder/x.pdf`,
     /// etc.) to a file URL the markdown view can render. Searches:
     ///   1. The node's containing folder + relative path
-    ///   2. The vault root + relative path
-    ///   3. A recursive search by basename across the vault (Obsidian-style)
-    /// Returns `nil` if nothing matches or no writable vault is open.
+    ///   2. The atlas root + relative path
+    ///   3. A recursive search by basename across the atlas (Obsidian-style)
+    /// Returns `nil` if nothing matches or no writable atlas is open.
     private func resolveEmbed(_ filename: String, for node: Node) -> URL? {
         let fm = FileManager.default
         let cleaned = filename.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1172,15 +1172,15 @@ struct NodeInspectorView: View {
             let candidate = nodeDir.appendingPathComponent(cleaned)
             if fm.fileExists(atPath: candidate.path) { return candidate }
         }
-        // 2. Relative to the vault root.
-        if let vault = store.writableVaultURL {
-            let candidate = vault.appendingPathComponent(cleaned)
+        // 2. Relative to the atlas root.
+        if let atlas = store.writableAtlasURL {
+            let candidate = atlas.appendingPathComponent(cleaned)
             if fm.fileExists(atPath: candidate.path) { return candidate }
             // 3. Recursive basename search (Obsidian doesn't require
             //    paths if the filename is unique).
             let basename = (cleaned as NSString).lastPathComponent
             if let enumerator = fm.enumerator(
-                at: vault,
+                at: atlas,
                 includingPropertiesForKeys: nil,
                 options: [.skipsHiddenFiles]
             ) {

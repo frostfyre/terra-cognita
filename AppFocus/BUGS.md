@@ -4,8 +4,8 @@
 **Status:** instrumented, awaiting on-device repro
 **Reported:** 2026-05-27
 
-User copied the heritage vault folder to iOS, picked it via Open
-Vault Folder → status shows 0 nodes / 0 edges. Same folder loads
+User copied the heritage atlas folder to iOS, picked it via Open
+Atlas Folder → status shows 0 nodes / 0 edges. Same folder loads
 correctly on macOS so the source is intact. Most likely causes,
 in decreasing order of likelihood:
 
@@ -24,7 +24,7 @@ in decreasing order of likelihood:
    per file, so this is a long-shot; would surface as "found
    N .md but parsed 0 nodes."
 
-`VaultLoader.load()` now returns `(Graph, Diagnostics)` and
+`AtlasLoader.load()` now returns `(Graph, Diagnostics)` and
 `GraphStore.load(from:)` surfaces the diag counts in the load
 status when nodes.count == 0, distinguishing #1 (`walked N items
 but no .md`) from #2 (`folder access was denied`) from #3
@@ -57,7 +57,7 @@ Switched all three to `Dictionary(_:uniquingKeysWith:)` keeping the
 first encountered display label on collision.
 
 
-## Vault browser — "Open Vault Folder…" inert on iOS
+## Atlas browser — "Open Atlas Folder…" inert on iOS
 **Status:** fix shipped, awaiting confirmation on device
 **Reported:** 2026-05-26
 
@@ -65,8 +65,8 @@ Two earlier attempts (`202b101` deferral, `202b101` separated Bool +
 mode pair) didn't land. Now using a `UIDocumentPickerViewController`
 wrapped in a `UIViewControllerRepresentable` (`FolderPicker.swift`),
 presented via `.sheet` on iOS only. macOS keeps SwiftUI's
-`.fileImporter` since it works there. Test path: tap Vault → "Open
-Vault Folder…" — Files document picker should mount full-screen.
+`.fileImporter` since it works there. Test path: tap Atlas → "Open
+Atlas Folder…" — Files document picker should mount full-screen.
 
 ## Can't pinch-zoom out far enough on iOS
 **Status:** fix shipped, awaiting confirmation on device
@@ -90,7 +90,7 @@ Two changes:
    being clustered together by the shared `# Star Trek` heading.
    We now cluster by id-normalized form only, which still catches
    the canonical case ("Usenet job posting" / "usenet-job-posting").
-2. `GEXFImporter.writeVault` now pre-seeds `usedFilenames` with any
+2. `GEXFImporter.writeAtlas` now pre-seeds `usedFilenames` with any
    `.md` slugs already present at the destination, so re-imports
    into a populated folder are additive instead of overwriting.
 

@@ -56,7 +56,7 @@ struct GraphCanvasView: View {
     private let selectionGold = Color(red: 1.00, green: 0.78, blue: 0.30)
 
     /// Zoom clamps. `minScale` is generous enough to fit the largest
-    /// vaults we expect on iPhone — the prior 0.25 floor wasn't far
+    /// atlases we expect on iPhone — the prior 0.25 floor wasn't far
     /// enough out to see a multi-hundred-node graph end-to-end.
     private let minScale: CGFloat = 0.1
     private let maxScale: CGFloat = 4.0
@@ -110,7 +110,7 @@ struct GraphCanvasView: View {
     /// resets it back to nil.
     @Binding var layoutRequest: LayoutAlgorithm?
     /// How many BFS hops from the selected node remain at full opacity.
-    /// Per-vault — persisted in `LayoutPersistence` and driven from the
+    /// Per-atlas — persisted in `LayoutPersistence` and driven from the
     /// radial Hops dial.
     @Binding var highlightDepth: Int
     /// Node ids that should be highlighted as topology bridges
@@ -1427,7 +1427,7 @@ struct GraphCanvasView: View {
 
     /// Fire-and-forget background load of a node's hero image. Resolves
     /// the filename relative to the node's directory, falls back to a
-    /// vault-wide search. Caches the result in `heroImages` so the
+    /// atlas-wide search. Caches the result in `heroImages` so the
     /// Canvas can draw it next frame.
     private func triggerHeroLoad(for node: Node) {
         guard let hero = node.attributes["hero"], !hero.isEmpty,
@@ -1435,9 +1435,9 @@ struct GraphCanvasView: View {
         heroLoadInFlight.insert(node.id)
         let nodeID = node.id
         let nodeDir = URL(fileURLWithPath: path).deletingLastPathComponent()
-        let vault = store.writableVaultURL
+        let atlas = store.writableAtlasURL
         Task.detached(priority: .utility) {
-            let image = await Self.loadImage(named: hero, near: nodeDir, vault: vault)
+            let image = await Self.loadImage(named: hero, near: nodeDir, atlas: atlas)
             await MainActor.run {
                 if let image { heroImages[nodeID] = image }
                 heroLoadInFlight.remove(nodeID)
@@ -1449,26 +1449,26 @@ struct GraphCanvasView: View {
     /// UIImage on iOS. Returns a SwiftUI Image or nil.
     nonisolated private static func loadImage(named filename: String,
                                               near nodeDir: URL,
-                                              vault: URL?) async -> Image? {
+                                              atlas: URL?) async -> Image? {
         // iOS sandboxes file access through security-scoped resources.
-        // The vault URL came from the document picker / bookmark and
+        // The atlas URL came from the document picker / bookmark and
         // must be bracketed before any file inside it is readable.
         // macOS treats this as a no-op for non-sandboxed apps, so
         // the same code path is safe across both platforms.
-        let didStart = vault?.startAccessingSecurityScopedResource() ?? false
+        let didStart = atlas?.startAccessingSecurityScopedResource() ?? false
         defer {
-            if didStart { vault?.stopAccessingSecurityScopedResource() }
+            if didStart { atlas?.stopAccessingSecurityScopedResource() }
         }
         let fm = FileManager.default
         var candidates: [URL] = [nodeDir.appendingPathComponent(filename)]
-        if let vault {
-            candidates.append(vault.appendingPathComponent(filename))
+        if let atlas {
+            candidates.append(atlas.appendingPathComponent(filename))
             // Recursive basename search — Obsidian doesn't require
             // a path if the filename is unique. `nextObject()` keeps
             // us out of the async-unavailable `makeIterator` path.
             let basename = (filename as NSString).lastPathComponent
             if let enumerator = fm.enumerator(
-                at: vault,
+                at: atlas,
                 includingPropertiesForKeys: nil,
                 options: [.skipsHiddenFiles]
             ) {
@@ -1533,10 +1533,10 @@ struct GraphCanvasView: View {
         }
     }
 
-    /// Resolve the URL for a node's backing markdown file. `VaultLoader` sets
+    /// Resolve the URL for a node's backing markdown file. `AtlasLoader` sets
     /// `filePath` to an absolute path on disk — prefer that over the
     /// bundle-based lookup in `Node+File.swift`, which never resolves because
-    /// we don't ship the vault as a bundle resource.
+    /// we don't ship the atlas as a bundle resource.
     private func noteURL(for node: Node) -> URL? {
         if let path = node.filePath { return URL(fileURLWithPath: path) }
         return node.file

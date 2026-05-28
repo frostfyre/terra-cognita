@@ -1,19 +1,19 @@
 import Foundation
 
-/// Persistent list of vaults the user has opened.
+/// Persistent list of atlases the user has opened.
 ///
 /// Each `Entry` is a security-scoped bookmark plus enough metadata to
-/// surface a useful menu of "recent vaults" without re-resolving every
+/// surface a useful menu of "recent atlases" without re-resolving every
 /// bookmark on launch. Stored in `UserDefaults` as a JSON-encoded array.
 ///
-/// `VaultBookmark` still stores the *currently-active* vault, used at
-/// app launch. `VaultLibrary` augments that with a recent-history list.
-struct VaultLibrary: Codable, Equatable {
+/// `AtlasBookmark` still stores the *currently-active* atlas, used at
+/// app launch. `AtlasLibrary` augments that with a recent-history list.
+struct AtlasLibrary: Codable, Equatable {
     struct Entry: Codable, Equatable, Identifiable {
         var id: UUID
         var displayName: String
         var bookmark: Data
-        /// Last time the user opened this vault. Drives ordering.
+        /// Last time the user opened this atlas. Drives ordering.
         var lastOpened: Date
         /// Stats from the most recent load (best-effort; not always known).
         var nodeCount: Int?
@@ -79,11 +79,11 @@ struct VaultLibrary: Codable, Equatable {
 
     private static let key = "TerraCognita.vaultLibrary"
 
-    static func load() -> VaultLibrary {
+    static func load() -> AtlasLibrary {
         guard let data = UserDefaults.standard.data(forKey: key) else {
-            return VaultLibrary()
+            return AtlasLibrary()
         }
-        return (try? JSONDecoder().decode(VaultLibrary.self, from: data)) ?? VaultLibrary()
+        return (try? JSONDecoder().decode(AtlasLibrary.self, from: data)) ?? AtlasLibrary()
     }
 
     func save() {
