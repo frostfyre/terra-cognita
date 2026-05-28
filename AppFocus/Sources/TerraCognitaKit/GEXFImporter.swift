@@ -168,27 +168,54 @@ struct GEXFImporter {
 
     // MARK: - Note rendering
 
+    /// Attribute names that — if present — are treated as primary
+    /// body prose rather than frontmatter metadata. They get
+    /// appended without a heading. Anything else that looks prose-y
+    /// (long value, or value with newlines) gets a `## Key` heading
+    /// so the user can still tell the sections apart.
+    private static let proseAttributeNames: Set<String> = [
+        "description", "body", "content", "summary",
+        "bio", "notes", "text", "prose", "abstract",
+        "overview", "background", "story",
+    ]
+
+    /// Threshold above which an unlabeled attribute is treated as
+    /// prose (and lands in the body) rather than frontmatter. 80
+    /// chars is roughly the boundary between "tag-like" and "sentence".
+    private static let proseLengthThreshold = 80
+
     private static func renderNote(node: Document.NodeRecord,
                                    outbound: [Document.EdgeRecord],
                                    labelByID: [String: String]) -> String {
         var lines: [String] = []
-        // Front-matter: every node value with a non-empty value,
-        // lowercased keys for consistency with the vault convention.
-        var fmEntries: [(String, String)] = []
+
+        // Partition node.values into frontmatter-eligible (short
+        // scalars) and prose-eligible (long, multi-line, or a
+        // recognized prose attribute name). This keeps multi-line
+        // descriptions out of YAML (where they break parsing) and
+        // preserves them in the body where they can render.
+        var frontmatterEntries: [(String, String)] = []
+        var proseEntries: [(String, String)] = []
         for (k, v) in node.values where !v.isEmpty {
-            // Map GEXF's "type" (capitalised by convention) to the
-            // lowercased form the vault expects.
             let key = k.lowercased()
-            let value = key == "type" ? v.lowercased() : v
-            fmEntries.append((key, value))
+            let trimmed = v.trimmingCharacters(in: .whitespacesAndNewlines)
+            let isMultiLine = v.contains("\n") || v.contains("\r")
+            let isLong = trimmed.count > proseLengthThreshold
+            let isPrimaryProse = proseAttributeNames.contains(key)
+            if isPrimaryProse || isMultiLine || isLong {
+                proseEntries.append((key, v))
+            } else {
+                let value = key == "type" ? v.lowercased() : v
+                frontmatterEntries.append((key, value))
+            }
         }
         // Stash the original GEXF id so re-imports can be deduped later.
-        fmEntries.append(("gexf-id", node.id))
-        fmEntries.sort { $0.0 < $1.0 }
+        frontmatterEntries.append(("gexf-id", node.id))
+        frontmatterEntries.sort { $0.0 < $1.0 }
 
-        if !fmEntries.isEmpty {
+        if !frontmatterEntries.isEmpty {
             lines.append("---")
-            for (k, v) in fmEntries {
+            for (k, v) in frontmatterEntries {
                 lines.append("\(k): \(yamlEscape(v))")
             }
             lines.append("---")
@@ -198,10 +225,25 @@ struct GEXFImporter {
         lines.append("# \(node.label.isEmpty ? node.id : node.label)")
         lines.append("")
 
-        // Description body — most GEXFs (including the Claude-generated
-        // one) carry the prose in an attribute called "description".
-        if let description = node.values["description"], !description.isEmpty {
-            lines.append(description)
+        // Prose body — every long / multi-line / named-prose
+        // attribute, in a stable order. Primary prose names
+        // (description, summary, body, etc.) render headless;
+        // other prose attributes get a `## Key` heading so the
+        // user can tell sections apart.
+        let proseOrder: (String, String) -> Bool = { a, b in
+            // Primary prose first, alphabetical within each tier.
+            let aPrimary = proseAttributeNames.contains(a)
+            let bPrimary = proseAttributeNames.contains(b)
+            if aPrimary != bPrimary { return aPrimary }
+            return a < b
+        }
+        let sortedProse = proseEntries.sorted { proseOrder($0.0, $1.0) }
+        for (k, v) in sortedProse {
+            if !proseAttributeNames.contains(k) {
+                lines.append("## \(k.capitalized)")
+                lines.append("")
+            }
+            lines.append(v)
             lines.append("")
         }
 
