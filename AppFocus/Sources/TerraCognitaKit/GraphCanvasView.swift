@@ -656,7 +656,13 @@ struct GraphCanvasView: View {
                         onLongPressEmptyWorld?(world, drag.startLocation)
                     }
             )
+            // `.contextMenu` triggers on right-click (macOS) but on
+            // long-press on iOS — which would steal the gesture from
+            // our radial-menu LongPressGesture. Gate to macOS so the
+            // touch long-press lands on the radial wheel instead.
+            #if os(macOS)
             .contextMenu { selectedNodeMenu() }
+            #endif
             .onContinuousHover(coordinateSpace: .local) { phase in
                 switch phase {
                 case .active(let point):
