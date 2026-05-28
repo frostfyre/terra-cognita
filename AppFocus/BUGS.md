@@ -31,6 +31,12 @@ but no .md`) from #2 (`folder access was denied`) from #3
 (`walked N, M .md but none parsed`). Next on-device repro should
 say which.
 
+iOS reads now also go through `NSFileCoordinator.coordinate(readingItemAt:)`
+in `GraphStore.coordinatedLoad(at:config:)` — this handles cause
+#2 preemptively for iCloud-Drive / Files-app folders that won't
+yield to `FileManager.enumerator` from the security-scoped
+bracket alone. macOS skips the coordinator wrap.
+
 ## Capture / AI ops crashed on graphs with duplicate-labelled nodes
 **Status:** fixed, awaiting confirmation
 **Reported:** 2026-05-27

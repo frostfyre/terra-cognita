@@ -71,7 +71,7 @@ public final class GraphStore: ObservableObject {
                 // toggles + custom types come into play during the walk.
                 let cfg = VaultConfig.load(from: url)
                 let (g, diag) = try await Task.detached(priority: .userInitiated) {
-                    try VaultLoader(vaultURL: url, config: cfg).load()
+                    try Self.coordinatedLoad(at: url, config: cfg)
                 }.value
                 self.graph = g
                 self.config = cfg
@@ -922,6 +922,38 @@ public final class GraphStore: ObservableObject {
     /// Non-isolated worker — runs on a background thread when awaited.
     /// Returns (vault-name, graph, isWritable, vaultURL). The bundled
     /// Miyazaki demo is read-only; on-disk dev vaults are writable.
+    /// Load a vault folder under an NSFileCoordinator read on iOS so
+    /// `FileManager.enumerator` reliably sees the contents of
+    /// Files-app / iCloud-Drive folders — the security-scoped
+    /// bracket alone is not always enough for provider-backed URLs.
+    /// macOS doesn't need the coordinator wrap, so we fall through
+    /// directly there to avoid the extra ceremony.
+    nonisolated private static func coordinatedLoad(at url: URL,
+                                                    config: VaultConfig) throws -> (Graph, VaultLoader.Diagnostics) {
+        #if canImport(UIKit)
+        let coordinator = NSFileCoordinator(filePresenter: nil)
+        var coordError: NSError?
+        var loadResult: (Graph, VaultLoader.Diagnostics)?
+        var loadError: Error?
+        coordinator.coordinate(readingItemAt: url,
+                               options: [],
+                               error: &coordError) { coordURL in
+            do {
+                loadResult = try VaultLoader(vaultURL: coordURL,
+                                             config: config).load()
+            } catch {
+                loadError = error
+            }
+        }
+        if let err = coordError { throw err }
+        if let err = loadError { throw err }
+        if let result = loadResult { return result }
+        return (Graph(nodes: [:], edges: []), VaultLoader.Diagnostics())
+        #else
+        return try VaultLoader(vaultURL: url, config: config).load()
+        #endif
+    }
+
     private static func loadFromDefaultVault() async throws -> (String, Graph, Bool, URL) {
         guard let vaultURL = VaultLoader.defaultVault() else {
             throw VaultError.notFound
