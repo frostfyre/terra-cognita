@@ -9,6 +9,25 @@ public struct GraphView: View {
     @State private var selectedNodeID: String?
     @State private var activeLens: Lens = .all
     @State private var showingSearch: Bool = false
+    /// One modal sheet at a time. Folds six previously-separate
+    /// `showing*` booleans (Capture, Composer, VaultSettings,
+    /// ImportRecipe, TemplatePicker, DuplicateReview) into one
+    /// optional — enforces mutual exclusion structurally and
+    /// collapses the GraphView state count. Sub-sheets keep their
+    /// existing `isPresented: Binding<Bool>` API; we synthesize
+    /// the binding per kind via `sheetBinding(for:)`.
+    @State private var activeSheet: ActiveSheet?
+
+    enum ActiveSheet: Identifiable, Hashable {
+        case capture
+        case composer
+        case vaultSettings
+        case importRecipe
+        case templatePicker
+        case duplicateReview
+
+        var id: Self { self }
+    }
     /// Drives the single folder-picker. Distinguishes Open vs Create New
     /// so we can route the result without mounting two `.fileImporter`
     /// modifiers (SwiftUI shadows all but one on the same view).
@@ -31,8 +50,6 @@ public struct GraphView: View {
     @State private var showingGEXFPicker: Bool = false
     @State private var pendingGEXFDocument: GEXFImporter.Document?
     @State private var pendingGEXFName: String?
-    /// Drives the in-app Vault Settings editor (types / eras / extractors).
-    @State private var showingVaultSettings: Bool = false
 
     /// Incremented to request a "fit to view" pass from the canvas.
     /// The canvas observes `.onChange` and animates the camera so
@@ -60,12 +77,6 @@ public struct GraphView: View {
     /// frame.
     @State private var highlightDepth: Int = 1
 
-    /// Drives the template picker sheet that appears before the
-    /// folder picker on Create New Vault.
-    @State private var showingTemplatePicker: Bool = false
-    /// Drives the Import Recipe sheet (NL → typed schema →
-    /// deterministic file-system → vault).
-    @State private var showingImportRecipe: Bool = false
     /// The template the user chose in the picker; carried across the
     /// folder-picker round-trip and consumed by `handleFolderPick`.
     @State private var pendingTemplate: Template? = nil
@@ -129,16 +140,11 @@ public struct GraphView: View {
     /// (or opened the review modal). Prevents the banner from popping
     /// back up after they've explicitly engaged with it.
     @State private var dupeBannerDismissed: Bool = false
-    @State private var showingDuplicateReview: Bool = false
     /// Structural decomposition into hubs + assigned members. Computed
     /// once when the graph loads.
 
     // MARK: - Ingestion state
 
-    /// Drives the Capture sheet (text / voice dump → AI constellation).
-    @State private var showingCapture: Bool = false
-    /// Drives the new-node composer sheet.
-    @State private var showingComposer: Bool = false
     /// Spawn point in *world* coordinates for the next-created node.
     /// `nil` → canvas picks a position (near selection or origin).
     @State private var composerSpawnWorld: CGPoint?
@@ -147,6 +153,24 @@ public struct GraphView: View {
     /// After save, this is set so the canvas can pin/select/frame the
     /// newly-created node. The canvas clears it once it has consumed it.
     @State private var pendingNewNode: PendingNewNode?
+
+    /// Synthesizes a `Binding<Bool>` for sub-sheets that still
+    /// expect the `isPresented:` API. The binding is `true` while
+    /// `activeSheet == kind`; setting it to `false` clears
+    /// `activeSheet` only if our kind is the one currently active
+    /// (so a stale dismissal doesn't blow away a different sheet).
+    private func sheetBinding(for kind: ActiveSheet) -> Binding<Bool> {
+        Binding(
+            get: { activeSheet == kind },
+            set: { newValue in
+                if newValue {
+                    activeSheet = kind
+                } else if activeSheet == kind {
+                    activeSheet = nil
+                }
+            }
+        )
+    }
 
     public init(store: GraphStore) {
         _store = StateObject(wrappedValue: store)
@@ -248,10 +272,10 @@ public struct GraphView: View {
                 pendingGEXFName = nil
             }
         }
-        .sheet(isPresented: $showingCapture) {
+        .sheet(isPresented: sheetBinding(for: .capture)) {
             CaptureSheet(
                 store: store,
-                isPresented: $showingCapture,
+                isPresented: sheetBinding(for: .capture),
                 onCommitted: { firstID in
                     if let firstID {
                         selectedNodeID = firstID
@@ -259,18 +283,20 @@ public struct GraphView: View {
                 }
             )
         }
-        .sheet(isPresented: $showingVaultSettings) {
-            VaultSettingsSheet(store: store, isPresented: $showingVaultSettings)
+        .sheet(isPresented: sheetBinding(for: .vaultSettings)) {
+            VaultSettingsSheet(store: store,
+                               isPresented: sheetBinding(for: .vaultSettings))
         }
-        .sheet(isPresented: $showingImportRecipe) {
-            ImportRecipeSheet(store: store, isPresented: $showingImportRecipe)
+        .sheet(isPresented: sheetBinding(for: .importRecipe)) {
+            ImportRecipeSheet(store: store,
+                              isPresented: sheetBinding(for: .importRecipe))
         }
-        .sheet(isPresented: $showingTemplatePicker) {
+        .sheet(isPresented: sheetBinding(for: .templatePicker)) {
             TemplatePickerSheet(
-                isPresented: $showingTemplatePicker,
+                isPresented: sheetBinding(for: .templatePicker),
                 onPick: { template in
                     pendingTemplate = template
-                    showingTemplatePicker = false
+                    activeSheet = nil
                     // Defer the folder picker one tick so the sheet
                     // dismiss animation isn't fighting the picker
                     // present animation — same Menu/sheet race we
@@ -281,21 +307,21 @@ public struct GraphView: View {
                 }
             )
         }
-        .sheet(isPresented: $showingDuplicateReview) {
+        .sheet(isPresented: sheetBinding(for: .duplicateReview)) {
             DuplicateReviewSheet(
                 clusters: duplicateClusters,
                 store: store,
-                isPresented: $showingDuplicateReview,
+                isPresented: sheetBinding(for: .duplicateReview),
                 onSelect: { id in
                     selectedNodeID = id
-                    showingDuplicateReview = false
+                    activeSheet = nil
                 }
             )
         }
-        .sheet(isPresented: $showingComposer) {
+        .sheet(isPresented: sheetBinding(for: .composer)) {
             NodeComposer(
                 store: store,
-                isPresented: $showingComposer,
+                isPresented: sheetBinding(for: .composer),
                 seedConnectionTo: composerSeedID,
                 onCreated: { newID in
                     // Hand the new node off to the canvas so it can pin
@@ -624,7 +650,7 @@ public struct GraphView: View {
                     .font(.caption)
                 Spacer()
                 Button("Review") {
-                    showingDuplicateReview = true
+                    activeSheet = .duplicateReview
                     dupeBannerDismissed = true
                 }
                 .buttonStyle(.borderedProminent)
@@ -746,13 +772,13 @@ public struct GraphView: View {
                 guard store.canIngest else { return }
                 composerSpawnWorld = nil
                 composerSeedID = selectedNodeID
-                showingComposer = true
+                activeSheet = .composer
             }
             .keyboardShortcut("n", modifiers: .command)
 
             Button("") {
                 guard store.canIngest else { return }
-                showingCapture = true
+                activeSheet = .capture
             }
             .keyboardShortcut("n", modifiers: [.command, .shift])
         }
@@ -770,7 +796,7 @@ public struct GraphView: View {
             }
             .keyboardShortcut("o", modifiers: .command)
             Button {
-                showingTemplatePicker = true
+                activeSheet = .templatePicker
             } label: {
                 Label("Create New Vault…", systemImage: "folder.badge.plus")
             }
@@ -780,13 +806,13 @@ public struct GraphView: View {
                 Label("Import GEXF…", systemImage: "square.and.arrow.down.on.square")
             }
             Button {
-                showingImportRecipe = true
+                activeSheet = .importRecipe
             } label: {
                 Label("Import from Recipe…", systemImage: "wand.and.stars")
             }
             Divider()
             Button {
-                showingVaultSettings = true
+                activeSheet = .vaultSettings
             } label: {
                 Label("Vault Settings…", systemImage: "gearshape")
             }
@@ -1080,7 +1106,7 @@ public struct GraphView: View {
             ) {
                 globalRadial = nil
                 guard store.canIngest else { return }
-                showingCapture = true
+                activeSheet = .capture
             },
             RadialMenu.Action(
                 id: "add-node",
@@ -1092,7 +1118,7 @@ public struct GraphView: View {
                 guard store.canIngest else { return }
                 composerSpawnWorld = target.world
                 composerSeedID = selectedNodeID
-                showingComposer = true
+                activeSheet = .composer
             },
             RadialMenu.Action(
                 id: "add-recipe",
@@ -1101,7 +1127,7 @@ public struct GraphView: View {
                 tint: .green
             ) {
                 globalRadial = nil
-                showingImportRecipe = true
+                activeSheet = .importRecipe
             },
         ]
     }
