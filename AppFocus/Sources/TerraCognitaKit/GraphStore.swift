@@ -34,7 +34,12 @@ public final class GraphStore: ObservableObject {
     /// it has settled (`finishLoadingPresentation()`), so the user
     /// sees one continuous loading state from picker to fully-
     /// framed view.
-    @Published var loadingCaption: String?
+    /// Defaults to a caption at construction so the loading screen is
+    /// the *first* thing visible — no millisecond gap between the
+    /// SwiftUI view appearing and `loadDefaultAtlas()` calling
+    /// `startLoadingPresentation()`. `finishLoadingPresentation()` is
+    /// still the only path that clears it.
+    @Published var loadingCaption: String? = LoadingCaptions.next(after: nil)
     private var captionRotator: Task<Void, Never>?
 
     /// Monotonic counter incremented after each successful atlas load
@@ -45,6 +50,14 @@ public final class GraphStore: ObservableObject {
     /// switches where the count goes from N→M or N→N, neither of
     /// which would trigger an empty→non-empty edge.
     @Published var loadCompletedTick: Int = 0
+
+    /// Monotonic counter incremented after the canvas's layout
+    /// pipeline (`rebuildLayoutPipeline`) finishes — either by
+    /// restoring a saved layout or by the FA2 pass converging on a
+    /// fresh one. The `LoadingScreen` waits for this to advance after
+    /// `loadCompletedTick` before fading out, so the user only sees
+    /// the canvas once it's been laid out and framed.
+    @Published var layoutSettleTick: Int = 0
 
     /// Begin (or restart) the loading-caption rotation. Idempotent
     /// per load — calling twice cancels the previous rotator.
@@ -71,7 +84,11 @@ public final class GraphStore: ObservableObject {
     func finishLoadingPresentation() {
         captionRotator?.cancel()
         captionRotator = nil
-        withAnimation(.easeOut(duration: 0.5)) {
+        // 2 s ease-out so the gradient + glyph dissolve into the
+        // canvas instead of snapping away. The fade reveals an already-
+        // laid-out, framed view — see `LoadingScreen` wiring in
+        // `GraphView`.
+        withAnimation(.easeOut(duration: 2.0)) {
             loadingCaption = nil
         }
     }

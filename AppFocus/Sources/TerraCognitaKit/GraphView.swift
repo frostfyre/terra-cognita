@@ -55,6 +55,11 @@ public struct GraphView: View {
     /// every visible node fits — driven by the top-bar Fit button
     /// (⌘0) and by the post-load auto-frame.
     @State var frameAllPulse: Int = 0
+    /// Set after a successful atlas load completes; cleared after the
+    /// next `layoutSettleTick` advance triggers the auto-frame + fade.
+    /// Without this gate the fade would fire on every settle event,
+    /// not just the one that follows a fresh load.
+    @State var awaitingLayoutSettle: Bool = false
 
     /// Currently-applied layout. Canvas writes (on restore / settle /
     /// user pick); the toolbar Layout menu reads to show a checkmark
@@ -191,18 +196,24 @@ public struct GraphView: View {
             duplicateClusters = newClusters
         }
         .onChange(of: store.loadCompletedTick) { _, _ in
-            // Atlas load arrived with content. Wait a beat for the
-            // layout pipeline to crossfade in the FA2 result, nudge
-            // the canvas to fit the whole cluster, and once the fit
-            // animation has had time to settle (~700 ms past the
-            // trigger) clear the cartographer-loading overlay so the
-            // cross-fade lands on a fully-framed view. Driven by a
-            // store-side tick (not a count edge) so atlas switches
-            // also clear the overlay.
+            // Atlas load arrived with content. Arm the settle gate —
+            // the actual fit + fade is triggered when the canvas's
+            // layout pipeline (`rebuildLayoutPipeline`) increments
+            // `layoutSettleTick` below. This replaces the previous
+            // heuristic sleep with a real signal, so the loading
+            // screen stays up until force-atlas has actually placed
+            // the nodes.
+            awaitingLayoutSettle = true
+        }
+        .onChange(of: store.layoutSettleTick) { _, _ in
+            guard awaitingLayoutSettle else { return }
+            awaitingLayoutSettle = false
             Task { @MainActor in
-                try? await Task.sleep(for: .milliseconds(900))
+                // Layout converged — frame the result, then start the
+                // 2 s fade. The fade reveals an already-laid-out,
+                // already-framed canvas.
                 frameAllPulse &+= 1
-                try? await Task.sleep(for: .milliseconds(700))
+                try? await Task.sleep(for: .milliseconds(400))
                 store.finishLoadingPresentation()
             }
         }

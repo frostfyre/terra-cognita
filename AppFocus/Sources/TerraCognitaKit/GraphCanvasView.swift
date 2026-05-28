@@ -1047,6 +1047,7 @@ struct GraphCanvasView: View {
                         pinned: Set(pinnedPositions.keys)
                     )
                 }
+                store.layoutSettleTick &+= 1
                 return
             }
         }
@@ -1072,6 +1073,7 @@ struct GraphCanvasView: View {
             layoutAlgorithm = .forceDirected
         }
         persistLayout()
+        store.layoutSettleTick &+= 1
     }
 
     /// Switch to a specific layout algorithm. Animates the camera over
