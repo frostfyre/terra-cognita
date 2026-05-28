@@ -522,10 +522,8 @@ struct NodeInspectorView: View {
     /// editor would correctly refuse those, but it's cleaner to hide
     /// the affordances upfront.
     private func isSynthetic(_ edge: Edge) -> Bool {
-        let target = store.graph.nodes[edge.targetID]
-        if target?.attributes["synthetic"] == "true" { return true }
-        return edge.relationshipType == "tagged"
-            || edge.relationshipType == "embeds"
+        if edge.isSynthetic { return true }
+        return store.graph.nodes[edge.targetID]?.isSynthetic == true
     }
 
     /// Tappable relationship pill. Menu offers the vault's known
@@ -589,7 +587,7 @@ struct NodeInspectorView: View {
         var seen: [String: String] = [:]   // lowercased → original casing
         for e in store.graph.edges {
             guard let rel = e.relationshipType, !rel.isEmpty else { continue }
-            if rel == "tagged" || rel == "embeds" { continue }
+            if e.isSynthetic { continue }
             let key = rel.lowercased()
             if seen[key] == nil { seen[key] = rel }
         }

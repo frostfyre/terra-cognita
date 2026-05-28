@@ -38,6 +38,29 @@ struct Edge: Identifiable, Equatable, Hashable {
     /// or both. Used by the Timeline lens to filter to the spine.
     var isContinuityBearing: Bool { era != nil || date != nil }
 
+    /// True if this edge was produced by an extractor (`#tag` →
+    /// `tag:` node, `![[file]]` → `embed:` node) rather than
+    /// declared by the user as a wikilink. Synthetic edges have no
+    /// literal line in any source `.md` to rewrite, so the edge
+    /// editor refuses to mutate them.
+    ///
+    /// Targets carrying `attributes["synthetic"] == "true"` are also
+    /// synthetic, but that requires looking up the node — callers
+    /// that already have the target in hand can combine both checks
+    /// via the `Graph` helper below.
+    var isSynthetic: Bool {
+        relationshipType == "tagged" || relationshipType == "embeds"
+    }
+
     static func == (lhs: Edge, rhs: Edge) -> Bool { lhs.id == rhs.id }
     func hash(into hasher: inout Hasher) { hasher.combine(id) }
+}
+
+extension Node {
+    /// True for placeholder / tag / embed nodes materialized by the
+    /// loader's extractors. These don't have user-authored backing
+    /// files; editing affordances usually skip them.
+    var isSynthetic: Bool {
+        attributes["synthetic"] == "true"
+    }
 }
