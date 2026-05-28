@@ -15,6 +15,8 @@ document and is kept for historical context.
 
 **Anchors:** `mvp-1.0` tag = stable feature baseline; `visual-milestone-1.0` tag = the indigo-gradient + gold-selection + curved-gradient-edges aesthetic lock-in.
 
+> Heritage note on naming: the user-facing word is **atlas** (a collection of maps); the older code used "vault" (Obsidian's term). `UserDefaults` keys and the on-disk dev-data path retain the legacy "vault" string for backward compatibility, but everything else — types, properties, UI strings — is "atlas".
+
 ---
 
 ## Status
@@ -79,7 +81,8 @@ require macOS 26 / iOS 26.
 **Navigation & focus**
 - Lens picker: All / People / Concepts / Institutions / Events / Works /
   **Seamwalkers** (nodes whose neighbors span ≥ 2 subnets — a
-  computed "bridge" lens)
+  computed "bridge" lens) — lives on the global radial under
+  Lens ▸ with live count badges
 - **Subnet decomposition + dive-in**: hubs (degree ≥ 6) collapse their
   members at top level; the "Dive into [Hub]" pill enters them
 - **Forward / back navigation** (⌘[ / ⌘]) over selection + subnet state
@@ -88,6 +91,12 @@ require macOS 26 / iOS 26.
 - **Privacy toggle** (eye): nodes with `private: true` in front-matter
   drop out of canvas + search + edges when hidden — useful for
   screenshots
+- **Backgrounded nodes are unclickable** — when a selection's
+  highlight halo is in effect, taps on dimmed neighbors-of-neighbors
+  fall through to "clear selection" instead of switching to them,
+  honoring the spatial-first model
+- **Hop-distance dial** (1–4) on both radials — sets how far the
+  selection halo reaches; persisted per-atlas
 
 **Node ingestion / authoring**
 - **+ menu** (⌘N New Node, ⌘⇧N Capture) — composer sheet with type
@@ -137,14 +146,37 @@ require macOS 26 / iOS 26.
   disabled until a writable atlas is open
 - All speech recognition strictly on-device
 
+**Radial menus (spatial action surface)**
+- **Per-node radial** on long-press of a node — Open · AI ▸ · Edit ▸ ·
+  Center · Hops ▸. AI submenu = Suggest connections / Find links /
+  Suggest era / Concepts / Rewrite. Edit submenu = Type / Era / Body
+  (opens TextEditor) / Merge… / Delete. Hops submenu = 1 / 2 / 3 / 4
+  with the active value ✓-badged.
+- **Global radial** on long-press of empty canvas — Add ▸ (Capture /
+  New node here / Recipe) · Layout ▸ (all seven algorithms + the
+  No-overlap toggle, active rows ✓-badged) · Lens ▸ (All / per-type
+  with count badges / Systems) · View ▸ (Inspector toggle / Private
+  toggle / Fit to window / Hops ▸).
+- The toolbar collapsed accordingly to five high-frequency items:
+  Back · Forward · Mode pill · Atlas menu · Find · Inspector toggle.
+  Keyboard shortcuts ⌘N / ⌘⇧N / ⌘0 are preserved via invisible catchers.
+
+**Edge editing**
+- Outbound rows in the inspector are now live: the relationship pill
+  is a tappable Menu (vault's known relationship types + Clear),
+  and a trailing trash icon removes the edge. Edits rewrite the
+  source note's Dataview line in place; prose-embedded wikilinks
+  are left untouched with a friendly refusal.
+- Inbound rows stay read-only (the source note is a *different*
+  inspector's job).
+
 **Cross-platform parity**
 - Same affordances across all three platforms; adaptations only where
   the platform demands them
 - Sheet vs side-panel inspector based on size class
 - Pinch zoom + single-finger pan (touch) and scroll-wheel +
   middle-mouse drag (macOS)
-- **Radial menu** on node long-press (Open / Dive / AI links / Center
-  / Delete / Cancel) — works identically on macOS, iPad, iPhone
+- Radial menus work identically on macOS, iPad, iPhone
 - Haptics on iOS (selection, subnet enter/exit, proposal accept)
 - App icon (Terra Cognita orrery) rendered by `scripts/render_icon.swift`
 
@@ -168,9 +200,11 @@ See [`PLAN.md`](PLAN.md) for the phased roadmap. Headline gaps:
   gradient constants the user has been driving via taste.
 - **Live atlas watch** — external edits to .md files don't show
   until next atlas load.
-- **No edge editing UI** — the `Provenance` model exists (7 categories)
-  but isn't surfaced. Edges now carry `era` / `date` fields ready
-  for the Phase 3 Timeline lens; UI to set them is still TODO.
+- **No add-edge UI yet** — relationship-type editing and deletion
+  are wired; adding a new edge from the inspector / radial still
+  needs a target picker (the merge-picker pattern). Provenance
+  (7 categories) and `era` / `date` on edges remain
+  model-only.
 - **No 3D mode** — DESIGN.md's time-as-depth idea is hinted at via
   the parallax axis but not realized as a separate mode.
 - **Capture review is modal** — a *spatial preview* (proposed nodes
@@ -216,18 +250,31 @@ require macOS 26 / iOS 26 (Foundation Models).
 
 ## Interaction
 
-### Top bar
+### Top bar (collapsed)
 | Action                   | Affordance                                        |
 |--------------------------|---------------------------------------------------|
 | Back / Forward           | Chevrons · ⌘[ / ⌘]                                |
-| Lens picker              | Dropdown                                          |
-| Atlas menu               | Folder icon → Open / Create New / Recent          |
-| Add to graph (+ menu)    | Capture (⌘⇧N) / New Node (⌘N)                     |
+| Mode pill                | Current mode (Continuity / Worldbuild / Archaeology) |
+| Atlas menu               | Folder icon → Open / Create New / Recent / Import GEXF / Import Recipe / Settings |
 | Find                     | Magnifier · ⌘F                                    |
-| Fit to window            | Viewfinder · ⌘0                                   |
-| Layout menu              | Force-directed / Circular / Radial / Hierarchical / Grid + No-overlap toggle |
-| Show/hide private        | Eye toggle                                        |
 | Show/hide info panel     | Sidebar · ⌘I                                      |
+
+### Radial menus (long-press)
+Lens, Add, Layout, Fit, Privacy, and the per-node actions all live on radial wheels:
+
+| Wheel | Trigger | Wedges |
+|-------|---------|--------|
+| **Per-node radial** | Long-press a node | Open · AI ▸ · Edit ▸ · Center · Hops ▸ |
+| └ AI ▸ | | Connections · Find links · Suggest era · Concepts · Rewrite |
+| └ Edit ▸ | | Type · Era · Body · Merge… · Delete |
+| └ Hops ▸ | | 1 · 2 · 3 · 4 (active ✓-badged) |
+| **Global radial** | Long-press blank canvas | Add ▸ · Layout ▸ · Lens ▸ · View ▸ |
+| └ Add ▸ | | Capture · New node here · Recipe |
+| └ Layout ▸ | | Force · Circular · Radial · Hierarchical · Grid · Cluster · Timeline · [✓ No-overlap] |
+| └ Lens ▸ | | All · per-type (with count badges) · Systems |
+| └ View ▸ | | Inspector · Private · Fit · Hops ▸ |
+
+⌘N (New Node), ⌘⇧N (Capture), and ⌘0 (Fit) still work via invisible keyboard-shortcut catchers.
 
 ### Canvas
 | Action                          | Pointer            | Touch                  |
@@ -262,42 +309,53 @@ AppFocus/
 │   └── TerraCognita-iOS/        — @main shell + Assets.xcassets
 ├── Sources/
 │   ├── TerraCognitaKit/         — Library target (the whole product)
-│   │   ├── GraphView.swift              — Top-level view; top bar; all sheets
+│   │   ├── GraphView.swift              — Top-level view; body; sheet mounts; lifecycle
+│   │   ├── GraphView+Radial.swift       — Per-node + global radial action builders
+│   │   ├── GraphView+Chrome.swift       — canvasStack / topBar / atlasMenu / banners
 │   │   ├── GraphCanvasView.swift        — Canvas renderer; gestures; layout pipeline
 │   │   ├── GraphStore.swift             — @MainActor graph state; atlas I/O; ingestion
-│   │   ├── NodeInspectorView.swift      — Inspector with AI ops + proposal chips
+│   │   ├── NodeInspectorView.swift      — Inspector struct + body + helpers
+│   │   ├── NodeInspectorView+Header.swift — Title row + type/era pickers + merge sheet
+│   │   ├── NodeInspectorView+Note.swift — Note disclosure (read pane / edit + dictation)
+│   │   ├── NodeInspectorView+Edges.swift — Outbound/Inbound lists + relationship menu
+│   │   ├── NodeInspectorView+AI.swift   — AI section + operations + proposals + chat
 │   │   ├── NodeIntelligence.swift       — Foundation Models orchestration
 │   │   ├── NodeComposer.swift           — New-node sheet
 │   │   ├── CaptureSheet.swift           — Voice/text capture + constellation review
 │   │   ├── Constellation.swift          — Capture proposal model
 │   │   ├── NodeProposal.swift           — Per-op AI proposal model
 │   │   ├── NavigationHistory.swift      — Back/forward stack
-│   │   ├── RadialMenu.swift             — Long-press action wheel
+│   │   ├── RadialMenu.swift             — Long-press action wheel (nested submenus)
 │   │   ├── ForceDirectedLayout.swift    — Background FA2-ish solver
 │   │   ├── LayoutEngine.swift           — Radial / Hierarchical / Grid + no-overlap
 │   │   ├── LayoutAlgorithm.swift        — Enum of layout choices (+ SF symbols)
-│   │   ├── LayoutPersistence.swift      — Per-atlas layout snapshots
+│   │   ├── LayoutPersistence.swift      — Per-atlas layout snapshots + hop dial
 │   │   ├── Mode.swift                   — Mode enum (Phase 0 — single .continuity)
 │   │   ├── GraphAnalysis.swift          — Stub for Phase 3 topology utils
 │   │   ├── FolderPicker.swift           — iOS UIDocumentPickerViewController wrapper
 │   │   ├── Era.swift                    — Era taxonomy + depth derivation
-│   │   ├── AtlasLoader.swift            — Markdown atlas → Graph
+│   │   ├── AtlasLoader.swift            — Markdown atlas → Graph (+ Diagnostics)
 │   │   ├── AtlasWriter.swift            — New-note creation + slug
 │   │   ├── AtlasEditor.swift            — In-place note edits + .bak safety
+│   │   │                                 + edge-line surgery (parse / rewrite)
 │   │   ├── AtlasBookmark.swift          — Active-atlas security-scoped bookmark
 │   │   ├── AtlasLibrary.swift           — Recent-atlases LRU
 │   │   ├── AtlasDropHandler.swift       — Folder drag-drop onto canvas
+│   │   ├── URL+SecurityScope.swift      — `url.withSecurityScope { ... }` helper
 │   │   ├── WebEnrichment.swift          — Wikipedia REST summary client
 │   │   ├── SpeechRecognizer.swift       — On-device SFSpeechRecognizer wrapper
 │   │   ├── NodeSearchView.swift         — ⌘F popover
 │   │   ├── MarkdownView.swift           — WKWebView markdown renderer (fallback)
 │   │   ├── MarkdownBodyView.swift       — Native SwiftUI markdown for inspector
 │   │   ├── Haptics.swift                — Cross-platform haptic shim
-│   │   ├── Node.swift / Edge.swift / Provenance.swift — Domain types
+│   │   ├── Node.swift / Edge.swift / Provenance.swift — Domain types (+ isSynthetic)
 │   │   ├── Node+File.swift              — Bundle URL lookups
 │   │   ├── WebView+FileURL.swift        — Cross-platform open-in-default-app
-│   │   └── Resources/miyazaki-vault/    — Bundled demo atlas
-│   └── TerraCognita/                    — Dev exec @main shell
+│   │   └── Resources/miyazaki-vault/    — Bundled demo atlas (folder name preserved)
+│   ├── TerraCognita/                    — Dev exec @main shell
+├── Tests/
+│   └── TerraCognitaKitTests/   — 47 tests across 6 suites (parsers,
+│                                  editors, integration round-trips)
 ├── Data/heritage-vault/         — Personal heritage atlas (the dev dataset)
 ├── Design/DESIGN.md             — Original vision document
 └── scripts/
@@ -321,12 +379,12 @@ roadmap:
 | AI integration (per-node ops)         | **~90%** — 8 ops + chat; missing graph-wide "Ask Terra Cognita" |
 | AI integration (graph-wide / agentic) | **~10%** — Tool-protocol support and cross-atlas AI yet to come |
 | Lens system                           | **~70%** — six lenses live; provenance-driven and saved-view lenses still to come |
-| Edge editing & provenance UI          | **~10%** — model exists, no UI |
-| Navigation & focus management         | **~95%** — forward/back, inspector toggle, subnet dive, ESC exits, ⌘F find |
+| Edge editing & provenance UI          | **~50%** — relationship-type edit + delete shipped; add-edge target picker still TODO; `Provenance` + `era`/`date` still model-only |
+| Navigation & focus management         | **~95%** — forward/back, inspector toggle, subnet dive, ESC exits, ⌘F find, hop-dial 1–4 |
 | Cross-platform parity                 | **~95%** — macOS / iPad / iPhone all shipping the same features |
 | Performance (large graphs)            | **~60%** — O(n²) layout, comfortable to ~1,500 nodes; Barnes-Hut needed beyond ~2,000 |
 | 3D / time-as-depth mode               | **~5%**  — hinted at via parallax; nothing standalone |
-| Tests / CI                            | **~5%**  — test stubs exist; no real coverage yet |
+| Tests / CI                            | **~30%** — 47 tests pin the parsers (`MarkdownNoteParser`, `AtlasEditor.parseEdgeLine` / `rewriteEdgeLine` / `splitFrontMatter` / `upsertFrontMatter`) and editor / loader integration. Run with `swift test`. View-layer + canvas-render still uncovered. |
 
 Headline read: **MVP-feature-complete for personal use** on a graph of
 up to a couple thousand nodes, with the spatial + AI ergonomics that
@@ -342,20 +400,28 @@ See [`PLAN.md`](PLAN.md) for the phased plan. Short version:
 
 - **Phase 0** *(landed)* — foundations: `Mode` enum, `LayoutAlgorithm`,
   era/date metadata on `Edge`, `GraphAnalysis` placeholder.
-- **Phase 1** *(landed)* — Layout selector with five algorithms +
-  No-overlap toggle. Cluster reserved for Phase 3.
-- **Phase 2** *(next)* — Modes + launch templates. Promotes `Mode`
-  enum to its three real cases, adds the mode picker on atlas
-  creation + a discreet toolbar pill, wires the template registry.
-- **Phase 3** — Lens expansion (Timeline, Radial, Systems) + Import
-  Recipes (NL → typed schema → deterministic executor). Backs the
-  deferred Cluster layout.
-- **Phase 3.5** — Display Settings panel — surface edge / pill /
-  gradient constants as user-controllable.
-- **Phase 4** *(later)* — Pro tier: sync, cloud AI augmentation,
+- **Phase 1** *(landed)* — Layout selector with seven algorithms +
+  No-overlap toggle.
+- **Phase 2** *(landed)* — Modes + launch templates (3 modes,
+  8 templates, mode pill, mode-aware defaults).
+- **Phase 3** *(landed)* — Lens expansion (Timeline / Radial /
+  Systems with bridge-node halos) + Import Recipes (NL → typed
+  schema → deterministic executor) + Cluster layout.
+- **Phase 3.7** *(landed)* — Radial menu expansion (per-node and
+  global wheels) + toolbar collapse + hop-distance dial.
+- **Phase 4** *(in progress)* — Hygiene, tests, design vocabulary
+  gaps. Landed so far: 4.1 hygiene primitives (`URL.withSecurityScope`,
+  `Edge.isSynthetic`, `ActiveSheet` enum, `SnapshotTracker`),
+  4.1.5 Vault→Atlas rename, 4.2 test target (47 tests + 2 real
+  bugs caught), 4.3a/b view-layer extraction
+  (`NodeInspectorView+*.swift`, `GraphView+*.swift`).
+  Remaining: 4.3c `CanvasPainter` namespace, 4.3d `AtlasSession`
+  actor, then 4.4 (per-atlas edge-type taxonomy, add-edge UI,
+  continuity threads, conversation-with-archive, Display Settings
+  panel).
+- **Phase 5** *(later)* — Pro tier: sync, cloud AI augmentation,
   large-graph background workers. Pro never gates data access.
 
 Cross-cutting follow-ups regardless of phase: live atlas watch,
-edge editing UI (surface `era` / `date` / `Provenance`), spatial
-Capture preview, graph-wide AI, Barnes-Hut layout, 3D time-axis
-mode.
+spatial Capture preview, graph-wide AI, Barnes-Hut layout,
+3D time-axis mode.
