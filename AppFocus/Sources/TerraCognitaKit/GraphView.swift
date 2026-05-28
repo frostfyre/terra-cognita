@@ -5,10 +5,10 @@ import AppKit
 #endif
 
 public struct GraphView: View {
-    @StateObject private var store: GraphStore
-    @State private var selectedNodeID: String?
-    @State private var activeLens: Lens = .all
-    @State private var showingSearch: Bool = false
+    @StateObject var store: GraphStore
+    @State var selectedNodeID: String?
+    @State var activeLens: Lens = .all
+    @State var showingSearch: Bool = false
     /// One modal sheet at a time. Folds six previously-separate
     /// `showing*` booleans (Capture, Composer, AtlasSettings,
     /// ImportRecipe, TemplatePicker, DuplicateReview) into one
@@ -16,7 +16,7 @@ public struct GraphView: View {
     /// collapses the GraphView state count. Sub-sheets keep their
     /// existing `isPresented: Binding<Bool>` API; we synthesize
     /// the binding per kind via `sheetBinding(for:)`.
-    @State private var activeSheet: ActiveSheet?
+    @State var activeSheet: ActiveSheet?
 
     enum ActiveSheet: Identifiable, Hashable {
         case capture
@@ -34,8 +34,8 @@ public struct GraphView: View {
     /// `showingFolderPicker` is the SwiftUI-owned presentation flag;
     /// `folderPickerMode` is the routing tag we read in the completion
     /// handler.
-    @State private var folderPickerMode: FolderPickerMode?
-    @State private var showingFolderPicker: Bool = false
+    @State var folderPickerMode: FolderPickerMode?
+    @State var showingFolderPicker: Bool = false
 
     enum FolderPickerMode {
         case openAtlas
@@ -47,70 +47,70 @@ public struct GraphView: View {
     /// the document; the destination folder is picked via a separate
     /// NSOpenPanel-driven flow that doesn't fight SwiftUI's
     /// fileImporter.
-    @State private var showingGEXFPicker: Bool = false
-    @State private var pendingGEXFDocument: GEXFImporter.Document?
-    @State private var pendingGEXFName: String?
+    @State var showingGEXFPicker: Bool = false
+    @State var pendingGEXFDocument: GEXFImporter.Document?
+    @State var pendingGEXFName: String?
 
     /// Incremented to request a "fit to view" pass from the canvas.
     /// The canvas observes `.onChange` and animates the camera so
     /// every visible node fits — driven by the top-bar Fit button
     /// (⌘0) and by the post-load auto-frame.
-    @State private var frameAllPulse: Int = 0
+    @State var frameAllPulse: Int = 0
     /// Was the graph empty on the previous load tick? Used to detect
     /// the "first content arrived" transition and auto-frame.
-    @State private var graphWasEmpty: Bool = true
+    @State var graphWasEmpty: Bool = true
 
     /// Currently-applied layout. Canvas writes (on restore / settle /
     /// user pick); the toolbar Layout menu reads to show a checkmark
     /// next to the active row.
-    @State private var layoutAlgorithm: LayoutAlgorithm? = nil
+    @State var layoutAlgorithm: LayoutAlgorithm? = nil
     /// No-overlap toggle — two-way binding between the Layout menu
     /// and the canvas's post-pass.
-    @State private var noOverlap: Bool = false
+    @State var noOverlap: Bool = false
     /// Pulse channel for "user picked this layout from the menu".
     /// Flips non-nil → canvas applies → canvas resets to nil.
-    @State private var layoutRequest: LayoutAlgorithm? = nil
+    @State var layoutRequest: LayoutAlgorithm? = nil
 
     /// Selection-highlight radius in BFS hops (1...4). Persisted
     /// per-atlas via `LayoutPersistence`. Driven from the radial
     /// Hops dial; the canvas restores it on load and reads on each
     /// frame.
-    @State private var highlightDepth: Int = 1
+    @State var highlightDepth: Int = 1
 
     /// The template the user chose in the picker; carried across the
     /// folder-picker round-trip and consumed by `handleFolderPick`.
-    @State private var pendingTemplate: Template? = nil
+    @State var pendingTemplate: Template? = nil
 
     /// Bridge nodes for the Systems lens — non-empty only when that
     /// lens is active. Recomputed when the graph mutates or the
     /// lens switches; cleared otherwise.
-    @State private var bridgeNodeIDs: Set<String> = []
+    @State var bridgeNodeIDs: Set<String> = []
     #if os(iOS)
-    @Environment(\.horizontalSizeClass) private var hSizeClass
+    @Environment(\.horizontalSizeClass) var hSizeClass
     #endif
 
     /// Whether the info panel (inspector / sheet) is visible. Decoupled
     /// from `selectedNodeID` so the user can hide the panel and keep a
     /// node selected, or vice versa. Auto-opens on the first selection
     /// after empty, stays whatever the user set it to thereafter.
-    @State private var inspectorVisible: Bool = false
+    @State var inspectorVisible: Bool = false
 
     /// Whether private nodes (those with `private: true` in front matter)
     /// are currently shown. Defaults to off — they only surface when the
     /// user explicitly toggles them in. Useful for screenshots / demos.
-    @State private var showPrivate: Bool = false
+    @State var showPrivate: Bool = false
 
     /// Browser-style back/forward stack over `selectedNodeID`.
-    @StateObject private var navigation = NavigationHistory()
+    @StateObject var navigation = NavigationHistory()
     /// Cached "last" state so we can compute the diff in `.onChange`.
     /// Initialized lazily on first selection change.
-    @State private var lastNavState: NavigationHistory.State = .init()
+    @State var lastNavState: NavigationHistory.State = .init()
 
     /// Radial-menu state: when set, an action wheel overlays the canvas
     /// anchored at `point`, surfacing operations for `nodeID`.
-    @State private var radialTarget: RadialTarget?
+    @State var radialTarget: RadialTarget?
 
-    private struct RadialTarget: Equatable {
+    struct RadialTarget: Equatable {
         let nodeID: String
         let point: CGPoint
     }
@@ -121,25 +121,25 @@ public struct GraphView: View {
     /// and clears it back to `nil` once it's consumed. Keeps the
     /// inspector authoritative over which view actually runs the op
     /// while letting the radial be the entry point.
-    @State private var pendingInspectorIntent: InspectorIntent? = nil
+    @State var pendingInspectorIntent: InspectorIntent? = nil
 
     /// Global (canvas-level) radial state — set when the user
     /// long-presses empty canvas. The world point lets "New Node
     /// here" spawn at the press point; the screen point anchors
     /// the wheel.
-    @State private var globalRadial: GlobalRadialTarget?
+    @State var globalRadial: GlobalRadialTarget?
 
-    private struct GlobalRadialTarget: Equatable {
+    struct GlobalRadialTarget: Equatable {
         let world: CGPoint
         let screen: CGPoint
     }
 
     /// Duplicate clusters surfaced by the atlas-load review banner.
-    @State private var duplicateClusters: [[String]] = []
+    @State var duplicateClusters: [[String]] = []
     /// Set to true once the user has dismissed the banner this session
     /// (or opened the review modal). Prevents the banner from popping
     /// back up after they've explicitly engaged with it.
-    @State private var dupeBannerDismissed: Bool = false
+    @State var dupeBannerDismissed: Bool = false
     /// Structural decomposition into hubs + assigned members. Computed
     /// once when the graph loads.
 
@@ -147,19 +147,19 @@ public struct GraphView: View {
 
     /// Spawn point in *world* coordinates for the next-created node.
     /// `nil` → canvas picks a position (near selection or origin).
-    @State private var composerSpawnWorld: CGPoint?
+    @State var composerSpawnWorld: CGPoint?
     /// If non-nil, the composer pre-fills body with a wikilink to this id.
-    @State private var composerSeedID: String?
+    @State var composerSeedID: String?
     /// After save, this is set so the canvas can pin/select/frame the
     /// newly-created node. The canvas clears it once it has consumed it.
-    @State private var pendingNewNode: PendingNewNode?
+    @State var pendingNewNode: PendingNewNode?
 
     /// Synthesizes a `Binding<Bool>` for sub-sheets that still
     /// expect the `isPresented:` API. The binding is `true` while
     /// `activeSheet == kind`; setting it to `false` clears
     /// `activeSheet` only if our kind is the one currently active
     /// (so a stale dismissal doesn't blow away a different sheet).
-    private func sheetBinding(for kind: ActiveSheet) -> Binding<Bool> {
+    func sheetBinding(for kind: ActiveSheet) -> Binding<Bool> {
         Binding(
             get: { activeSheet == kind },
             set: { newValue in
@@ -385,7 +385,7 @@ public struct GraphView: View {
     /// Recompute `bridgeNodeIDs` when the Systems lens is active.
     /// Cleared (empty set) when any other lens is in use so the
     /// canvas doesn't render bridge halos.
-    private func refreshBridgeNodesIfNeeded() {
+    func refreshBridgeNodesIfNeeded() {
         guard activeLens.isSystems else {
             if !bridgeNodeIDs.isEmpty { bridgeNodeIDs = [] }
             return
@@ -413,7 +413,7 @@ public struct GraphView: View {
     /// template picker; switching modes mid-atlas is out of scope for
     /// Phase 2.
     @ViewBuilder
-    private var modePill: some View {
+    var modePill: some View {
         let mode = store.config.mode
         HStack(spacing: 4) {
             Image(systemName: mode.systemImage)
@@ -430,7 +430,7 @@ public struct GraphView: View {
         .help("This atlas is in \(mode.displayName) mode.")
     }
 
-    private var useSheetForInspector: Bool {
+    var useSheetForInspector: Bool {
         #if os(iOS)
         return hSizeClass == .compact
         #else
@@ -441,26 +441,26 @@ public struct GraphView: View {
     /// Push the current selection onto the back stack before applying
     /// a new state — unless `navigation` is the one driving the
     /// change (goBack / goForward).
-    private func recordNavIfNeeded() {
+    func recordNavIfNeeded() {
         let now = NavigationHistory.State(selectedNodeID: selectedNodeID)
         defer { lastNavState = now }
         if navigation.suppressRecording { return }
         navigation.record(now, previous: lastNavState)
     }
 
-    private func navigateBack() {
+    func navigateBack() {
         let now = NavigationHistory.State(selectedNodeID: selectedNodeID)
         guard let previous = navigation.goBack(from: now) else { return }
         applyNavState(previous)
     }
 
-    private func navigateForward() {
+    func navigateForward() {
         let now = NavigationHistory.State(selectedNodeID: selectedNodeID)
         guard let next = navigation.goForward(from: now) else { return }
         applyNavState(next)
     }
 
-    private func applyNavState(_ state: NavigationHistory.State) {
+    func applyNavState(_ state: NavigationHistory.State) {
         navigation.suppressRecording = true
         selectedNodeID = state.selectedNodeID
         lastNavState = state
@@ -476,7 +476,7 @@ public struct GraphView: View {
     /// `Menu` has time to dismiss before the picker mounts — on iOS,
     /// firing them in the same tick causes the picker to silently
     /// drop, which is why "Open Atlas Folder…" appeared to do nothing.
-    private func presentFolderPicker(_ mode: FolderPickerMode) {
+    func presentFolderPicker(_ mode: FolderPickerMode) {
         folderPickerMode = mode
         DispatchQueue.main.async {
             showingFolderPicker = true
@@ -486,7 +486,7 @@ public struct GraphView: View {
     /// Route a picked folder URL based on the currently-active
     /// `folderPickerMode`. Shared between the macOS `.fileImporter`
     /// path and the iOS `FolderPicker` (UIDocumentPicker) path.
-    private func handleFolderPick(_ url: URL?) {
+    func handleFolderPick(_ url: URL?) {
         let mode = folderPickerMode
         folderPickerMode = nil
         guard let url else { return }
@@ -526,7 +526,7 @@ public struct GraphView: View {
     /// `.fileImporter` runs into mount conflicts when fired
     /// back-to-back with another importer. On iOS this is a no-op for
     /// now; iPad GEXF import can layer on UIDocumentPicker later.
-    private func promptForGEXFDestination() {
+    func promptForGEXFDestination() {
         guard let doc = pendingGEXFDocument,
               let basename = pendingGEXFName else { return }
         #if os(macOS)
@@ -567,674 +567,12 @@ public struct GraphView: View {
         #endif
     }
 
-    /// Main canvas stack — extracted from `body` so the chained
-    /// modifier list outside it doesn't have to be type-checked in
-    /// one expression. Layered top-to-bottom: graph canvas, radial
-    /// menu (when armed), top bar, banners, and the invisible
-    /// escape-catcher.
-    @ViewBuilder
-    private var canvasStack: some View {
-        ZStack(alignment: .top) {
-            GraphCanvasView(
-                store: store,
-                selectedNodeID: $selectedNodeID,
-                pendingNewNode: $pendingNewNode,
-                visibleNodeFilter: visibleFilter,
-                onLongPressEmptyWorld: { worldPoint, screenPoint in
-                    globalRadial = GlobalRadialTarget(
-                        world: worldPoint, screen: screenPoint)
-                },
-                onLongPressNode: { nodeID, screenPoint in
-                    radialTarget = RadialTarget(nodeID: nodeID, point: screenPoint)
-                },
-                frameAllPulse: $frameAllPulse,
-                layoutAlgorithm: $layoutAlgorithm,
-                noOverlap: $noOverlap,
-                layoutRequest: $layoutRequest,
-                highlightDepth: $highlightDepth,
-                bridgeNodeIDs: bridgeNodeIDs
-            )
-
-            if let target = radialTarget,
-               let node = store.graph.nodes[target.nodeID] {
-                RadialMenu(
-                    center: target.point,
-                    actions: radialActions(for: node),
-                    onCancel: { radialTarget = nil }
-                )
-                .transition(.opacity)
-            }
-
-            if let target = globalRadial {
-                RadialMenu(
-                    center: target.screen,
-                    actions: globalRadialActions(at: target),
-                    onCancel: { globalRadial = nil }
-                )
-                .transition(.opacity)
-            }
-
-            topBar
-
-            if !duplicateClusters.isEmpty && !dupeBannerDismissed {
-                duplicateBanner
-            }
-
-            if !store.loadStatus.isEmpty {
-                loadStatusPill
-            }
-
-            if showingSearch {
-                searchOverlay
-            }
-
-            if selectedNodeID != nil {
-                Button("") { selectedNodeID = nil }
-                    .keyboardShortcut(.escape, modifiers: [])
-                    .opacity(0)
-                    .frame(width: 0, height: 0)
-            }
-
-            hiddenShortcuts
-        }
-    }
-
-    @ViewBuilder
-    private var duplicateBanner: some View {
-        VStack {
-            Spacer().frame(height: 48)
-            HStack(spacing: 8) {
-                Image(systemName: "exclamationmark.bubble")
-                    .foregroundStyle(.orange)
-                Text("\(duplicateClusters.count) duplicate cluster\(duplicateClusters.count == 1 ? "" : "s") detected")
-                    .font(.caption)
-                Spacer()
-                Button("Review") {
-                    activeSheet = .duplicateReview
-                    dupeBannerDismissed = true
-                }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.small)
-                .tint(.orange)
-                Button {
-                    dupeBannerDismissed = true
-                } label: {
-                    Image(systemName: "xmark")
-                        .font(.caption)
-                }
-                .buttonStyle(.borderless)
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 8))
-            .padding(.horizontal, 12)
-            Spacer()
-        }
-    }
-
-    @ViewBuilder
-    private var loadStatusPill: some View {
-        VStack {
-            Spacer()
-            HStack {
-                Text(store.loadStatus)
-                    .font(.caption)
-                    .padding(6)
-                    .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 6))
-                    .padding(8)
-                Spacer()
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var searchOverlay: some View {
-        VStack {
-            Spacer().frame(height: 56)
-            NodeSearchView(store: store) { chosen in
-                if let id = chosen { selectedNodeID = id }
-                showingSearch = false
-            }
-            Spacer()
-        }
-        .transition(.opacity)
-    }
-
-    /// Collapsed top toolbar — high-frequency only. Lens / Add /
-    /// Layout / Fit / Private moved to the canvas radial wheels
-    /// (long-press blank for the global wheel, long-press a node
-    /// for the per-node one). What stays here is navigation + the
-    /// affordances the user wants at the periphery while reading:
-    /// back / forward, mode, atlas, find, inspector.
-    @ViewBuilder
-    private var topBar: some View {
-        HStack(spacing: 8) {
-            HStack(spacing: 2) {
-                Button {
-                    navigateBack()
-                } label: {
-                    Image(systemName: "chevron.backward")
-                }
-                .keyboardShortcut("[", modifiers: .command)
-                .disabled(!navigation.canGoBack)
-                .help("Back (⌘[)")
-
-                Button {
-                    navigateForward()
-                } label: {
-                    Image(systemName: "chevron.forward")
-                }
-                .keyboardShortcut("]", modifiers: .command)
-                .disabled(!navigation.canGoForward)
-                .help("Forward (⌘])")
-            }
-            modePill
-            Spacer()
-            atlasMenu
-
-            Button {
-                showingSearch = true
-            } label: {
-                Label("Find", systemImage: "magnifyingglass")
-                    .labelStyle(.titleAndIcon)
-            }
-            .keyboardShortcut("f", modifiers: .command)
-            .help("Find a node by name (⌘F)")
-
-            Button {
-                inspectorVisible.toggle()
-            } label: {
-                Image(systemName: inspectorVisible
-                      ? "sidebar.right"
-                      : "sidebar.squares.right")
-            }
-            .keyboardShortcut("i", modifiers: .command)
-            .help(inspectorVisible ? "Hide info panel (⌘I)" : "Show info panel (⌘I)")
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
-        .background(.thinMaterial)
-    }
-
-    /// Zero-size keyboard-shortcut catchers for affordances we
-    /// pulled out of the toolbar. SwiftUI binds `.keyboardShortcut`
-    /// to the visible button — so when the buttons left, so did
-    /// the shortcuts. These hidden buttons restore them.
-    @ViewBuilder
-    private var hiddenShortcuts: some View {
-        Group {
-            Button("") {
-                frameAllPulse &+= 1
-            }
-            .keyboardShortcut("0", modifiers: .command)
-
-            Button("") {
-                guard store.canIngest else { return }
-                composerSpawnWorld = nil
-                composerSeedID = selectedNodeID
-                activeSheet = .composer
-            }
-            .keyboardShortcut("n", modifiers: .command)
-
-            Button("") {
-                guard store.canIngest else { return }
-                activeSheet = .capture
-            }
-            .keyboardShortcut("n", modifiers: [.command, .shift])
-        }
-        .opacity(0)
-        .frame(width: 0, height: 0)
-    }
-
-    @ViewBuilder
-    private var atlasMenu: some View {
-        Menu {
-            Button {
-                presentFolderPicker(.openAtlas)
-            } label: {
-                Label("Open Atlas Folder…", systemImage: "folder")
-            }
-            .keyboardShortcut("o", modifiers: .command)
-            Button {
-                activeSheet = .templatePicker
-            } label: {
-                Label("Create New Atlas…", systemImage: "folder.badge.plus")
-            }
-            Button {
-                showingGEXFPicker = true
-            } label: {
-                Label("Import GEXF…", systemImage: "square.and.arrow.down.on.square")
-            }
-            Button {
-                activeSheet = .importRecipe
-            } label: {
-                Label("Import from Recipe…", systemImage: "wand.and.stars")
-            }
-            Divider()
-            Button {
-                activeSheet = .atlasSettings
-            } label: {
-                Label("Atlas Settings…", systemImage: "gearshape")
-            }
-            .disabled(!store.canIngest)
-
-            if !store.library.entries.isEmpty {
-                Divider()
-                Text("Recent")
-                ForEach(store.library.entries) { entry in
-                    Button {
-                        store.openLibraryEntry(entry.id)
-                    } label: {
-                        let suffix: String = {
-                            if let n = entry.nodeCount, let e = entry.edgeCount {
-                                return " — \(n) nodes / \(e) edges"
-                            }
-                            return ""
-                        }()
-                        Label(entry.displayName + suffix,
-                              systemImage: "clock.arrow.circlepath")
-                    }
-                }
-                Divider()
-                Menu("Forget…") {
-                    ForEach(store.library.entries) { entry in
-                        Button("\(entry.displayName)", role: .destructive) {
-                            store.forgetLibraryEntry(entry.id)
-                        }
-                    }
-                }
-            }
-
-            Divider()
-            Button {
-                store.resetToDefaultAtlas()
-            } label: {
-                Label("Use Default (Miyazaki)", systemImage: "sparkles")
-            }
-        } label: {
-            Label("Atlas", systemImage: "folder")
-        }
-        .menuStyle(.borderlessButton)
-        .fixedSize()
-        .help("Open a markdown atlas folder (⌘O)")
-    }
-
-    /// Inspector body, factored out of `body` so SwiftUI's type
-    /// inference doesn't have to chew through the whole graph view
-    /// in one pass.
-    @ViewBuilder
-    private var inspectorContent: some View {
-        if let id = selectedNodeID {
-            NodeInspectorView(
-                nodeID: id,
-                store: store,
-                onSelectNode: { newID in selectedNodeID = newID },
-                pendingIntent: $pendingInspectorIntent
-            )
-        } else {
-            ContentUnavailableView(
-                "No node selected",
-                systemImage: "circle.dashed",
-                description: Text("Tap a node in the graph to inspect it.")
-            )
-        }
-    }
-
-    /// Compose the per-node radial menu. Top level reads as
-    /// **Open · AI ▸ · Edit ▸ · Center · Hops ▸**; AI and Edit are
-    /// nested sub-menus that swap in when tapped. Every terminal
-    /// wedge dismisses the wheel by clearing `radialTarget`.
-    private func radialActions(for node: Node) -> [RadialMenu.Action] {
-        var actions: [RadialMenu.Action] = []
-
-        actions.append(RadialMenu.Action(
-            id: "open",
-            label: "Open",
-            systemImage: "doc.text",
-            tint: .blue
-        ) {
-            selectedNodeID = node.id
-            inspectorVisible = true
-            radialTarget = nil
-        })
-
-        actions.append(RadialMenu.Action(
-            id: "ai",
-            label: "AI",
-            systemImage: "sparkles",
-            tint: .indigo,
-            children: aiSubActions(for: node)
-        ))
-
-        if store.canIngest {
-            actions.append(RadialMenu.Action(
-                id: "edit",
-                label: "Edit",
-                systemImage: "pencil",
-                tint: .orange,
-                children: editSubActions(for: node)
-            ))
-        }
-
-        actions.append(RadialMenu.Action(
-            id: "center",
-            label: "Center",
-            systemImage: "scope",
-            tint: .teal
-        ) {
-            selectedNodeID = node.id
-            radialTarget = nil
-        })
-
-        actions.append(RadialMenu.Action(
-            id: "hops",
-            label: "Hops",
-            systemImage: "dot.radiowaves.left.and.right",
-            tint: .pink,
-            children: hopsSubActions(onPick: { radialTarget = nil })
-        ))
-
-        return actions
-    }
-
-    /// Five AI wedges — each routes through the inspector's
-    /// `NodeIntelligence` instance via `pendingInspectorIntent`.
-    private func aiSubActions(for node: Node) -> [RadialMenu.Action] {
-        let dispatch: (NodeIntelligence.Operation) -> Void = { op in
-            selectedNodeID = node.id
-            inspectorVisible = true
-            pendingInspectorIntent = .aiOperation(op)
-            radialTarget = nil
-        }
-        return [
-            RadialMenu.Action(
-                id: "ai-connect",
-                label: "Connections",
-                systemImage: NodeIntelligence.Operation.suggestConnect.icon,
-                tint: .indigo
-            ) { dispatch(.suggestConnect) },
-            RadialMenu.Action(
-                id: "ai-links",
-                label: "Find links",
-                systemImage: NodeIntelligence.Operation.findLinks.icon,
-                tint: .indigo
-            ) { dispatch(.findLinks) },
-            RadialMenu.Action(
-                id: "ai-era",
-                label: "Suggest era",
-                systemImage: NodeIntelligence.Operation.suggestEra.icon,
-                tint: .indigo
-            ) { dispatch(.suggestEra) },
-            RadialMenu.Action(
-                id: "ai-concepts",
-                label: "Concepts",
-                systemImage: NodeIntelligence.Operation.extractConcepts.icon,
-                tint: .indigo
-            ) { dispatch(.extractConcepts) },
-            RadialMenu.Action(
-                id: "ai-rewrite",
-                label: "Rewrite",
-                systemImage: NodeIntelligence.Operation.rewriteConcise.icon,
-                tint: .indigo
-            ) { dispatch(.rewriteConcise) },
-        ]
-    }
-
-    /// Edit-time affordances. Type / Era live in the header so the
-    /// wedge simply opens the inspector — the user taps the pill
-    /// from there. Body / Merge route through `pendingInspectorIntent`
-    /// to land the inspector in the right state. Delete is direct.
-    private func editSubActions(for node: Node) -> [RadialMenu.Action] {
-        let openInspector: () -> Void = {
-            selectedNodeID = node.id
-            inspectorVisible = true
-            radialTarget = nil
-        }
-        return [
-            RadialMenu.Action(
-                id: "edit-type",
-                label: "Type",
-                systemImage: "tag",
-                tint: .orange
-            ) { openInspector() },
-            RadialMenu.Action(
-                id: "edit-era",
-                label: "Era",
-                systemImage: "calendar.badge.clock",
-                tint: .orange
-            ) { openInspector() },
-            RadialMenu.Action(
-                id: "edit-body",
-                label: "Body",
-                systemImage: "text.alignleft",
-                tint: .orange
-            ) {
-                selectedNodeID = node.id
-                inspectorVisible = true
-                pendingInspectorIntent = .editBody
-                radialTarget = nil
-            },
-            RadialMenu.Action(
-                id: "edit-merge",
-                label: "Merge…",
-                systemImage: "arrow.triangle.merge",
-                tint: .orange
-            ) {
-                selectedNodeID = node.id
-                inspectorVisible = true
-                pendingInspectorIntent = .showMergePicker
-                radialTarget = nil
-            },
-            RadialMenu.Action(
-                id: "edit-delete",
-                label: "Delete",
-                systemImage: "trash",
-                tint: .red
-            ) {
-                _ = store.deleteNode(node.id)
-                if selectedNodeID == node.id { selectedNodeID = nil }
-                radialTarget = nil
-            },
-        ]
-    }
-
-    /// Four hop-distance wedges. The active value shows a ✓ badge
-    /// so the user can read the current state at a glance. The
-    /// `onPick` callback runs *after* the depth is updated, so the
-    /// caller can dismiss whichever radial it lives inside (per-node
-    /// vs global).
-    private func hopsSubActions(onPick: @escaping () -> Void) -> [RadialMenu.Action] {
-        (1...4).map { depth in
-            RadialMenu.Action(
-                id: "hops-\(depth)",
-                label: "\(depth) hop\(depth == 1 ? "" : "s")",
-                systemImage: "\(depth).circle",
-                tint: .pink,
-                isChecked: highlightDepth == depth
-            ) {
-                highlightDepth = depth
-                onPick()
-            }
-        }
-    }
-
-    // MARK: - Global radial (long-press empty canvas)
-
-    /// Top-level wedges for the canvas-level radial.
-    ///   Add ▸  · Layout ▸ · Lens ▸ · View ▸
-    /// All terminal actions clear `globalRadial` to dismiss the wheel.
-    private func globalRadialActions(at target: GlobalRadialTarget) -> [RadialMenu.Action] {
-        [
-            RadialMenu.Action(
-                id: "g-add",
-                label: "Add",
-                systemImage: "plus.circle",
-                tint: .green,
-                children: addSubActions(at: target)
-            ),
-            RadialMenu.Action(
-                id: "g-layout",
-                label: "Layout",
-                systemImage: "point.3.connected.trianglepath.dotted",
-                tint: .blue,
-                children: layoutSubActions()
-            ),
-            RadialMenu.Action(
-                id: "g-lens",
-                label: "Lens",
-                systemImage: "camera.aperture",
-                tint: .indigo,
-                children: lensSubActions()
-            ),
-            RadialMenu.Action(
-                id: "g-view",
-                label: "View",
-                systemImage: "rectangle.on.rectangle",
-                tint: .teal,
-                children: viewSubActions()
-            ),
-        ]
-    }
-
-    private func addSubActions(at target: GlobalRadialTarget) -> [RadialMenu.Action] {
-        [
-            RadialMenu.Action(
-                id: "add-capture",
-                label: "Capture",
-                systemImage: "text.bubble",
-                tint: .green
-            ) {
-                globalRadial = nil
-                guard store.canIngest else { return }
-                activeSheet = .capture
-            },
-            RadialMenu.Action(
-                id: "add-node",
-                label: "New node",
-                systemImage: "circle.dashed.inset.filled",
-                tint: .green
-            ) {
-                globalRadial = nil
-                guard store.canIngest else { return }
-                composerSpawnWorld = target.world
-                composerSeedID = selectedNodeID
-                activeSheet = .composer
-            },
-            RadialMenu.Action(
-                id: "add-recipe",
-                label: "Recipe",
-                systemImage: "wand.and.stars",
-                tint: .green
-            ) {
-                globalRadial = nil
-                activeSheet = .importRecipe
-            },
-        ]
-    }
-
-    /// One wedge per `LayoutAlgorithm`, plus a No-overlap toggle.
-    /// Implemented algorithms commit immediately; unimplemented ones
-    /// surface but are non-committing (no-op tap).
-    private func layoutSubActions() -> [RadialMenu.Action] {
-        var actions: [RadialMenu.Action] = LayoutAlgorithm.allCases.map { algo in
-            RadialMenu.Action(
-                id: "layout-\(algo.rawValue)",
-                label: algo.displayName,
-                systemImage: algo.systemImage,
-                tint: .blue,
-                isChecked: layoutAlgorithm == algo
-            ) {
-                if algo.isImplemented {
-                    layoutRequest = algo
-                }
-                globalRadial = nil
-            }
-        }
-        actions.append(RadialMenu.Action(
-            id: "layout-no-overlap",
-            label: "No overlap",
-            systemImage: "rectangle.dashed",
-            tint: .blue,
-            isChecked: noOverlap
-        ) {
-            noOverlap.toggle()
-            globalRadial = nil
-        })
-        return actions
-    }
-
-    /// Lens wedges — one per declared type plus All / Systems.
-    /// Count badges are baked into the label so the user sees the
-    /// same surface-area at a glance as the old toolbar picker.
-    private func lensSubActions() -> [RadialMenu.Action] {
-        Lens.all(for: store.config).enumerated().map { i, lens in
-            let count: Int? = {
-                guard let filter = lens.makeTypeFilter() else { return nil }
-                return store.graph.nodes.values.filter(filter).count
-            }()
-            let labelText = count.map { "\(lens.label) (\($0))" } ?? lens.label
-            return RadialMenu.Action(
-                id: "lens-\(i)",
-                label: labelText,
-                systemImage: lens.icon,
-                tint: .indigo,
-                isChecked: activeLens == lens
-            ) {
-                activeLens = lens
-                globalRadial = nil
-            }
-        }
-    }
-
-    /// View toggles + the global hop dial (mirror of the per-node
-    /// Hops submenu so the user can set their default highlight
-    /// radius without selecting a node first).
-    private func viewSubActions() -> [RadialMenu.Action] {
-        [
-            RadialMenu.Action(
-                id: "view-inspector",
-                label: "Inspector",
-                systemImage: inspectorVisible ? "sidebar.right" : "sidebar.squares.right",
-                tint: .teal,
-                isChecked: inspectorVisible
-            ) {
-                inspectorVisible.toggle()
-                globalRadial = nil
-            },
-            RadialMenu.Action(
-                id: "view-private",
-                label: "Private",
-                systemImage: showPrivate ? "eye.fill" : "eye.slash",
-                tint: .teal,
-                isChecked: showPrivate
-            ) {
-                showPrivate.toggle()
-                globalRadial = nil
-            },
-            RadialMenu.Action(
-                id: "view-fit",
-                label: "Fit",
-                systemImage: "viewfinder",
-                tint: .teal
-            ) {
-                frameAllPulse &+= 1
-                globalRadial = nil
-            },
-            RadialMenu.Action(
-                id: "view-hops",
-                label: "Hops",
-                systemImage: "dot.radiowaves.left.and.right",
-                tint: .pink,
-                children: hopsSubActions(onPick: { globalRadial = nil })
-            ),
-        ]
-    }
 
     /// Composed visible-node filter:
     ///   - Lens type filter, if any
     ///   - Private nodes (front-matter `private: true`) hidden unless
     ///     the eye-toggle is on.
-    private var visibleFilter: ((Node) -> Bool)? {
+    var visibleFilter: ((Node) -> Bool)? {
         let typeFilter = activeLens.makeTypeFilter()
         let showPrivateNow = showPrivate
         // Always return a closure so the canvas can also use it for
