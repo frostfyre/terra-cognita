@@ -124,14 +124,20 @@ struct AtlasGenesisChat: View {
                     .foregroundStyle(.tint)
                 Text("Proposed constellation")
                     .font(.headline)
-                Text("\(c.nodes.count)")
+                Text("\(c.acceptedCount) / \(c.nodes.count)")
                     .font(.caption2.monospacedDigit())
                     .padding(.horizontal, 5).padding(.vertical, 1)
                     .background(.secondary.opacity(0.15), in: Capsule())
                     .foregroundStyle(.secondary)
+                Spacer()
+                Text("Tap to toggle")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
             }
             ForEach(c.nodes) { node in
                 proposedNodeRow(node)
+                    .contentShape(Rectangle())
+                    .onTapGesture { toggleAccepted(node.id) }
             }
         }
         .padding(10)
@@ -147,10 +153,12 @@ struct AtlasGenesisChat: View {
     private func proposedNodeRow(_ node: Constellation.NewNode) -> some View {
         let tint = store.config.typeSpec(named: node.type)?.color ?? .secondary
         HStack(alignment: .top, spacing: 8) {
-            Circle()
-                .fill(tint)
-                .frame(width: 8, height: 8)
-                .padding(.top, 4)
+            Image(systemName: node.accepted
+                  ? "checkmark.circle.fill"
+                  : "circle")
+                .foregroundStyle(node.accepted ? tint : .secondary)
+                .font(.title3)
+                .padding(.top, 1)
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
                     Text(node.label).font(.callout.weight(.medium))
@@ -181,7 +189,19 @@ struct AtlasGenesisChat: View {
             }
             Spacer(minLength: 0)
         }
-        .padding(.vertical, 2)
+        .padding(.vertical, 4)
+        .opacity(node.accepted ? 1.0 : 0.45)
+    }
+
+    /// Flip a single proposed node's `accepted` flag. `applyConstellation`
+    /// only commits accepted nodes, so this is what the user uses to
+    /// shape the constellation before atlas creation.
+    private func toggleAccepted(_ id: UUID) {
+        guard var c = constellation,
+              let idx = c.nodes.firstIndex(where: { $0.id == id })
+        else { return }
+        c.nodes[idx].accepted.toggle()
+        constellation = c
     }
 
     @ViewBuilder
@@ -257,9 +277,18 @@ struct AtlasGenesisChat: View {
         // an isolated extraction. Phase B replaces this string-
         // smashed context with proper session memory.
         let composed = composedPrompt(latest: prompt)
+        // Critical: the user is building a *new* atlas, not adding
+        // to the current one. Passing `store.graph` would let the
+        // AI propose `linksToExisting` against labels from the
+        // currently-loaded atlas — those targets won't exist in
+        // the freshly-created atlas and the user just sees
+        // confusing proposals drawn from an unrelated dataset.
+        // Hand the model an empty graph so the constellation is
+        // self-contained and references only its own new nodes.
+        let emptyGraph = Graph(nodes: [:], edges: [])
         guard let result = await intel.runCapture(
             text: composed,
-            graph: store.graph
+            graph: emptyGraph
         ) else {
             let note: String = {
                 switch intel.activity {

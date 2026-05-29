@@ -57,6 +57,13 @@ extension GraphView {
                 },
                 bridgeNodeIDs: bridgeNodeIDs
             )
+            // Fade the current atlas out while the New Atlas sheet
+            // is up so the user is building a fresh map against the
+            // substrate, not visually mixing it with the loaded
+            // graph behind. Returns smoothly if they cancel.
+            .opacity(activeSheet == .templatePicker ? 0.0 : 1.0)
+            .animation(.easeInOut(duration: 0.35),
+                       value: activeSheet == .templatePicker)
 
             // Both radials fade + shrink back toward their anchor on
             // dismiss. The bloom-out is internal to `RadialMenu`;
