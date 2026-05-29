@@ -8,22 +8,22 @@ import SwiftUI
 /// the host (`GraphView`) then opens the folder picker so the user
 /// can choose where the new atlas lives on disk.
 struct TemplatePickerSheet: View {
+    @ObservedObject var store: GraphStore
     @Binding var isPresented: Bool
-    /// Fires with the chosen template *and* the optional free-form
-    /// description the user typed. When the description is non-empty,
-    /// the host (`GraphView`) runs it through the AI capture pipeline
-    /// after the atlas is created and loaded, seeding the new atlas
-    /// with a starter constellation. Empty description ⇒ classic
-    /// "create an empty atlas" behavior.
-    let onPick: (Template, String) -> Void
+    /// Fires with the chosen template and the optional starter
+    /// constellation the user grew in the Genesis Chat. When the
+    /// constellation has nodes, the host (`GraphView`) commits it
+    /// via `store.applyConstellation` after the empty atlas finishes
+    /// loading. `nil` ⇒ classic "create an empty atlas" behavior.
+    let onPick: (Template, Constellation?) -> Void
 
     /// Track the highlighted template inside the picker so the user
     /// has visual confirmation before they tap Continue.
     @State private var selectedID: String = Template.defaultTemplate.id
-    /// Optional free-form description of the atlas. If non-empty, the
-    /// host runs it through the AI capture pipeline after creation to
-    /// seed the new atlas with a starter constellation.
-    @State private var description: String = ""
+    /// Working constellation built up across genesis-chat turns.
+    /// Owned by the picker (so it survives chat updates) and handed
+    /// to the host on Continue.
+    @State private var workingConstellation: Constellation?
 
     var body: some View {
         NavigationStack {
@@ -32,7 +32,7 @@ struct TemplatePickerSheet: View {
                     ForEach(Mode.allCases) { mode in
                         modeSection(mode)
                     }
-                    descriptionSection
+                    genesisSection
                 }
                 .padding()
             }
@@ -47,7 +47,7 @@ struct TemplatePickerSheet: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Continue") {
                         if let template = Template.byID(selectedID) {
-                            onPick(template, description)
+                            onPick(template, workingConstellation)
                         }
                     }
                     .disabled(Template.byID(selectedID) == nil)
@@ -61,38 +61,11 @@ struct TemplatePickerSheet: View {
     }
 
     @ViewBuilder
-    private var descriptionSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 6) {
-                Image(systemName: "sparkles")
-                    .foregroundStyle(.tint)
-                Text("Describe what this atlas is about (optional)")
-                    .font(.headline)
-            }
-            Text("If you write a paragraph, the AI will extract a starter constellation of nodes and links after the atlas is created. Leave blank for an empty atlas.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            TextEditor(text: $description)
-                .font(.body)
-                .frame(minHeight: 100)
-                .padding(8)
-                .background(.secondary.opacity(0.06),
-                            in: RoundedRectangle(cornerRadius: 8))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 8)
-                        .stroke(.secondary.opacity(0.2), lineWidth: 0.5)
-                )
-                .overlay(alignment: .topLeading) {
-                    if description.isEmpty {
-                        Text("e.g., \"The heritage of Studio Ghibli — directors, collaborators, films, and the methods that shaped them…\"")
-                            .font(.body)
-                            .foregroundStyle(.secondary)
-                            .padding(.horizontal, 13)
-                            .padding(.top, 16)
-                            .allowsHitTesting(false)
-                    }
-                }
-        }
+    private var genesisSection: some View {
+        AtlasGenesisChat(
+            store: store,
+            constellation: $workingConstellation
+        )
         .padding(.top, 8)
     }
 

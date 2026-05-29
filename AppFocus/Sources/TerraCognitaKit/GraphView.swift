@@ -91,17 +91,13 @@ public struct GraphView: View {
     /// folder-picker round-trip and consumed by `handleFolderPick`.
     @State var pendingTemplate: Template? = nil
 
-    /// Optional description typed in the template picker; carried
-    /// across the folder-picker round-trip AND the post-creation
-    /// atlas load. When non-empty and non-nil, an `.onChange` on
-    /// `store.loadCompletedTick` runs it through `intel.runCapture`
-    /// to seed the freshly-created atlas with a starter constellation.
-    /// Cleared once consumed (success or failure) so reloads of the
-    /// same atlas don't keep re-capturing the same text.
-    @State var pendingSeedDescription: String? = nil
-    /// Whether a seed capture is in flight. Drives the status pill
-    /// while the AI runs against the description.
-    @State var seedCaptureRunning: Bool = false
+    /// Constellation built in the Genesis Chat inside
+    /// `TemplatePickerSheet`. Survives the folder-picker round-trip
+    /// AND the post-creation atlas load — an `.onChange` on
+    /// `store.writableAtlasURL` commits it via `applyConstellation`
+    /// once the freshly-created atlas finishes loading. Cleared
+    /// after commit so reloads of the same atlas don't re-apply.
+    @State var pendingSeedConstellation: Constellation? = nil
 
     /// Bridge nodes for the Systems lens — non-empty only when that
     /// lens is active. Recomputed when the graph mutates or the
@@ -202,38 +198,6 @@ public struct GraphView: View {
         _store = StateObject(wrappedValue: GraphStore())
     }
 
-    /// Seed a freshly-created atlas with a constellation extracted
-    /// from the description the user typed in the template picker.
-    /// This is the v1 floor — single-shot `runCapture` returning up
-    /// to 8 nodes. We're going to evolve this into a multi-turn
-    /// conversational flow (see the discussion thread); for now it
-    /// at least gives the user something living instead of an empty
-    /// graph on the first launch.
-    private func runSeedCapture(description: String) async {
-        seedCaptureRunning = true
-        defer { seedCaptureRunning = false }
-
-        let intel = NodeIntelligence()
-        guard intel.isAvailable else {
-            store.loadStatus = "AI unavailable — atlas created empty."
-            return
-        }
-
-        store.loadStatus = "Seeding atlas from your description…"
-        guard let constellation = await intel.runCapture(
-            text: description,
-            graph: store.graph
-        ) else {
-            store.loadStatus = "Couldn't extract a constellation."
-            return
-        }
-
-        let firstID = store.applyConstellation(constellation)
-        store.loadStatus =
-            "Seeded \(constellation.acceptedCount) nodes from your description."
-        if let firstID { selectedNodeID = firstID }
-    }
-
     public var body: some View {
         canvasStack
         .onAppear { store.loadDefaultAtlas() }
@@ -263,14 +227,16 @@ public struct GraphView: View {
             // `loadCompletedTick` trigger above doesn't fire for
             // them. `writableAtlasURL` is set at the tail of every
             // successful `load(from:)`, so it's the reliable
-            // post-load signal we need to kick off the seed
-            // capture against any description the user typed in
-            // the template picker.
+            // post-load signal we need to commit the genesis
+            // constellation the user built in `TemplatePickerSheet`.
             guard newURL != nil,
-                  let description = pendingSeedDescription,
+                  let constellation = pendingSeedConstellation,
                   store.canIngest else { return }
-            pendingSeedDescription = nil
-            Task { await runSeedCapture(description: description) }
+            pendingSeedConstellation = nil
+            let firstID = store.applyConstellation(constellation)
+            store.loadStatus =
+                "Seeded \(constellation.acceptedCount) nodes from your genesis."
+            if let firstID { selectedNodeID = firstID }
         }
         .onChange(of: store.layoutSettleTick) { _, _ in
             guard awaitingLayoutSettle else { return }
@@ -360,12 +326,15 @@ public struct GraphView: View {
         }
         .sheet(isPresented: sheetBinding(for: .templatePicker)) {
             TemplatePickerSheet(
+                store: store,
                 isPresented: sheetBinding(for: .templatePicker),
-                onPick: { template, description in
+                onPick: { template, constellation in
                     pendingTemplate = template
-                    let trimmed = description
-                        .trimmingCharacters(in: .whitespacesAndNewlines)
-                    pendingSeedDescription = trimmed.isEmpty ? nil : trimmed
+                    if let c = constellation, !c.nodes.isEmpty {
+                        pendingSeedConstellation = c
+                    } else {
+                        pendingSeedConstellation = nil
+                    }
                     activeSheet = nil
                     // Defer the folder picker one tick so the sheet
                     // dismiss animation isn't fighting the picker
