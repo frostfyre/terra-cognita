@@ -229,13 +229,24 @@ public struct GraphView: View {
             // successful `load(from:)`, so it's the reliable
             // post-load signal we need to commit the genesis
             // constellation the user built in `TemplatePickerSheet`.
-            guard newURL != nil,
+            guard let url = newURL,
                   let constellation = pendingSeedConstellation,
                   store.canIngest else { return }
+            // Hard safety: only apply to a FRESH atlas. If
+            // writableAtlasURL changed but the atlas isn't empty,
+            // we're looking at a previously-populated vault (the
+            // folder picker may have silently re-loaded the original
+            // atlas, or the user picked an existing populated
+            // folder). Don't dump the genesis on top.
+            guard store.graph.nodes.isEmpty else {
+                pendingSeedConstellation = nil
+                store.loadStatus = "Seed skipped — \(url.lastPathComponent) already has content."
+                return
+            }
             pendingSeedConstellation = nil
             let firstID = store.applyConstellation(constellation)
             store.loadStatus =
-                "Seeded \(constellation.acceptedCount) nodes from your genesis."
+                "Seeded \(constellation.acceptedCount) nodes into \(url.lastPathComponent)."
             if let firstID { selectedNodeID = firstID }
         }
         .onChange(of: store.layoutSettleTick) { _, _ in
