@@ -412,6 +412,14 @@ struct GraphCanvasView: View {
                         // node.
                         let useHero = scale > heroImageZoomThreshold
                             && heroImages[node.id] != nil
+                        // Apply the 3D-ish radial highlight only on
+                        // foreground (in-highlight) flat fills.
+                        // Dimmed background nodes stay flat — they're
+                        // meant to recede, and stacking a white-tinted
+                        // overlay on top of a 10% opacity fill would
+                        // just wash them out. Hero images own their
+                        // own treatment so we skip them too.
+                        let lightFill = inHighlight && !useHero
                         let drawNodeFill: (inout GraphicsContext) -> Void = { ctx in
                             if useHero, let img = heroImages[node.id] {
                                 ctx.clipToLayer { layerCtx in
@@ -421,6 +429,9 @@ struct GraphCanvasView: View {
                                 ctx.draw(img, in: rect)
                             } else {
                                 ctx.fill(Path(ellipseIn: rect), with: .color(fill))
+                                if lightFill {
+                                    applyNodeHighlight(in: &ctx, rect: rect)
+                                }
                             }
                         }
 
@@ -521,6 +532,7 @@ struct GraphCanvasView: View {
                                 y: 4
                             ))
                             ctx.fill(Path(ellipseIn: rect), with: .color(fill))
+                            applyNodeHighlight(in: &ctx, rect: rect)
                         }
 
                         if pinnedPositions[node.id] != nil {
@@ -595,6 +607,7 @@ struct GraphCanvasView: View {
                                 y: 5
                             ))
                             ctx.fill(Path(ellipseIn: rect), with: .color(fill))
+                            applyNodeHighlight(in: &ctx, rect: rect)
                         }
 
                         // --- Orbital sparks --------------------------
@@ -1002,6 +1015,35 @@ struct GraphCanvasView: View {
     /// Draw a resolved text label inside a capsule pill so titles read
     /// over the gradient and over other nodes. Pill + text share a single
     /// shadow layer for a unified "card lifted off the canvas" feel.
+    /// Paint a soft "lit from upper-left" radial highlight on top of
+    /// a node's flat fill so the disc reads as a gently-3D object
+    /// rather than a flat token. Single light source, applied
+    /// uniformly across the canvas — gives the field a coherent
+    /// "topographical map under one overhead light" feel.
+    ///
+    /// Applied only to foreground (in-highlight, ambient, selected)
+    /// fills; dimmed background nodes stay flat per the design
+    /// agreement, and hero-image discs own their own treatment.
+    /// Costs one extra `fill` per affected node per frame on top of
+    /// the base color fill — fine for typical atlases (~100 visible
+    /// foreground nodes) but worth profiling on 500+.
+    private func applyNodeHighlight(in context: inout GraphicsContext,
+                                    rect: CGRect) {
+        let inset = rect.width * 0.18
+        let center = CGPoint(x: rect.midX - inset,
+                             y: rect.midY - inset)
+        let shading = GraphicsContext.Shading.radialGradient(
+            Gradient(stops: [
+                .init(color: .white.opacity(0.28), location: 0),
+                .init(color: .white.opacity(0),    location: 0.78),
+            ]),
+            center: center,
+            startRadius: 0,
+            endRadius: rect.width * 0.55
+        )
+        context.fill(Path(ellipseIn: rect), with: shading)
+    }
+
     private func drawLabelPill(
         in context: GraphicsContext,
         text resolved: GraphicsContext.ResolvedText,
