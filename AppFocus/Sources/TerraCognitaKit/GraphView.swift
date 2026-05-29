@@ -336,11 +336,14 @@ public struct GraphView: View {
                         pendingSeedConstellation = nil
                     }
                     activeSheet = nil
-                    // Defer the folder picker one tick so the sheet
-                    // dismiss animation isn't fighting the picker
-                    // present animation — same Menu/sheet race we
-                    // handled in `presentFolderPicker`.
-                    DispatchQueue.main.async {
+                    // Wait for the template picker's dismiss animation
+                    // to finish (~300 ms on iOS) before mounting the
+                    // folder picker — a single-tick `.main.async`
+                    // fires while the first sheet is still on screen,
+                    // and iOS silently drops the second presentation.
+                    // 450 ms covers the animation with margin so the
+                    // folder picker actually appears.
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
                         presentFolderPicker(.createNewAtlas)
                     }
                 }
