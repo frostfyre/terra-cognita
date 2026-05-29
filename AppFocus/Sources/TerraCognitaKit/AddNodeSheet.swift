@@ -170,6 +170,12 @@ struct AddNodeSheet: View {
             Spacer()
         }
         .padding(.bottom, 8)
+        // Explicit width cap so any inner control with a large
+        // idealWidth (segmented Picker with many options, very long
+        // label text, etc.) can't drag the leading-aligned VStack
+        // past the iPhone's portrait width and clip the children at
+        // both edges.
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     @ViewBuilder
@@ -227,7 +233,18 @@ struct AddNodeSheet: View {
                               systemImage: t.icon).tag(t.name)
                     }
                 }
+                // Segmented packs many options into one row — its
+                // idealWidth scales with the number of types and on
+                // iPhone (≤ ~430pt portrait) easily exceeds the sheet
+                // width, dragging the leading-aligned content past
+                // both edges. .menu collapses to a single button on
+                // iOS while keeping the segmented affordance on the
+                // roomier macOS/iPad surfaces.
+                #if os(iOS)
+                .pickerStyle(.menu)
+                #else
                 .pickerStyle(.segmented)
+                #endif
 
                 Picker("Era", selection: $era) {
                     Text("—").tag("")

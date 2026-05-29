@@ -75,6 +75,10 @@ struct AugmentNodeSheet: View {
                     }
                 }
                 .padding(.vertical, 8)
+                // Width cap mirrors AddNodeSheet — keeps the leading-
+                // aligned VStack from being dragged past the iPhone's
+                // portrait width by any oversized inner control.
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
             .navigationTitle("Augment \"\(node.label)\"")
             #if os(iOS)
