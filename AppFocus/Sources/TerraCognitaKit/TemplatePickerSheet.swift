@@ -29,10 +29,15 @@ struct TemplatePickerSheet: View {
         NavigationStack {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 18) {
+                    // Genesis chat comes first — the AI-driven "tell
+                    // me about the atlas" entry is the primary path
+                    // and should be what the user lands on. Template
+                    // selection follows as a structural choice for
+                    // the empty-atlas fallback.
+                    genesisSection
                     ForEach(Mode.allCases) { mode in
                         modeSection(mode)
                     }
-                    genesisSection
                 }
                 .padding()
             }
