@@ -56,6 +56,13 @@ struct AtlasGenesisChat: View {
             }
             inputRow
         }
+        // `.submitScope()` keeps Return inside this chat. Without it,
+        // hitting Return in the input also fires the parent sheet's
+        // `.confirmationAction` toolbar button (Continue), so the
+        // user's "send a message" gesture would *also* commit the
+        // atlas — sheet dismisses, folder picker opens, user is back
+        // at the canvas in one keystroke.
+        .submitScope()
         .task { await speech.prepare() }
         .onChange(of: speech.transcript) { _, newValue in
             if speech.isRecording {
@@ -222,7 +229,13 @@ struct AtlasGenesisChat: View {
                 .textFieldStyle(.roundedBorder)
                 .lineLimit(1...4)
                 .focused($inputFocused)
-                .onSubmit(send)
+                // No .onSubmit — Return inserts a newline (standard
+                // multi-line behavior). The explicit Send button (or
+                // ⌘↩) is the only submit path, so Return can't
+                // accidentally fire the parent's Continue toolbar
+                // action even if `.submitScope()` above ever fails
+                // to catch it on some platform.
+                .submitLabel(.return)
             Button {
                 send()
             } label: {
