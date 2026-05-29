@@ -136,6 +136,11 @@ ios_target.build_configurations.each do |config|
   # the same scene the app is about to show. The color lives in
   # Apps/TerraCognita-iOS/Assets.xcassets/LaunchBackground.colorset.
   s['INFOPLIST_KEY_UILaunchScreen_BackgroundColor'] = 'LaunchBackground'
+  # Gold core + six orbital sparks centered on the launch surface so
+  # the cold-start reads as "Terra Cognita is launching" rather than a
+  # flat-color void. Asset at
+  # Apps/TerraCognita-iOS/Assets.xcassets/LaunchLogo.imageset.
+  s['INFOPLIST_KEY_UILaunchScreen_Image'] = 'LaunchLogo'
   s['INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone'] =
     'UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight'
   s['INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad'] =
