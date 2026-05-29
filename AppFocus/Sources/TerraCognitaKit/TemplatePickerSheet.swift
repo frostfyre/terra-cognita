@@ -58,6 +58,11 @@ struct TemplatePickerSheet: View {
         .frame(minWidth: 540, idealWidth: 640,
                minHeight: 480, idealHeight: 620)
         #endif
+        // The Genesis chat starts an async AI task on Send. Disabling
+        // interactive dismissal prevents the iOS swipe-to-close from
+        // tearing the sheet (and its in-flight task) down mid-extraction.
+        // Cancel still works.
+        .interactiveDismissDisabled(true)
     }
 
     @ViewBuilder

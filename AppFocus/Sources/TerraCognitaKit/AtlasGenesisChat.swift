@@ -35,18 +35,26 @@ struct AtlasGenesisChat: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             header
+            // Show availability up front (above the chat history) so
+            // the user knows whether the AI is ready to extract.
+            // Previously this only rendered below the input — easy
+            // to miss when "got nothing" landed.
+            if let availability = intel.availabilityNote, !intel.isAvailable {
+                Label(availability, systemImage: "info.circle")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+                    .padding(8)
+                    .background(.orange.opacity(0.08),
+                                in: RoundedRectangle(cornerRadius: 6))
+            }
             if !messages.isEmpty {
                 transcript
             }
             if let c = constellation, !c.nodes.isEmpty {
                 constellationPreview(c)
+                    .id("constellation")
             }
             inputRow
-            if let availability = intel.availabilityNote, !intel.isAvailable {
-                Label(availability, systemImage: "info.circle")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
         }
         .task { await speech.prepare() }
         .onChange(of: speech.transcript) { _, newValue in
@@ -260,7 +268,14 @@ struct AtlasGenesisChat: View {
         let userMessage = ChatMessage(role: .user, content: text)
         messages.append(userMessage)
         input = ""
-        Task { await runTurn(prompt: text) }
+        // Explicit @MainActor Task — runCapture / state writes /
+        // binding writes all need to stay on the main actor. Without
+        // it the inherited isolation can cross actor boundaries and
+        // the post-extraction state writes either get lost or land
+        // out of order with SwiftUI's render cycle.
+        Task { @MainActor in
+            await runTurn(prompt: text)
+        }
     }
 
     /// One AI turn. Phase A: each turn runs a fresh `runCapture` —
