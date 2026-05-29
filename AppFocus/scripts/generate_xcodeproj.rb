@@ -29,13 +29,18 @@ PROJECT_PATH = File.join(ROOT, 'TerraCognita.xcodeproj')
 #                           Required for installs on real iOS devices,
 #                           TestFlight uploads, and signed Mac builds.
 #   MARKETING_VERSION     — User-facing version (e.g. "1.0").
-#   CURRENT_PROJECT_VERSION — Build number; bump each TestFlight upload.
+#   CURRENT_PROJECT_VERSION — Build number. Defaults to a YYMMDDHHMM
+#                             timestamp so every regen is automatically
+#                             greater than the last — TestFlight rejects
+#                             a build whose CFBundleVersion isn't strictly
+#                             higher than the previous upload. Override
+#                             only if you need a specific integer.
 #
 # Without DEVELOPMENT_TEAM, the project falls back to its dev-mode
 # ad-hoc Mac signing + simulator-only iOS signing.
 TEAM_ID              = ENV['DEVELOPMENT_TEAM']
 MARKETING_VERSION    = ENV['MARKETING_VERSION'] || '1.0'
-CURRENT_BUILD_NUMBER = ENV['CURRENT_PROJECT_VERSION'] || '1'
+CURRENT_BUILD_NUMBER = ENV['CURRENT_PROJECT_VERSION'] || Time.now.strftime('%y%m%d%H%M')
 
 # Wipe any previous project so generation is idempotent.
 FileUtils.rm_rf(PROJECT_PATH)
@@ -67,7 +72,8 @@ def shared_build_settings(target, deployment_setting_key, deployment_value)
     s['INFOPLIST_KEY_CFBundleDisplayName'] = 'Terra Cognita'
     s['CODE_SIGN_STYLE'] = 'Automatic'
     s['ASSETCATALOG_COMPILER_GENERATE_ASSET_SYMBOLS'] = 'NO'
-    # Version + build — bump CURRENT_PROJECT_VERSION each TestFlight upload.
+    # Version + build — CURRENT_PROJECT_VERSION defaults to a timestamp
+    # so each regen is monotonically greater than the previous upload.
     s['MARKETING_VERSION'] = MARKETING_VERSION
     s['CURRENT_PROJECT_VERSION'] = CURRENT_BUILD_NUMBER
     # Tell TestFlight we don't ship custom encryption (URLSession's
