@@ -335,7 +335,22 @@ public struct GraphView: View {
             ImportRecipeSheet(store: store,
                               isPresented: sheetBinding(for: .importRecipe))
         }
-        .sheet(isPresented: sheetBinding(for: .templatePicker)) {
+        .sheet(
+            isPresented: sheetBinding(for: .templatePicker),
+            onDismiss: {
+                // SwiftUI fires onDismiss AFTER the sheet has fully
+                // unmounted — that's the only reliably-clean moment
+                // to mount the next sheet (folder picker) on iOS.
+                // Earlier we used DispatchQueue.main.asyncAfter with a
+                // hand-tuned delay; it was unreliable across devices.
+                // The Continue button sets pendingTemplate, so its
+                // non-nil-ness is the signal that the user committed
+                // (vs. Cancel, which leaves it nil).
+                if pendingTemplate != nil {
+                    presentFolderPicker(.createNewAtlas)
+                }
+            }
+        ) {
             TemplatePickerSheet(
                 store: store,
                 isPresented: sheetBinding(for: .templatePicker),
@@ -346,17 +361,7 @@ public struct GraphView: View {
                     } else {
                         pendingSeedConstellation = nil
                     }
-                    activeSheet = nil
-                    // Wait for the template picker's dismiss animation
-                    // to finish (~300 ms on iOS) before mounting the
-                    // folder picker — a single-tick `.main.async`
-                    // fires while the first sheet is still on screen,
-                    // and iOS silently drops the second presentation.
-                    // 450 ms covers the animation with margin so the
-                    // folder picker actually appears.
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
-                        presentFolderPicker(.createNewAtlas)
-                    }
+                    activeSheet = nil  // triggers onDismiss above
                 }
             )
         }
