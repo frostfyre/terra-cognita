@@ -418,7 +418,12 @@ struct GraphCanvasView: View {
                         // meant to recede, and stacking a white-tinted
                         // overlay on top of a 10% opacity fill would
                         // just wash them out. Hero images own their
-                        // own treatment so we skip them too.
+                        // own treatment so we skip them too. The
+                        // highlight is drawn AFTER the shadowed base
+                        // fill (outside the drawLayer + shadow filter)
+                        // so the white-tinted gradient doesn't pick
+                        // up its own dark shadow that visually cancels
+                        // the lighten effect.
                         let lightFill = inHighlight && !useHero
                         let drawNodeFill: (inout GraphicsContext) -> Void = { ctx in
                             if useHero, let img = heroImages[node.id] {
@@ -429,9 +434,6 @@ struct GraphCanvasView: View {
                                 ctx.draw(img, in: rect)
                             } else {
                                 ctx.fill(Path(ellipseIn: rect), with: .color(fill))
-                                if lightFill {
-                                    applyNodeHighlight(in: &ctx, rect: rect)
-                                }
                             }
                         }
 
@@ -457,6 +459,9 @@ struct GraphCanvasView: View {
                         } else {
                             var inner = context
                             drawNodeFill(&inner)
+                        }
+                        if lightFill {
+                            applyNodeHighlight(in: &context, rect: rect)
                         }
 
                         // Kick off a hero-image load if we haven't yet
@@ -532,8 +537,8 @@ struct GraphCanvasView: View {
                                 y: 4
                             ))
                             ctx.fill(Path(ellipseIn: rect), with: .color(fill))
-                            applyNodeHighlight(in: &ctx, rect: rect)
                         }
+                        applyNodeHighlight(in: &context, rect: rect)
 
                         if pinnedPositions[node.id] != nil {
                             context.stroke(Path(ellipseIn: rect),
@@ -607,8 +612,8 @@ struct GraphCanvasView: View {
                                 y: 5
                             ))
                             ctx.fill(Path(ellipseIn: rect), with: .color(fill))
-                            applyNodeHighlight(in: &ctx, rect: rect)
                         }
+                        applyNodeHighlight(in: &context, rect: rect)
 
                         // --- Orbital sparks --------------------------
                         // Six small specks orbit the node at ~9 sec/turn,
@@ -1029,17 +1034,24 @@ struct GraphCanvasView: View {
     /// foreground nodes) but worth profiling on 500+.
     private func applyNodeHighlight(in context: inout GraphicsContext,
                                     rect: CGRect) {
-        let inset = rect.width * 0.18
+        // Bright spot offset toward upper-left for the lit-from-above
+        // read. Two stops layered: a tight bright highlight near the
+        // top-left and a softer secondary blooming out to the disc's
+        // edge. Tuned a touch hotter than the initial pass — the
+        // original 0.28 / 0.55 endRadius reads as essentially flat
+        // on saturated node colors.
+        let inset = rect.width * 0.22
         let center = CGPoint(x: rect.midX - inset,
                              y: rect.midY - inset)
         let shading = GraphicsContext.Shading.radialGradient(
             Gradient(stops: [
-                .init(color: .white.opacity(0.28), location: 0),
-                .init(color: .white.opacity(0),    location: 0.78),
+                .init(color: .white.opacity(0.55), location: 0.0),
+                .init(color: .white.opacity(0.18), location: 0.35),
+                .init(color: .white.opacity(0.0),  location: 0.85),
             ]),
             center: center,
             startRadius: 0,
-            endRadius: rect.width * 0.55
+            endRadius: rect.width * 0.7
         )
         context.fill(Path(ellipseIn: rect), with: shading)
     }

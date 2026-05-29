@@ -532,6 +532,19 @@ extension NodeIntelligence {
         }
         let candidateList = candidates.joined(separator: "\n- ")
 
+        // When the graph is empty (e.g. atlas-genesis chat building a
+        // brand-new atlas), don't list "Existing graph labels:" with
+        // an empty bullet — the model gets confused by the dangling
+        // header and tends to return zero nodes. Rewrite the prompt
+        // to reflect "this is a fresh atlas, propose freely."
+        let isFresh = candidates.isEmpty
+        let externalLinkRule = isFresh
+            ? "This is a fresh atlas with no existing nodes — leave `linksToExisting` empty for every node."
+            : "ONLY use labels from the existing-labels list below for `linksToExisting`."
+        let existingLabelsBlock = isFresh
+            ? ""
+            : "\n\nExisting graph labels:\n- \(candidateList)"
+
         let prompt = """
         Extract a graph of nodes from this captured note. Be assertive:
         each distinct person, work, institution, concept, or event in
@@ -544,16 +557,12 @@ extension NodeIntelligence {
             that the new node connects to thematically. Use semantic
             affinity, not just literal mentions.
 
-        ONLY use labels from the existing-labels list below for
-        `linksToExisting`.
+        \(externalLinkRule)
 
         Captured note:
         \"\"\"
         \(text)
-        \"\"\"
-
-        Existing graph labels:
-        - \(candidateList)
+        \"\"\"\(existingLabelsBlock)
         """
         let response = try await session.respond(to: prompt, generating: GenConstellation.self)
 
