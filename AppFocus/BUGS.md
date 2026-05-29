@@ -1,5 +1,20 @@
 # Known Issues
 
+## Fit view still feels off
+**Status:** open
+**Reported:** 2026-05-28
+
+`frameAllPulse` / `frameHighlightedSubnet` / `frameAllVisible` —
+the auto-fit triggered from ⌘0 + post-load + post-selection feels
+buggy on real graphs. Sometimes overshoots, sometimes lands with
+nodes clipped at the edge, sometimes the camera centers on a
+phantom point off to the side. Likely candidates: the depth-
+parallax factor isn't being undone in the bounds calculation, or
+the bounds don't include the rendered halo / label-pill extent so
+the visible content extends beyond what fit() considers "the
+nodes." Worth a focused pass — instrument the fit's computed
+bbox against the actually-rendered extent and compare.
+
 ## iOS: heritage folder loads as 0 nodes / 0 edges
 **Status:** instrumented, awaiting on-device repro
 **Reported:** 2026-05-27
