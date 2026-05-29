@@ -38,7 +38,7 @@ path now skips the second sheet entirely.
 
 ---
 
-## Phase B — Persistent session, multi-turn refinement *(next)*
+## Phase B — Persistent session, multi-turn refinement *(landed)*
 
 Goal: each subsequent message in the chat *extends* the existing
 constellation rather than replacing it. The chat should feel
@@ -76,7 +76,7 @@ missing from the post-war period?", "drop X, keep Y").
 
 ---
 
-## Phase C — Per-node deep expansion *(tomorrow)*
+## Phase C — Per-node deep expansion *(landed)*
 
 The single most impactful phase for atlas density. After Phase B,
 the user can grow the constellation conversationally; Phase C lets
@@ -147,7 +147,7 @@ atlas density.
 
 ---
 
-## Phase D — Wikipedia enrichment per accepted node
+## Phase D — Wikipedia enrichment per accepted node *(landed for deepen + extend paths)*
 
 Already half-built via `WebEnrichment` + the existing Capture flow.
 Genesis just needs to call it.

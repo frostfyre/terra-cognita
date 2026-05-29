@@ -115,12 +115,22 @@ struct AtlasGenesisChat: View {
             Spacer()
             if isThinking {
                 ProgressView().controlSize(.small)
-                Text("Extracting…")
+                Text("Thinking…")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+            } else if !messages.isEmpty || constellation != nil {
+                Button {
+                    resetChat()
+                } label: {
+                    Label("Reset", systemImage: "arrow.counterclockwise")
+                        .font(.caption)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .help("Clear the chat, constellation, and AI session — start over.")
             }
         }
-        Text("Describe what this atlas is about. The AI will propose a starter constellation you can grow before the atlas is even created.")
+        Text("Describe what this atlas is about. Send → the AI proposes a starter constellation. Each follow-up extends in place — the AI remembers your prior turns.")
             .font(.caption)
             .foregroundStyle(.secondary)
     }
@@ -404,32 +414,24 @@ struct AtlasGenesisChat: View {
         }
     }
 
-    /// One AI turn. Phase A: each turn runs a fresh `runCapture` —
-    /// proposals from this turn *replace* the working constellation
-    /// rather than extending it. Phase B will keep a `LanguageModelSession`
-    /// alive and extend in-place; until then, simpler semantics keep
-    /// the user from being surprised by accumulated leftovers.
+    /// One AI turn. Phase B keeps a persistent `LanguageModelSession`
+    /// alive inside `intel`, so each message extends the working
+    /// constellation in-place instead of replacing it — the model
+    /// remembers prior proposals and the user's running steer.
+    /// Wikipedia enrichment is folded in by `runGenesisExtend`.
     private func runTurn(prompt: String) async {
         isThinking = true
         defer { isThinking = false }
 
-        // Build a richer prompt with the running context so even
-        // single-shot capture reads as a continuation rather than
-        // an isolated extraction. Phase B replaces this string-
-        // smashed context with proper session memory.
-        let composed = composedPrompt(latest: prompt)
-        // Critical: the user is building a *new* atlas, not adding
-        // to the current one. Passing `store.graph` would let the
-        // AI propose `linksToExisting` against labels from the
-        // currently-loaded atlas — those targets won't exist in
-        // the freshly-created atlas and the user just sees
-        // confusing proposals drawn from an unrelated dataset.
-        // Hand the model an empty graph so the constellation is
-        // self-contained and references only its own new nodes.
-        let emptyGraph = Graph(nodes: [:], edges: [])
-        guard let result = await intel.runCapture(
-            text: composed,
-            graph: emptyGraph
+        // Start from an empty constellation if this is the first
+        // turn. After this, `current.nodes` accumulates and the
+        // model is told NOT to duplicate.
+        let current = constellation
+            ?? Constellation(inputText: "", nodes: [])
+
+        guard let (added, summary) = await intel.runGenesisExtend(
+            text: prompt,
+            current: current
         ) else {
             let note: String = {
                 switch intel.activity {
@@ -441,40 +443,29 @@ struct AtlasGenesisChat: View {
             messages.append(ChatMessage(role: .assistant, content: note))
             return
         }
-        constellation = result
-        let summary = summarize(result)
-        messages.append(ChatMessage(role: .assistant, content: summary))
+
+        // Append rather than replace — the persistent-session model
+        // is extending the constellation across turns.
+        var updated = current
+        updated.nodes.append(contentsOf: added)
+        constellation = updated
+
+        let assistantNote = added.isEmpty
+            ? "I didn't find anything new to add. Try another angle?"
+            : summary
+        messages.append(
+            ChatMessage(role: .assistant, content: assistantNote)
+        )
     }
 
-    /// Compose the full context the AI sees for this turn — the
-    /// running user/assistant transcript plus the latest message.
-    /// Lets single-shot extraction behave like a conversation even
-    /// before the persistent-session refactor in Phase B.
-    private func composedPrompt(latest: String) -> String {
-        var parts: [String] = []
-        for m in messages.dropLast() {
-            switch m.role {
-            case .user: parts.append("User: \(m.content)")
-            case .assistant: parts.append("Assistant: \(m.content)")
-            case .system: continue
-            }
-        }
-        parts.append("User: \(latest)")
-        if let c = constellation, !c.nodes.isEmpty {
-            let labels = c.nodes.prefix(20).map(\.label).joined(separator: ", ")
-            parts.append("Current constellation (extend or refine, don't restart): \(labels)")
-        }
-        return parts.joined(separator: "\n\n")
-    }
-
-    private func summarize(_ c: Constellation) -> String {
-        guard !c.nodes.isEmpty else {
-            return "I didn't find anything to extract — try giving me more to work with."
-        }
-        let preview = c.nodes.prefix(4).map(\.label).joined(separator: ", ")
-        let more = c.nodes.count > 4
-            ? ", and \(c.nodes.count - 4) more"
-            : ""
-        return "I extracted \(c.nodes.count) nodes (\(preview)\(more)). Tell me more, or hit Continue to create the atlas."
+    /// Clear chat + working constellation + the persistent
+    /// `LanguageModelSession` on the intel object. Used when the
+    /// user wants to restart the genesis from scratch — exposed as
+    /// a small "↺ Reset" button in the chat header.
+    private func resetChat() {
+        messages.removeAll()
+        constellation = nil
+        input = ""
+        intel.resetGenesisSession()
     }
 }

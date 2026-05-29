@@ -139,6 +139,77 @@ final class NodeIntelligence: ObservableObject {
         return nil
     }
 
+    /// Phase B of Atlas Genesis — one turn in the persistent
+    /// chat. Builds on `genesisSession` (lazily created), so each
+    /// subsequent message inherits the model's memory of prior
+    /// turns. Returns the *new* nodes the model proposes (already
+    /// filtered against the working constellation to avoid
+    /// duplicates) plus a short summary line for the chat bubble.
+    ///
+    /// First-turn semantics: `current.nodes.isEmpty == true`. The
+    /// prompt tells the model the constellation is empty and asks
+    /// for the initial batch. Subsequent turns enumerate the
+    /// existing labels so the model knows what NOT to repeat.
+    func runGenesisExtend(
+        text: String,
+        current: Constellation
+    ) async -> (added: [Constellation.NewNode], summary: String)? {
+        guard isAvailable else {
+            activity = .unavailable(availabilityNote ?? "Unavailable.")
+            return nil
+        }
+        activity = .running
+        captureStatus = "Thinking…"
+        defer {
+            captureStatus = ""
+            activity = .idle
+        }
+        #if canImport(FoundationModels)
+        if #available(macOS 26, iOS 26, *) {
+            // Pass the existing session by value (actor-isolated
+            // state can't go `inout` across an async hop). The
+            // helper returns the session it actually used so we
+            // can store back the newly-created one on first turn.
+            let existing = genesisSession
+            do {
+                var (result, usedSession) = try await Self.extendGenesis(
+                    text: text,
+                    current: current,
+                    existingSession: existing
+                )
+                genesisSession = usedSession
+                captureStatus = "Enriching from Wikipedia…"
+                await Self.foldWikipediaSummaries(into: &result.added)
+                return result
+            } catch LanguageModelSession.GenerationError.refusal {
+                activity = .failed("Model declined — try rephrasing.")
+                return nil
+            } catch LanguageModelSession.GenerationError.exceededContextWindowSize {
+                // Context window blew up. Drop the session so the
+                // next turn starts fresh, but tell the user so they
+                // can decide whether to retry now or keep what they
+                // have.
+                genesisSession = nil
+                activity = .failed("Conversation got long — session reset. Send again to continue.")
+                return nil
+            } catch {
+                activity = .failed(error.localizedDescription)
+                return nil
+            }
+        }
+        #endif
+        activity = .unavailable(availabilityNote ?? "Unavailable.")
+        return nil
+    }
+
+    /// Drop the persistent genesis session so the next turn starts
+    /// from a blank model transcript. Useful when the conversation
+    /// goes sideways or the user wants to take a different tack
+    /// without dismissing the chat entirely.
+    func resetGenesisSession() {
+        genesisSession = nil
+    }
+
     /// Phase C of Atlas Genesis — go deeper on one node in the
     /// working constellation. Returns a richer proposed body for the
     /// parent + a list of child nodes pre-tagged with
@@ -287,6 +358,14 @@ final class NodeIntelligence: ObservableObject {
     // MARK: - Internals
 
     private var session: Any? // Type-erased so the file compiles pre-macOS 26.
+
+    /// Long-lived session for the Atlas Genesis chat. Survives
+    /// across turns within one genesis sitting so the on-device
+    /// model accumulates conversation context — "go deeper on what
+    /// you just proposed", "drop X, keep Y", etc. Reset via
+    /// `resetGenesisSession()` when the user starts over or when
+    /// the context window overflows.
+    private var genesisSession: Any?
     private var currentTask: Task<Void, Never>?
     private var boundNodeID: String?
     private var boundContextPrompt: String = ""
@@ -1000,6 +1079,92 @@ extension NodeIntelligence {
             kind: .replaceBody(newBody: response.content.body),
             reason: response.content.reason
         )]
+    }
+
+    // ---- Phase B: persistent-session genesis turn ----
+
+    @Generable
+    struct GenGenesisExtension {
+        @Guide(description: "New nodes to ADD to the working constellation in response to the user's latest message. Don't repeat anything in the 'already in constellation' list. Up to 8.", .count(0...8))
+        let nodesToAdd: [GenCaptureNode]
+        @Guide(description: "One short sentence summarizing what you proposed and why. Speak to the user, not about them.")
+        let summary: String
+    }
+
+    fileprivate static func extendGenesis(
+        text: String,
+        current: Constellation,
+        existingSession: Any?
+    ) async throws -> (result: (added: [Constellation.NewNode],
+                                summary: String),
+                       usedSession: Any) {
+        // Lazily create the genesis session on first call. Subsequent
+        // turns reuse it so the model remembers prior proposals.
+        let s: LanguageModelSession
+        if let existing = existingSession as? LanguageModelSession {
+            s = existing
+        } else {
+            s = LanguageModelSession(instructions: instructions)
+        }
+
+        // Top-level labels in the working constellation. Children
+        // are skipped to keep the prompt small — the model is
+        // expected to extend the breadth, and depth is handled
+        // separately via `runDeepen`.
+        let topLevel = current.nodes
+            .filter { $0.parentLabel == nil }
+            .prefix(60)
+        let constellationBlock = topLevel.isEmpty
+            ? "This is the first turn — no nodes in the constellation yet."
+            : "Already in the constellation (do NOT propose duplicates of these labels):\n- " +
+                topLevel
+                    .map { "\($0.label) [\($0.type)]" }
+                    .joined(separator: "\n- ")
+
+        let prompt = """
+        \(constellationBlock)
+
+        User says:
+        \"\"\"
+        \(text)
+        \"\"\"
+
+        Propose new nodes to add to the constellation. Be specific —
+        each distinct person, work, institution, concept, or event
+        mentioned (or strongly implied) gets its own node. Each
+        `body` is 2 to 4 sentences synthesizing what matters about
+        the node in the user's heritage. Use the existing
+        constellation labels (case-insensitive) in `linksToExisting`
+        when a new node connects to one — leave it empty otherwise.
+        """
+
+        let response = try await s.respond(
+            to: prompt,
+            generating: GenGenesisExtension.self
+        )
+
+        // Filter out anything that collides (case-insensitively) with
+        // a label already in the constellation. The instructions said
+        // "don't duplicate" but the model occasionally ignores it,
+        // and silent duplicates in the preview are ugly.
+        let existingLower = Set(current.nodes.map { $0.label.lowercased() })
+        let added: [Constellation.NewNode] = response.content.nodesToAdd
+            .filter { !existingLower.contains($0.label.lowercased()) }
+            .map { n in
+                Constellation.NewNode(
+                    label: n.label,
+                    type: n.type,
+                    era: (n.era?.isEmpty == false) ? n.era : nil,
+                    body: n.body,
+                    linksToNew: n.linksToNew,
+                    linksToExisting: n.linksToExisting,
+                    accepted: true
+                )
+            }
+        return (
+            result: (added: added, summary: response.content.summary),
+            usedSession: s
+        )
     }
 
     // ---- Phase D: lightweight enrichment for deepen children ----
