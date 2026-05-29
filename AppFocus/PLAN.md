@@ -157,13 +157,23 @@ Don't start until 4.2 is green.
 With the codebase rearranged, the design's remaining commitments become tractable.
 
 - **Per-atlas edge type taxonomy** — declared in `AtlasConfig.edgeTypes` alongside node types (name, displayName, icon, color, optional reverse-label). Inspector relationship picker reads from this instead of mining the graph. `Lens` gains an edge-filter mode.
-- **Add-edge UI** — long-pressed node's radial gets an "Add link…" wedge that opens a target-picker (the merge-picker template). Pick target → pick relationship type from the atlas taxonomy → confirm.
+- ~~**Add-edge UI**~~ *(landed via spatial Connect mode + inspector + pills on Outbound/Inbound; long-press a node → radial → Connect → tap target, or open inspector → tap + on the section header → search-pick a target)*.
 - **Continuity threads** — design's heart for Continuity mode. Needs a quick design pass first:
   - On-disk: `thread:: <thread-id>` on contributing edges (lightweight, Dataview-native). Escalate to `.terracognita/threads/<id>.md` only if thread-level metadata becomes load-bearing.
   - UI: thread picker next to the Mode pill, active-thread rendering highlights contributing edges + nodes and dims everything else (mirrors the selection halo).
   - Authoring: "Add to thread…" wedge on the per-node radial.
 - **Conversation with archive** — per-atlas persistent `LanguageModelSession`. Transcript stored at `.terracognita/conversation.md` so it survives restarts and the user owns it. Surfaces in the inspector when no node is selected (or in a separate sheet) — talks to the archive as a whole.
 - **Phase 3.5 Display Settings** rolls into this phase — gear icon → sheet → edge width, label opacity, gradient endpoints. Persists to `UserDefaults` via a `DisplaySettings` observable.
+
+## Phase 4.5 — Atlas Genesis *(in progress; see [`GENESIS.md`](GENESIS.md))*
+
+Chat-driven atlas creation embedded in the New Atlas template picker. Replaces the "pick a template → pick a folder → look at an empty graph" first-launch experience with one where you describe the atlas in plain English and the AI extracts a starter constellation you can shape before commit.
+
+- **Phase A** *(landed)* — single-turn chat + constellation preview + per-node accept/reject + auto-create at `~/Documents/Terra Cognita Atlases/` (no folder picker after the user does the real work).
+- **Phase B** *(next)* — persistent `LanguageModelSession` so subsequent messages extend the existing constellation in place ("go deeper on X", "add Y", "what's missing"); delta-based extraction schema.
+- **Phase C** — per-node deep expansion. Tap the deepen icon on any proposed node → AI drafts a richer body + a sub-constellation of related people / works / concepts / events. Recursive. The single most impactful phase for atlas density on the on-device model.
+- **Phase D** — Wikipedia enrichment per accepted node (already half-built via `WebEnrichment`; just needs to be wired into genesis).
+- **Phase E** — mode-specific seed prompts (Heritage Atlas / Career Map / Story Bible each pre-prime the genesis session with style guidance), streaming responses, undo within the session, regenerate-this-node.
 
 ## Phase 5 — Pro Tier *(later)*
 

@@ -8,7 +8,9 @@ place* rather than reading a document.
 
 See [`DESIGN.md`](DESIGN.md) for the unified design document
 (modes, lenses, layouts, vocabulary, product direction),
-[`PLAN.md`](PLAN.md) for the phased implementation roadmap, and
+[`PLAN.md`](PLAN.md) for the phased implementation roadmap,
+[`GENESIS.md`](GENESIS.md) for the multi-phase chat-driven
+atlas-creation flow (Phase A landed; B/C/D/E next), and
 [`BUGS.md`](BUGS.md) for the open / recently-fixed issue log.
 [`Design/DESIGN.md`](Design/DESIGN.md) is the older original vision
 document and is kept for historical context.
@@ -63,8 +65,25 @@ require macOS 26 / iOS 26.
   opposite sides.
 - **Gold selection halo + orbital sparks + breath** distinct from
   the cooler ambient idle puff.
+- **Pseudo-3D radial highlight** on foreground node discs — soft
+  upper-left lit-from-above gradient lifts in-highlight, ambient,
+  and selected nodes off the substrate. Dimmed background nodes
+  stay flat (they're meant to recede).
 - **Capsule label pills** — dark grey universal, gold-tinted on the
   selected node. Text at ~82% warm white.
+- **Zoom-coupled node radii** — sqrt(scale) curve clamped to
+  [0.55, 1.9] so the canvas reads as a spatial field rather than
+  an abstract flat graph. Hit-testing inherits the scaling so tap
+  targets track the eye.
+- **Label-wide hit area** — `nodeAt` does a second hit test using
+  the drawn label pill's bounding rect, so taps on the visible
+  text register even when the disc itself is small.
+- **Full-screen `LoadingScreen`** at launch — deep blue gradient,
+  signature glyph (gold core + orbital sparks), rotating cartographer
+  caption, fades out only after the canvas has loaded *and* the
+  FA2 layout pipeline has actually settled. Substrate matches the
+  iOS launch storyboard color so there's no white flash between
+  launch and SwiftUI.
 - Depth-aware drop shadows on nodes.
 
 **Atlas I/O**
@@ -99,9 +118,19 @@ require macOS 26 / iOS 26.
   selection halo reaches; persisted per-atlas
 
 **Node ingestion / authoring**
-- **+ menu** (⌘N New Node, ⌘⇧N Capture) — composer sheet with type
-  / label / era / body / private toggle; pre-fills wikilink to
-  current selection
+- **Unified `AddNodeSheet`** (⌘N / ⌘⇧N / global radial "Add node")
+  — single adaptive sheet that replaces the old NodeComposer + 
+  CaptureSheet split. Short label-shaped text saves a placeholder
+  via `createNode`; longer text or pasted URLs run through the AI
+  capture pipeline. URL paste fetches the page (Wikipedia REST for
+  `wikipedia.org`, HTML strip for everything else) and feeds the
+  same capture pass.
+- **Unified `AugmentNodeSheet`** — mirror surface for existing
+  nodes. Paste/dictate context for a single node and the AI proposes
+  body merges, new wikilinks, new linked nodes, era suggestion.
+  The 8 named operations live as quick-action chips inside this
+  sheet. Replaces the previous operations row in the inspector
+  with a single "Augment this node…" button.
 - **Long-press empty canvas → "Create node here"** — spatial drop-in
   creation with the spawn point captured in world coordinates,
   auto-pinned, auto-framed
@@ -109,14 +138,28 @@ require macOS 26 / iOS 26.
   section opens a TextEditor seeded with the current body. Save
   (⌘S) writes through `AtlasEditor.replaceBody`; Cancel discards.
   Materializes a fresh file if the node is in-memory-only.
-- **Mic-driven dictation** in the inspector edit mode — same
-  `SpeechRecognizer` as Capture, appends to whatever's already typed.
+- **Mic-driven dictation** everywhere — Add Node, Augment Node,
+  Genesis Chat, inspector edit mode. On-device
+  (`SFSpeechRecognizer`, `requiresOnDeviceRecognition = true`).
 - Compose-time dedup — normalized-slug collisions block the write and
   offer "Open existing / Rename"
 - **Inspector ⋯ menu** — Delete this node (with `.bak` snapshot) and
   Merge into… (atlas-wide `[[loser]] → [[winner]]` rewrite, body
   append, edge re-targeting)
 - **Duplicate-cluster banner** on atlas load with one-click merge review
+
+**Atlas Genesis (Phase A)**
+- Chat-driven atlas creation embedded in the New Atlas template
+  picker. Describe the atlas in plain English; the on-device AI
+  extracts a starter constellation of typed, bodied, linked nodes;
+  per-node accept/reject toggles let you shape it before commit.
+- Auto-creates at `~/Documents/Terra Cognita Atlases/<Template> Atlas/`
+  with ISO timestamp suffix on collision — no folder picker, no
+  ceremony.
+- Foundation Models availability banner up front so unavailable
+  models don't produce silent "got nothing" outcomes.
+- See [`GENESIS.md`](GENESIS.md) for the multi-phase plan
+  (B/C/D/E).
 
 **AI integration (FoundationModels, macOS 26 / iOS 26)**
 - Free-form chat per node ("Ask about this node…")
@@ -161,14 +204,28 @@ require macOS 26 / iOS 26.
   Back · Forward · Mode pill · Atlas menu · Find · Inspector toggle.
   Keyboard shortcuts ⌘N / ⌘⇧N / ⌘0 are preserved via invisible catchers.
 
-**Edge editing**
-- Outbound rows in the inspector are now live: the relationship pill
-  is a tappable Menu (vault's known relationship types + Clear),
+**Edge editing & creation**
+- **Spatial Connect mode** — long-press a node → radial → "Connect"
+  wedge arms the source. Tap any node to create the edge; tap empty
+  canvas to spawn a new node already wired to the source (opens
+  `AddNodeSheet` seeded with a wikilink). Gold rubber-band overlay
+  tracks source → hover target as you sweep. macOS power-user
+  accelerator: shift+drag from a node.
+- **Inspector + pills on Outbound / Inbound section headers** —
+  list-based target picker for adding edges. Tap + → search-pick
+  a target. Outbound writes the wikilink into the current note;
+  Inbound writes it into the picked node's body (inbound edges
+  live in the source).
+- Outbound rows in the inspector are live: the relationship pill
+  is a tappable Menu (atlas's known relationship types + Clear),
   and a trailing trash icon removes the edge. Edits rewrite the
   source note's Dataview line in place; prose-embedded wikilinks
   are left untouched with a friendly refusal.
 - Inbound rows stay read-only (the source note is a *different*
   inspector's job).
+- Duplicate prevention: same source / target / relationshipType
+  triple is refused at `createEdge` with an "Already linked to X"
+  status.
 
 **Cross-platform parity**
 - Same affordances across all three platforms; adaptations only where
@@ -200,11 +257,10 @@ See [`PLAN.md`](PLAN.md) for the phased roadmap. Headline gaps:
   gradient constants the user has been driving via taste.
 - **Live atlas watch** — external edits to .md files don't show
   until next atlas load.
-- **No add-edge UI yet** — relationship-type editing and deletion
-  are wired; adding a new edge from the inspector / radial still
-  needs a target picker (the merge-picker pattern). Provenance
-  (7 categories) and `era` / `date` on edges remain
-  model-only.
+- **Edge provenance UI** — `Provenance` (7 categories) and `era` /
+  `date` on edges remain model-only. Spatial Connect + inspector
+  + pills shipped the *creation* side; the rich-fields editor for
+  existing edges is still TODO.
 - **No 3D mode** — DESIGN.md's time-as-depth idea is hinted at via
   the parallax axis but not realized as a separate mode.
 - **Capture review is modal** — a *spatial preview* (proposed nodes
@@ -320,8 +376,10 @@ AppFocus/
 │   │   ├── NodeInspectorView+Edges.swift — Outbound/Inbound lists + relationship menu
 │   │   ├── NodeInspectorView+AI.swift   — AI section + operations + proposals + chat
 │   │   ├── NodeIntelligence.swift       — Foundation Models orchestration
-│   │   ├── NodeComposer.swift           — New-node sheet
-│   │   ├── CaptureSheet.swift           — Voice/text capture + constellation review
+│   │   ├── AddNodeSheet.swift           — Unified add-node sheet (placeholder + capture + URL paste)
+│   │   ├── AugmentNodeSheet.swift       — Unified augment-existing-node sheet (chips + paste)
+│   │   ├── AtlasGenesisChat.swift       — Phase-A genesis chat embedded in template picker
+│   │   ├── LoadingScreen.swift          — Full-screen launch surface (gradient + signature glyph)
 │   │   ├── Constellation.swift          — Capture proposal model
 │   │   ├── NodeProposal.swift           — Per-op AI proposal model
 │   │   ├── NavigationHistory.swift      — Back/forward stack
