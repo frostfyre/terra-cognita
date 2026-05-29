@@ -198,6 +198,38 @@ public struct GraphView: View {
         _store = StateObject(wrappedValue: GraphStore())
     }
 
+    /// Default on-disk location for an atlas created through the
+    /// Genesis flow. We auto-create here so the user doesn't have to
+    /// fight a folder picker after they've already done the genuine
+    /// work of describing + curating the constellation. iOS puts
+    /// this in the app's Documents directory (visible in Files);
+    /// macOS uses ~/Documents/Terra Cognita Atlases/. Existing-name
+    /// collisions get an ISO timestamp suffix so successive runs
+    /// don't trample each other.
+    private func defaultGenesisAtlasURL(for template: Template) -> URL {
+        let fm = FileManager.default
+        let docs = (try? fm.url(
+            for: .documentDirectory,
+            in: .userDomainMask,
+            appropriateFor: nil,
+            create: true
+        )) ?? fm.temporaryDirectory
+        let root = docs.appendingPathComponent("Terra Cognita Atlases",
+                                               isDirectory: true)
+        try? fm.createDirectory(at: root,
+                                withIntermediateDirectories: true)
+        let baseName = "\(template.name) Atlas"
+        var target = root.appendingPathComponent(baseName, isDirectory: true)
+        if fm.fileExists(atPath: target.path) {
+            let stamp = ISO8601DateFormatter()
+                .string(from: Date())
+                .replacingOccurrences(of: ":", with: "-")
+            target = root.appendingPathComponent("\(baseName) \(stamp)",
+                                                  isDirectory: true)
+        }
+        return target
+    }
+
     public var body: some View {
         canvasStack
         .onAppear { store.loadDefaultAtlas() }
@@ -338,15 +370,26 @@ public struct GraphView: View {
         .sheet(
             isPresented: sheetBinding(for: .templatePicker),
             onDismiss: {
-                // SwiftUI fires onDismiss AFTER the sheet has fully
-                // unmounted — that's the only reliably-clean moment
-                // to mount the next sheet (folder picker) on iOS.
-                // Earlier we used DispatchQueue.main.asyncAfter with a
-                // hand-tuned delay; it was unreliable across devices.
-                // The Continue button sets pendingTemplate, so its
-                // non-nil-ness is the signal that the user committed
-                // (vs. Cancel, which leaves it nil).
-                if pendingTemplate != nil {
+                // SwiftUI fires onDismiss after the sheet has fully
+                // unmounted. The Continue button sets pendingTemplate
+                // (Cancel leaves it nil), so its non-nil-ness is the
+                // signal that the user committed.
+                guard let template = pendingTemplate else { return }
+                if pendingSeedConstellation != nil {
+                    // Genesis path: the user already invested effort
+                    // typing a description + curating a constellation.
+                    // The folder picker after that is friction we
+                    // created — and on iOS the sheet-to-sheet chain
+                    // is unreliable. Auto-create at the default
+                    // Documents location instead. The user can move
+                    // the atlas anywhere afterward via the OS.
+                    pendingTemplate = nil
+                    let target = defaultGenesisAtlasURL(for: template)
+                    store.createNewAtlas(at: target, template: template)
+                } else {
+                    // Classic path (no genesis text): the user picked
+                    // a template but didn't draft anything. Show the
+                    // folder picker so they choose where to land.
                     presentFolderPicker(.createNewAtlas)
                 }
             }
