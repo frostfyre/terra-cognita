@@ -938,20 +938,44 @@ struct GraphCanvasView: View {
             }
             return CGPoint(x: (minX + maxX) / 2, y: (minY + maxY) / 2)
         }()
+        // Parallax factor of whichever node we're centering on. The
+        // render projection is `sx = centre + p.x*scale + offset.x*pf`,
+        // so to put `centerWorld` exactly at the canvas centre we need
+        // `offset.x = -centerWorld.x * scale / pf`. Previously we
+        // divided by 1.0 implicitly, which centered foreground nodes
+        // (pf=1) correctly but left background-era selections drifting
+        // off to the side — the "phantom centre" the user reported.
+        let centerPF: CGFloat = {
+            if let sel = selectedNodeID,
+               let node = store.graph.nodes[sel] {
+                let d = node.depth(in: store.config)
+                return CGFloat(0.55 + 0.45 * d)
+            }
+            return 1.0
+        }()
         // Symmetric extent around centerWorld — the largest distance
         // from center to any highlighted point, doubled. Ensures every
         // neighbor stays in-frame even though we're not bbox-centering.
         let halfWidthWorld  = max(centerWorld.x - minX, maxX - centerWorld.x)
         let halfHeightWorld = max(centerWorld.y - minY, maxY - centerWorld.y)
-        // Floor the bbox so a singleton (no neighbors) doesn't try to zoom
-        // to infinity, and pad the world rect to make room for node radii
-        // and a little breathing space.
-        let widthWorld  = max(halfWidthWorld * 2 + 80, 200)
-        let heightWorld = max(halfHeightWorld * 2 + 80, 200)
+        // Floor the raw extent so a singleton (no neighbors) doesn't
+        // try to zoom to infinity — but skip the old world-space +80
+        // pad, which fought the scale-dependent label margin below.
+        let widthWorld  = max(halfWidthWorld * 2, 1)
+        let heightWorld = max(halfHeightWorld * 2, 1)
 
-        let chromePadding: CGFloat = 60  // top bar + inspector breathing room
-        let availableWidth  = max(canvasSize.width  - chromePadding * 2, 200)
-        let availableHeight = max(canvasSize.height - chromePadding * 2, 200)
+        // Screen-space margins. `chromePadding` keeps content out from
+        // under the top bar / inspector; `labelMargin` is the bit that
+        // was actually missing — label pills + node radii + idle puff
+        // halos extend well past the bare node center, and without
+        // this allowance the auto-fit was visually clipping at the
+        // edges. The margin lives in screen space so it stays right
+        // across zoom levels.
+        let chromePadding: CGFloat = 60
+        let labelMargin:   CGFloat = 80
+        let inset = chromePadding + labelMargin
+        let availableWidth  = max(canvasSize.width  - inset * 2, 200)
+        let availableHeight = max(canvasSize.height - inset * 2, 200)
 
         let candidate = min(availableWidth / widthWorld,
                             availableHeight / heightWorld)
@@ -960,8 +984,10 @@ struct GraphCanvasView: View {
         // need to.
         let targetScale = max(0.4, min(candidate, 2.2))
 
-        let targetOffset = CGSize(width: -centerWorld.x * targetScale,
-                                  height: -centerWorld.y * targetScale)
+        let targetOffset = CGSize(
+            width:  -centerWorld.x * targetScale / centerPF,
+            height: -centerWorld.y * targetScale / centerPF
+        )
 
         withAnimation(.easeInOut(duration: 0.55)) {
             scale = targetScale
@@ -992,12 +1018,21 @@ struct GraphCanvasView: View {
         let minY = ys.min()!, maxY = ys.max()!
         let centerWorld = CGPoint(x: (minX + maxX) / 2,
                                   y: (minY + maxY) / 2)
-        let widthWorld  = max(maxX - minX + 80, 200)
-        let heightWorld = max(maxY - minY + 80, 200)
+        let widthWorld  = max(maxX - minX, 1)
+        let heightWorld = max(maxY - minY, 1)
 
-        let chromePadding: CGFloat = 80   // top bar + breathing room
-        let availableWidth  = max(canvasSize.width  - chromePadding * 2, 200)
-        let availableHeight = max(canvasSize.height - chromePadding * 2, 200)
+        // Screen-space margins. `chromePadding` keeps content from
+        // tucking under the top bar / inspector; `labelMargin` is the
+        // bit that fixes the "fit clips at the edges" complaint —
+        // node labels + radii + halos extend past the bare node
+        // center in screen space, and without this allowance the
+        // bbox math centered the *positions* perfectly but left the
+        // rendered content overflowing.
+        let chromePadding: CGFloat = 80
+        let labelMargin:   CGFloat = 80
+        let inset = chromePadding + labelMargin
+        let availableWidth  = max(canvasSize.width  - inset * 2, 200)
+        let availableHeight = max(canvasSize.height - inset * 2, 200)
 
         let candidate = min(availableWidth / widthWorld,
                             availableHeight / heightWorld)
@@ -1005,6 +1040,10 @@ struct GraphCanvasView: View {
         // capped above at 2.2× so a sparse cluster doesn't fill the
         // viewport with a wall of nodes.
         let targetScale = max(minScale, min(candidate, 2.2))
+        // No selection → use foreground-layer parallax (pf=1) for the
+        // centre. Mixing depths means we can't perfectly centre every
+        // node; the foreground assumption is what the user's eye
+        // tracks most naturally.
         let targetOffset = CGSize(width: -centerWorld.x * targetScale,
                                   height: -centerWorld.y * targetScale)
 

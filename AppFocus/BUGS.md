@@ -1,19 +1,26 @@
 # Known Issues
 
 ## Fit view still feels off
-**Status:** open
+**Status:** fixed in `frameHighlightedSubnet` + `frameAllVisible` on 2026-05-29
 **Reported:** 2026-05-28
 
-`frameAllPulse` / `frameHighlightedSubnet` / `frameAllVisible` —
-the auto-fit triggered from ⌘0 + post-load + post-selection feels
-buggy on real graphs. Sometimes overshoots, sometimes lands with
-nodes clipped at the edge, sometimes the camera centers on a
-phantom point off to the side. Likely candidates: the depth-
-parallax factor isn't being undone in the bounds calculation, or
-the bounds don't include the rendered halo / label-pill extent so
-the visible content extends beyond what fit() considers "the
-nodes." Worth a focused pass — instrument the fit's computed
-bbox against the actually-rendered extent and compare.
+Two bugs caught: (1) the offset calc divided by 1.0 implicitly,
+so when the selected node sat on a non-foreground depth layer
+(parallax factor `pf = 0.55 + 0.45 * depth` < 1) the camera
+centered on a phantom point off to one side. Fix: divide
+`-centerWorld * scale` by the selected node's actual `pf`. (2)
+The bbox-to-scale math used a world-space pad (`+80`) that
+didn't translate cleanly across zoom levels, so labels + halos
+spilled past the edge once the candidate scale shrank. Fix:
+drop the world pad, add a screen-space `labelMargin: 80` on
+both axes (chrome margin still separate) so the rendered extent
+of label pills + node radii has room regardless of scale.
+
+If the camera still misses on certain selections, the most
+likely remaining cause is mixed-depth neighborhoods —
+`frameAllVisible` assumes foreground pf=1 for the offset, which
+slightly biases when the bbox spans backgrounded nodes only.
+Worth revisiting if it bites.
 
 ## iOS: heritage folder loads as 0 nodes / 0 edges
 **Status:** instrumented, awaiting on-device repro

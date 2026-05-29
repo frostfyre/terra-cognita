@@ -165,9 +165,21 @@ final class NodeIntelligence: ObservableObject {
         #if canImport(FoundationModels)
         if #available(macOS 26, iOS 26, *) {
             do {
-                return try await Self.extractDeepened(
+                var result = try await Self.extractDeepened(
                     node: node, context: context
                 )
+                // Phase D — Wikipedia enrichment for each child.
+                // Body fold + enrichmentTitle/URL only; we skip the
+                // expensive re-link pass that `enrich(constellation:)`
+                // does for runCapture, because children's links were
+                // already proposed in the deepen call and an extra
+                // AI round-trip per child would make recursive
+                // deepening too slow.
+                captureStatus = "Enriching from Wikipedia…"
+                await Self.foldWikipediaSummaries(
+                    into: &result.children
+                )
+                return result
             } catch LanguageModelSession.GenerationError.refusal {
                 activity = .failed(
                     "Model declined to deepen — try a different node."
@@ -988,6 +1000,33 @@ extension NodeIntelligence {
             kind: .replaceBody(newBody: response.content.body),
             reason: response.content.reason
         )]
+    }
+
+    // ---- Phase D: lightweight enrichment for deepen children ----
+
+    /// Fold Wikipedia summaries into a list of proposed `NewNode`s
+    /// in-place. Lighter than `enrich(constellation:graph:)` — only
+    /// the body-merge + enrichmentTitle/URL pass, no re-running
+    /// link-finding per node. Used by `runDeepen` so each round of
+    /// recursive expansion adds citation-style backing without
+    /// triggering N extra AI calls.
+    fileprivate static func foldWikipediaSummaries(
+        into nodes: inout [Constellation.NewNode]
+    ) async {
+        guard !nodes.isEmpty else { return }
+        let labels = nodes.map { $0.label }
+        let summaries = await WebEnrichment.shared.summaries(for: labels)
+        guard !summaries.isEmpty else { return }
+        for i in nodes.indices {
+            guard let summary = summaries[nodes[i].label] else { continue }
+            var body = nodes[i].body
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            if !body.isEmpty { body += "\n\n" }
+            body += "*From Wikipedia:* \(summary.extract)"
+            nodes[i].body = body
+            nodes[i].enrichmentTitle = summary.title
+            nodes[i].enrichmentURL = summary.pageURL
+        }
     }
 
     // ---- Phase C: deepen orchestration ----
