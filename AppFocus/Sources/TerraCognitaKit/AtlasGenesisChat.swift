@@ -23,6 +23,7 @@ struct AtlasGenesisChat: View {
     @State private var input: String = ""
     @State private var messages: [ChatMessage] = []
     @State private var isThinking: Bool = false
+    @State private var deepeningNodeID: UUID?
     @FocusState private var inputFocused: Bool
 
     struct ChatMessage: Identifiable, Equatable {
@@ -69,6 +70,39 @@ struct AtlasGenesisChat: View {
                 input = newValue
             }
         }
+        .sheet(item: deepenSheetBinding) { id in
+            AtlasGenesisDeepenSheet(
+                store: store,
+                intel: intel,
+                isPresented: Binding(
+                    get: { deepeningNodeID != nil },
+                    set: { newValue in
+                        if !newValue { deepeningNodeID = nil }
+                    }
+                ),
+                nodeID: id.id,
+                constellation: $constellation
+            )
+        }
+    }
+
+    /// Identifiable wrapper so SwiftUI's `.sheet(item:)` can present
+    /// against `deepeningNodeID`. Lets us use the same binding form
+    /// the rest of the app uses for sheets while keeping the actual
+    /// state as a plain optional.
+    private struct DeepenTarget: Identifiable {
+        let id: UUID
+    }
+
+    private var deepenSheetBinding: Binding<DeepenTarget?> {
+        Binding(
+            get: {
+                deepeningNodeID.map(DeepenTarget.init)
+            },
+            set: { newValue in
+                deepeningNodeID = newValue?.id
+            }
+        )
     }
 
     @ViewBuilder
@@ -133,6 +167,7 @@ struct AtlasGenesisChat: View {
 
     @ViewBuilder
     private func constellationPreview(_ c: Constellation) -> some View {
+        let ordered = orderedNodes(c)
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 6) {
                 Image(systemName: "circle.grid.cross")
@@ -145,14 +180,12 @@ struct AtlasGenesisChat: View {
                     .background(.secondary.opacity(0.15), in: Capsule())
                     .foregroundStyle(.secondary)
                 Spacer()
-                Text("Tap to toggle")
+                Text("Tap to toggle · ⤵ to deepen")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
-            ForEach(c.nodes) { node in
-                proposedNodeRow(node)
-                    .contentShape(Rectangle())
-                    .onTapGesture { toggleAccepted(node.id) }
+            ForEach(ordered, id: \.0.id) { node, depth in
+                proposedNodeRow(node, depth: depth, in: c)
             }
         }
         .padding(10)
@@ -164,16 +197,65 @@ struct AtlasGenesisChat: View {
         )
     }
 
+    /// Build a depth-first ordering where children appear directly
+    /// under their parent. Top-level nodes (`parentLabel == nil`)
+    /// keep their original relative order; each parent's children
+    /// follow in original order; recursion preserves insertion
+    /// order at each layer.
+    private func orderedNodes(_ c: Constellation)
+        -> [(Constellation.NewNode, Int)]
+    {
+        var childrenByParent: [String: [Constellation.NewNode]] = [:]
+        var topLevel: [Constellation.NewNode] = []
+        for n in c.nodes {
+            if let p = n.parentLabel {
+                childrenByParent[p.lowercased(), default: []].append(n)
+            } else {
+                topLevel.append(n)
+            }
+        }
+        var out: [(Constellation.NewNode, Int)] = []
+        func emit(_ node: Constellation.NewNode, depth: Int) {
+            out.append((node, depth))
+            for child in childrenByParent[node.label.lowercased()] ?? [] {
+                emit(child, depth: depth + 1)
+            }
+        }
+        for n in topLevel { emit(n, depth: 0) }
+        return out
+    }
+
     @ViewBuilder
-    private func proposedNodeRow(_ node: Constellation.NewNode) -> some View {
+    private func proposedNodeRow(
+        _ node: Constellation.NewNode,
+        depth: Int,
+        in c: Constellation
+    ) -> some View {
         let tint = store.config.typeSpec(named: node.type)?.color ?? .secondary
+        let childCount = c.nodes.filter {
+            $0.parentLabel?.lowercased() == node.label.lowercased()
+        }.count
         HStack(alignment: .top, spacing: 8) {
+            if depth > 0 {
+                // Visual indent + breadcrumb glyph so children read
+                // as belonging to the parent above them.
+                HStack(spacing: 4) {
+                    ForEach(0..<depth, id: \.self) { _ in
+                        Color.clear.frame(width: 10)
+                    }
+                    Image(systemName: "arrow.turn.down.right")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary.opacity(0.6))
+                }
+            }
             Image(systemName: node.accepted
                   ? "checkmark.circle.fill"
                   : "circle")
                 .foregroundStyle(node.accepted ? tint : .secondary)
                 .font(.title3)
                 .padding(.top, 1)
+                .contentShape(Rectangle())
+                .onTapGesture { toggleAccepted(node.id) }
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
                     Text(node.label).font(.callout.weight(.medium))
@@ -182,10 +264,28 @@ struct AtlasGenesisChat: View {
                         .padding(.horizontal, 5).padding(.vertical, 1)
                         .background(tint.opacity(0.15), in: Capsule())
                         .foregroundStyle(tint)
+                    if let rel = node.parentRelationshipType,
+                       !rel.isEmpty {
+                        Text(rel)
+                            .font(.caption2)
+                            .padding(.horizontal, 5).padding(.vertical, 1)
+                            .background(.teal.opacity(0.15),
+                                        in: Capsule())
+                            .foregroundStyle(.teal)
+                    }
                     if let era = node.era, !era.isEmpty {
                         Text(era)
                             .font(.caption2)
                             .foregroundStyle(.secondary)
+                    }
+                    if childCount > 0 {
+                        Text("\(childCount) ↓")
+                            .font(.caption2.monospacedDigit())
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 1)
+                            .background(.purple.opacity(0.15),
+                                        in: Capsule())
+                            .foregroundStyle(.purple)
                     }
                 }
                 if !node.body.isEmpty {
@@ -203,6 +303,19 @@ struct AtlasGenesisChat: View {
                 }
             }
             Spacer(minLength: 0)
+            // Deepen affordance — sub-constellation expansion. Runs
+            // a second AI pass scoped to this node and merges the
+            // proposed children + refined body via a modal sheet.
+            Button {
+                deepeningNodeID = node.id
+            } label: {
+                Image(systemName: "arrow.triangle.branch")
+                    .font(.body)
+                    .foregroundStyle(.purple)
+            }
+            .buttonStyle(.plain)
+            .help("Go deeper on this node")
+            .disabled(!intel.isAvailable || isThinking)
         }
         .padding(.vertical, 4)
         .opacity(node.accepted ? 1.0 : 0.45)

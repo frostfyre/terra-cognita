@@ -29,6 +29,18 @@ struct Constellation: Equatable {
         /// User toggle — defaults to true; the review UI lets the user
         /// flip this off to skip individual nodes.
         var accepted: Bool
+        /// Label of the node this one was deepened *from*, if any.
+        /// Set by the Genesis Phase C "go deeper on X" flow so the
+        /// preview can indent children under their parent and the
+        /// commit pass can wire the parent→child edge automatically.
+        /// Top-level constellation entries have `nil`.
+        var parentLabel: String?
+        /// Optional Dataview-style relationship type for the implicit
+        /// parent→child edge created during deepen commit. The AI
+        /// proposes this per child (e.g. "created", "influenced-by")
+        /// so the edge carries semantics, not just a bare wikilink.
+        /// Top-level nodes ignore it.
+        var parentRelationshipType: String?
 
         init(label: String,
              type: String,
@@ -38,7 +50,9 @@ struct Constellation: Equatable {
              linksToExisting: [String] = [],
              enrichmentTitle: String? = nil,
              enrichmentURL: URL? = nil,
-             accepted: Bool = true) {
+             accepted: Bool = true,
+             parentLabel: String? = nil,
+             parentRelationshipType: String? = nil) {
             self.id = UUID()
             self.label = label
             self.type = type
@@ -49,6 +63,8 @@ struct Constellation: Equatable {
             self.enrichmentTitle = enrichmentTitle
             self.enrichmentURL = enrichmentURL
             self.accepted = accepted
+            self.parentLabel = parentLabel
+            self.parentRelationshipType = parentRelationshipType
         }
     }
 

@@ -139,6 +139,50 @@ final class NodeIntelligence: ObservableObject {
         return nil
     }
 
+    /// Phase C of Atlas Genesis — go deeper on one node in the
+    /// working constellation. Returns a richer proposed body for the
+    /// parent + a list of child nodes pre-tagged with
+    /// `parentLabel = node.label`, ready to be inserted into the
+    /// constellation under their parent. Children can themselves be
+    /// deepened recursively.
+    ///
+    /// Returns `nil` on refusal / failure; `activity` carries the
+    /// user-facing error so the deepen sheet can surface it.
+    func runDeepen(
+        node: Constellation.NewNode,
+        context: Constellation
+    ) async -> (refinedBody: String, children: [Constellation.NewNode])? {
+        guard isAvailable else {
+            activity = .unavailable(availabilityNote ?? "Unavailable.")
+            return nil
+        }
+        activity = .running
+        captureStatus = "Going deeper on \(node.label)…"
+        defer {
+            captureStatus = ""
+            activity = .idle
+        }
+        #if canImport(FoundationModels)
+        if #available(macOS 26, iOS 26, *) {
+            do {
+                return try await Self.extractDeepened(
+                    node: node, context: context
+                )
+            } catch LanguageModelSession.GenerationError.refusal {
+                activity = .failed(
+                    "Model declined to deepen — try a different node."
+                )
+                return nil
+            } catch {
+                activity = .failed(error.localizedDescription)
+                return nil
+            }
+        }
+        #endif
+        activity = .unavailable(availabilityNote ?? "Unavailable.")
+        return nil
+    }
+
     /// Run the Augment flow against an existing node — the user has
     /// pasted/dictated additional context for *this* node and we want
     /// the model to propose merges: a unified body, new wikilinks
@@ -518,6 +562,32 @@ extension NodeIntelligence {
         let suggestedEra: String?
         @Guide(description: "Reason for the era suggestion (if any).")
         let eraReason: String?
+    }
+
+    // ---- Phase C: deepen-a-node schemas ----
+
+    @Generable
+    struct GenDeepenChild {
+        @Guide(description: "Label for the child node — concise, what you'd write on a card")
+        let label: String
+        @Guide(description: "One of: concept, person, institution, event, work")
+        let type: String
+        @Guide(description: "Optional era taxonomy value. Omit if unknown.")
+        let era: String?
+        @Guide(description: "Body for the child: 2-4 sentences synthesizing why this matters in relation to the parent. Be specific.")
+        let body: String
+        @Guide(description: "Dataview-style relationship type linking the PARENT to this child (e.g. 'created', 'influenced-by', 'worked-at', 'wrote', 'directed'). Use the parent-to-child direction.")
+        let relationshipType: String
+        @Guide(description: "Labels of OTHER constellation nodes (not this one, not the parent) this child should also link to. Must come from the provided list.", .count(0...4))
+        let linksToExisting: [String]
+    }
+
+    @Generable
+    struct GenDeepenedNode {
+        @Guide(description: "Refined body for the parent — 3 to 5 paragraphs synthesizing why the parent matters to this heritage. Build on the current body, don't restart. Preserve every existing [[wikilink]] verbatim. In the author's voice.")
+        let refinedBody: String
+        @Guide(description: "Up to 8 child nodes that fill out the context around the parent", .count(0...8))
+        let children: [GenDeepenChild]
     }
 
     // ---- Capture orchestration ----
@@ -918,6 +988,77 @@ extension NodeIntelligence {
             kind: .replaceBody(newBody: response.content.body),
             reason: response.content.reason
         )]
+    }
+
+    // ---- Phase C: deepen orchestration ----
+
+    fileprivate static func extractDeepened(
+        node: Constellation.NewNode,
+        context: Constellation
+    ) async throws -> (refinedBody: String, children: [Constellation.NewNode]) {
+        let session = LanguageModelSession(instructions: instructions)
+
+        // Other-node context: every constellation member except the
+        // one being deepened. Cap at 60 so the prompt stays in
+        // budget even on deep constellations. Includes the
+        // children's potential linksToExisting targets — the model
+        // is told to wire only against this list.
+        let otherLabels = context.nodes
+            .filter { $0.id != node.id }
+            .prefix(60)
+            .map { n -> String in
+                "\(n.label) [\(n.type)]"
+            }
+            .joined(separator: "\n- ")
+        let otherContext = otherLabels.isEmpty
+            ? "There are no other nodes in this constellation yet — leave the children's `linksToExisting` empty."
+            : "Other constellation nodes (children may cross-link to these via `linksToExisting` — use these exact labels):\n- \(otherLabels)"
+
+        let prompt = """
+        You are deepening an atlas node:
+
+        Label: \(node.label)
+        Type: \(node.type)
+        Current body:
+        \"\"\"
+        \(node.body)
+        \"\"\"
+
+        \(otherContext)
+
+        Propose:
+        (1) `refinedBody` — 3 to 5 paragraphs synthesizing why "\(node.label)" matters to this heritage. Build on the current body; don't restart. Preserve every existing [[wikilink]] verbatim. Voice: thoughtful, specific, no marketing speak.
+        (2) `children` — up to 8 related nodes that fill out the context around "\(node.label)". People who shaped it, works that defined it, concepts it embodies, events that resolved it. Each child gets a substantive body, a type, an optional era, and a `relationshipType` capturing how the parent relates to the child (parent-to-child direction).
+        """
+
+        let response = try await session.respond(
+            to: prompt,
+            generating: GenDeepenedNode.self
+        )
+
+        let children: [Constellation.NewNode] = response.content
+            .children
+            .map { gc in
+                let trimmedRel = gc.relationshipType
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                return Constellation.NewNode(
+                    label: gc.label,
+                    type: gc.type,
+                    era: (gc.era?.isEmpty == false) ? gc.era : nil,
+                    body: gc.body,
+                    linksToExisting: gc.linksToExisting,
+                    accepted: true,
+                    parentLabel: node.label,
+                    parentRelationshipType: trimmedRel.isEmpty
+                        ? nil
+                        : trimmedRel
+                )
+            }
+
+        return (
+            refinedBody: response.content.refinedBody,
+            children: children
+        )
     }
 
     // ---- Augment orchestration ----

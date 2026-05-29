@@ -926,6 +926,74 @@ public final class GraphStore: ObservableObject {
                 }
             }
         }
+        // Phase 3: parent → child edges. The Atlas Genesis Phase C
+        // "go deeper" flow tags each new child with `parentLabel`
+        // and a proposed `parentRelationshipType`. Wire those as
+        // explicit edges so the heritage between a parent and its
+        // deepening shows up on the canvas with semantics, not just
+        // a bare wikilink.
+        for child in accepted {
+            guard let parentLabel = child.parentLabel else { continue }
+            let childID = newLabelToID[child.label.lowercased()]
+            let parentID = newLabelToID[parentLabel.lowercased()]
+                ?? graph.nodes.values.first(where: {
+                    $0.label.lowercased() == parentLabel.lowercased()
+                })?.id
+            guard let cid = childID,
+                  let pid = parentID,
+                  cid != pid,
+                  let parent = graph.nodes[pid],
+                  let child = graph.nodes[cid],
+                  let parentPath = parent.filePath else { continue }
+            let fileURL = URL(fileURLWithPath: parentPath)
+            do {
+                let rel = child.attributes["parentRel"] // unused fallback
+                _ = rel
+                let updated = try editor.appendLink(
+                    in: fileURL,
+                    target: child.label,
+                    relationshipType: nil
+                )
+                var node = parent
+                node.markdownContent = updated
+                graph.nodes[pid] = node
+                wireEdge(from: pid,
+                         to: child.label,
+                         relationshipType: nil)
+            } catch {
+                print("applyConstellation parent→child wiring failed: \(error)")
+            }
+        }
+
+        // Phase 3b: re-walk accepted with the original relationship
+        // type the AI proposed (we lost it in the in-memory `node`
+        // above by going through `graph.nodes[pid]`; pull from the
+        // constellation pass instead).
+        for child in accepted {
+            guard let parentLabel = child.parentLabel,
+                  let rel = child.parentRelationshipType,
+                  !rel.isEmpty else { continue }
+            let parentID = newLabelToID[parentLabel.lowercased()]
+                ?? graph.nodes.values.first(where: {
+                    $0.label.lowercased() == parentLabel.lowercased()
+                })?.id
+            let childID = newLabelToID[child.label.lowercased()]
+            guard let pid = parentID,
+                  let cid = childID,
+                  pid != cid else { continue }
+            // Promote the bare wikilink we just wrote into a typed
+            // one. `setEdgeRelationship` finds the existing edge and
+            // rewrites its Dataview prefix in the parent's file.
+            let edges = graph.edges.filter {
+                $0.sourceID == pid
+                    && $0.targetID == cid
+                    && $0.relationshipType == nil
+            }
+            for e in edges {
+                _ = setEdgeRelationship(e, to: rel)
+            }
+        }
+
         loadStatus = "Captured \(created.count) node\(created.count == 1 ? "" : "s")."
         return firstCreatedID
     }
