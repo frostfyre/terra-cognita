@@ -1,7 +1,7 @@
 # Known Issues
 
 ## iOS — merge-duplicate-cluster doesn't persist across launches
-**Status:** confirmed in-session-only on device 2026-05-31; fix queued
+**Status:** fix shipped 2026-05-31 (`GraphStore.mergeNode` + `rewriteWikilinks`); awaiting device confirmation
 **Reported:** 2026-05-31
 
 User reports that on iOS, every cold launch surfaces the same
@@ -17,20 +17,25 @@ way, which is why the cluster appears merged in-session. Next
 launch, the loser .md is still on disk → loader re-detects the
 cluster.
 
-Likely fix:
-1. Convert `try?` to `try` and surface delete failures through the
-   return value so the merge sheet shows the error instead of
-   appearing to succeed.
-2. Wrap iOS file writes / deletes in `NSFileCoordinator.coordinate(writingItemAt:)`
-   to match the read-side coordinator already in `coordinatedLoad`,
-   which fixes iCloud Drive / Files-app provider folders that
-   need it.
-3. Consider routing the merge through `AtlasEditor` for the
-   `.bak`-once-per-session safety rail it provides.
+Fix shipped:
+1. Two new static helpers `GraphStore.coordinatedWrite` and
+   `coordinatedDelete` wrap the write/delete in
+   `NSFileCoordinator.coordinate(writingItemAt:options:)` on iOS
+   (`.forReplacing` for writes, `.forDeleting` for the loser-file
+   removal). macOS path is unchanged. Matches the existing
+   `coordinatedLoad` read-side coordinator pattern.
+2. The loser-file delete in step 3 is now `do try ... catch` — if
+   the delete fails, the merge returns a real error message
+   ("Couldn't delete loser file at …") BEFORE the in-memory
+   cleanup runs, so on-disk and in-memory state stay in sync and
+   the user can retry.
+3. `rewriteWikilinks` step 2 uses `coordinatedWrite` for the .bak
+   snapshot + the actual file rewrite. Per-file failures log to
+   console but don't abort the whole sweep — partial rewrites
+   are recoverable from the per-file .bak.
 
-Not blocking v1 release if we ship with the iOS limitation noted
-in TestFlight's "What to test" — but fix is small and high-value
-so should land before the public 1.0.
+Next test: tap Review → merge → cold relaunch. Banner should now
+stay clear.
 
 ## Layout transitions teleported on large graphs
 **Status:** fixed in `GraphCanvasView.beginLayoutTransition` + `effectivePosition`, confirmed on device 2026-05-31

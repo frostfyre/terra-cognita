@@ -1065,11 +1065,10 @@ public final class GraphStore: ObservableObject {
             merged += "\n\n---\n\n*Merged from [[\(loser.label)]]:*\n\n"
             merged += loserBodyStripped.trimmingCharacters(in: .whitespacesAndNewlines)
             merged += "\n"
+            let winnerURL = URL(fileURLWithPath: winnerPath)
             do {
-                try winnerRaw.write(to: URL(fileURLWithPath: winnerPath).appendingPathExtension("bak"),
-                                    atomically: true, encoding: .utf8)
-                try merged.write(to: URL(fileURLWithPath: winnerPath),
-                                 atomically: true, encoding: .utf8)
+                try Self.coordinatedWrite(winnerRaw, to: winnerURL.appendingPathExtension("bak"))
+                try Self.coordinatedWrite(merged, to: winnerURL)
                 var updated = winner
                 updated.markdownContent = merged
                 graph.nodes[winnerID] = updated
@@ -1086,14 +1085,25 @@ public final class GraphStore: ObservableObject {
             skipping: loser.filePath.map { URL(fileURLWithPath: $0) }
         )
 
-        // 3. Delete loser's .md file (with .bak snapshot).
+        // 3. Delete loser's .md file (with .bak snapshot). The delete is
+        //    load-bearing — if it silently fails the duplicate resurrects
+        //    on next launch (this was the iOS "merge doesn't stick" bug).
+        //    Surface the error and bail BEFORE the in-memory cleanup so
+        //    the user can retry without confusing on-disk vs in-memory
+        //    state.
         if let loserPath = loser.filePath {
             let loserURL = URL(fileURLWithPath: loserPath)
             if let raw = try? String(contentsOf: loserURL, encoding: .utf8) {
-                try? raw.write(to: loserURL.appendingPathExtension("bak"),
-                               atomically: true, encoding: .utf8)
+                // Snapshot is best-effort; coordinated write surfaces a
+                // real error if iOS sandbox / provider rejects, but a
+                // missed snapshot isn't a reason to abort the merge.
+                try? Self.coordinatedWrite(raw, to: loserURL.appendingPathExtension("bak"))
             }
-            try? FileManager.default.removeItem(at: loserURL)
+            do {
+                try Self.coordinatedDelete(loserURL)
+            } catch {
+                return "Couldn't delete loser file at \(loserURL.lastPathComponent): \(error.localizedDescription)"
+            }
         }
 
         // 4. Re-target / re-source in-memory edges; drop self-loops.
@@ -1149,9 +1159,9 @@ public final class GraphStore: ObservableObject {
             let ns = raw as NSString
             let matches = regex.matches(in: raw, range: NSRange(location: 0, length: ns.length))
             if matches.isEmpty { continue }
-            // Snapshot pre-rewrite.
-            try? raw.write(to: url.appendingPathExtension("bak"),
-                           atomically: true, encoding: .utf8)
+            // Snapshot pre-rewrite. Best-effort — a stuck snapshot is
+            // not worth aborting the whole wikilink sweep over.
+            try? Self.coordinatedWrite(raw, to: url.appendingPathExtension("bak"))
             // Build replacement preserving any suffix (|alias / #section).
             var result = ""
             var lastEnd = 0
@@ -1168,9 +1178,72 @@ public final class GraphStore: ObservableObject {
                 totalReplacements += 1
             }
             result += ns.substring(from: lastEnd)
-            try? result.write(to: url, atomically: true, encoding: .utf8)
+            // Coordinated to handle iCloud Drive / Files-app folders
+            // that silently reject raw writes through the
+            // security-scoped bracket alone (same root cause as the
+            // iOS merge-doesn't-stick bug). If a single file fails
+            // we skip it rather than aborting the whole sweep —
+            // partial rewrite is recoverable from the per-file .bak.
+            do {
+                try Self.coordinatedWrite(result, to: url)
+            } catch {
+                print("[mergeNode] wikilink rewrite failed for \(url.lastPathComponent): \(error)")
+            }
         }
         return totalReplacements
+    }
+
+    /// iOS-aware write. Wraps the write in `NSFileCoordinator` so
+    /// iCloud Drive / Files-app provider folders accept the write;
+    /// raw `String.write(to:)` inside a security-scoped bracket alone
+    /// silently fails on these providers (this was the root cause of
+    /// the "merge doesn't stick across launches" bug). macOS doesn't
+    /// need the coordinator wrap.
+    private static func coordinatedWrite(_ contents: String,
+                                         to url: URL) throws {
+        #if canImport(UIKit)
+        let coordinator = NSFileCoordinator(filePresenter: nil)
+        var coordError: NSError?
+        var writeError: Error?
+        coordinator.coordinate(writingItemAt: url,
+                               options: [.forReplacing],
+                               error: &coordError) { coordURL in
+            do {
+                try contents.write(to: coordURL, atomically: true, encoding: .utf8)
+            } catch {
+                writeError = error
+            }
+        }
+        if let coordError { throw coordError }
+        if let writeError { throw writeError }
+        #else
+        try contents.write(to: url, atomically: true, encoding: .utf8)
+        #endif
+    }
+
+    /// iOS-aware delete. Mirror of `coordinatedWrite` for the
+    /// `forDeleting` coordinator option, which the loser-file removal
+    /// step of `mergeNode` was missing — leading to silent delete
+    /// failures and resurrected duplicates on relaunch.
+    private static func coordinatedDelete(_ url: URL) throws {
+        #if canImport(UIKit)
+        let coordinator = NSFileCoordinator(filePresenter: nil)
+        var coordError: NSError?
+        var deleteError: Error?
+        coordinator.coordinate(writingItemAt: url,
+                               options: [.forDeleting],
+                               error: &coordError) { coordURL in
+            do {
+                try FileManager.default.removeItem(at: coordURL)
+            } catch {
+                deleteError = error
+            }
+        }
+        if let coordError { throw coordError }
+        if let deleteError { throw deleteError }
+        #else
+        try FileManager.default.removeItem(at: url)
+        #endif
     }
 
     /// Find clusters of nodes whose normalized slugs match. Used by the
