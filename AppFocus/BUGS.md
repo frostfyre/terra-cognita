@@ -1,5 +1,61 @@
 # Known Issues
 
+## iOS — merge-duplicate-cluster doesn't persist across launches
+**Status:** confirmed in-session-only on device 2026-05-31; fix queued
+**Reported:** 2026-05-31
+
+User reports that on iOS, every cold launch surfaces the same
+duplicate cluster banner. Tapping Review → Merge clears the banner
+within the current session, but on relaunch the duplicate is back.
+
+Suspected cause: `GraphStore.mergeNode` performs three file ops
+(write merged winner body, snapshot loser, delete loser .md) inside
+a `startAccessingSecurityScopedResource` bracket, but uses `try?`
+for the snapshot + delete — so iOS sandbox / Files-app provider
+rejections fail silently. The in-memory graph is updated either
+way, which is why the cluster appears merged in-session. Next
+launch, the loser .md is still on disk → loader re-detects the
+cluster.
+
+Likely fix:
+1. Convert `try?` to `try` and surface delete failures through the
+   return value so the merge sheet shows the error instead of
+   appearing to succeed.
+2. Wrap iOS file writes / deletes in `NSFileCoordinator.coordinate(writingItemAt:)`
+   to match the read-side coordinator already in `coordinatedLoad`,
+   which fixes iCloud Drive / Files-app provider folders that
+   need it.
+3. Consider routing the merge through `AtlasEditor` for the
+   `.bak`-once-per-session safety rail it provides.
+
+Not blocking v1 release if we ship with the iOS limitation noted
+in TestFlight's "What to test" — but fix is small and high-value
+so should land before the public 1.0.
+
+## Layout transitions teleported on large graphs
+**Status:** fixed in `GraphCanvasView.beginLayoutTransition` + `effectivePosition`, confirmed on device 2026-05-31
+**Reported:** 2026-05-31
+
+Switching layout algorithms (or toggling no-overlap) snapped nodes
+instantly to their new positions on the heritage atlas, even though
+the call sites were wrapped in `withAnimation(.spring(...))`. Root
+cause: SwiftUI `withAnimation` only animates view-tree properties;
+values read inside a `Canvas` draw closure aren't part of that
+tree, so the position dictionary updated instantaneously regardless
+of the wrapping. Symptom was hidden on small graphs where the
+displacement per node was tiny.
+
+Fix: explicit per-frame interpolation. `LayoutTransition` snapshots
+the old `layout`, stores the new target, and `effectivePosition`
+lerps each node from `from` to `to` based on wallclock delta over
+~0.8 s (easeOutQuart — no overshoot, so the field "lands" cleanly
+on big atlases). The 20 Hz TimelineView re-reads positions per
+tick, so the Canvas samples the interpolation naturally. The
+transition state auto-clears once duration elapses.
+
+Pinning was removed in the same pass — drag now writes directly
+into `layout` (still persisted across launches).
+
 ## Fit view still feels off
 **Status:** fixed in `frameHighlightedSubnet` + `frameAllVisible` on 2026-05-29
 **Reported:** 2026-05-28

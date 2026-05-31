@@ -175,6 +175,41 @@ Chat-driven atlas creation embedded in the New Atlas template picker. Replaces t
 - **Phase D** — Wikipedia enrichment per accepted node (already half-built via `WebEnrichment`; just needs to be wired into genesis).
 - **Phase E** — mode-specific seed prompts (Heritage Atlas / Career Map / Story Bible each pre-prime the genesis session with style guidance), streaming responses, undo within the session, regenerate-this-node.
 
+## Phase 4.8 — TestFlight 1.0 cut *(in progress, target EOD 2026-06-01)*
+
+The wrap on the public v1. Scope is deliberately tight: package what
+exists, fix anything that would bounce, ship. New features wait for
+v1.1.
+
+**Must-ship before TestFlight upload:**
+- Wire `Apps/TerraCognita-macOS/TerraCognita-macOS.entitlements`
+  into both macOS target configs via Xcode's Build Settings →
+  Code Signing Entitlements (the file is in place; the project
+  reference still has to be set, requires Xcode UI since Claude
+  Code can't safely edit pbxproj while Xcode is open).
+- Fix `GraphStore.mergeNode` iOS persistence bug (see BUGS.md) —
+  silent `try?` deletes + missing `NSFileCoordinator` wrap.
+- Verify App Store Connect bundle ID + app record exist for
+  `com.frostfyre.terracognita.ios` (and `.mac` if shipping macOS
+  in the same wave).
+- Archive iOS scheme against "Any iOS Device (arm64)" → Distribute
+  App → App Store Connect → Transporter delivers `.ipa`.
+- TestFlight metadata: app description, screenshots (iPhone 6.5"
+  + iPad 12.9" required by App Store Connect), beta test info,
+  internal-only first wave.
+
+**Defer to v1.1:**
+- Audio identity layer (`Design/terra-cognita-audio-design.md`)
+- macOS TestFlight (iOS first; macOS adds a separate notarization /
+  sandbox loop)
+- Live atlas watch, graph-wide AI, Barnes-Hut layout, spatial
+  Capture preview, 3D time-axis mode
+
+**Risk:** signing identity already settled on `TUMFPT4C67`, icon
+flattened, accent color resolved, layout transition working. The
+remaining risks are mechanical Xcode/Transporter/ASC plumbing
+plus the iOS merge-persistence fix.
+
 ## Phase 5 — Pro Tier *(later)*
 
 Sync (iCloud first), cloud AI augmentation, large-graph background workers, team-shared Staging Layers. Don't start until 1–4 are tight and we have user signal.

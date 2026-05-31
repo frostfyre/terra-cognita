@@ -47,10 +47,11 @@ TestFlight cut. Foundation Models AI features require macOS 26 / iOS 26.
   on any layout.
 - **Smooth layout interpolation** — switching algorithms (or toggling
   no-overlap) eases every node from its current position to the new
-  one via an explicit per-frame lerp driven by the 20 Hz TimelineView,
-  so the graph settles into the new arrangement instead of
-  teleporting. (SwiftUI's `withAnimation` doesn't animate values read
-  inside a `Canvas`, hence the explicit interpolation.)
+  one via an explicit per-frame lerp (easeOutQuart over ~0.8 s)
+  driven by the 20 Hz TimelineView, so the graph settles into the
+  new arrangement instead of teleporting. Confirmed on the heritage
+  atlas 2026-05-31. (SwiftUI's `withAnimation` doesn't animate
+  values read inside a `Canvas`, hence the explicit interpolation.)
 - Layout choice + no-overlap preference persist per-atlas.
 - Era-driven **depth axis** with parallax-on-pan: older eras drift in
   the background, current era sits forward
