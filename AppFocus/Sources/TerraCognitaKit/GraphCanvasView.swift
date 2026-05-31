@@ -14,9 +14,21 @@ struct GraphCanvasView: View {
     @State private var lastScaleValue: CGFloat = 1
     @State private var canvasSize: CGSize = .zero
 
-    /// Per-node manually-pinned positions in world space. Pinned nodes
-    /// are not displaced by future automatic layouts.
-    @State private var pinnedPositions: [String: CGPoint] = [:]
+    /// Active layout-change interpolation, when set. `effectivePosition`
+    /// lerps each node from `from` toward `to` based on wallclock time.
+    /// SwiftUI's `withAnimation` does not animate values read inside a
+    /// `Canvas` draw closure, so we drive the transition explicitly off
+    /// the 20 Hz TimelineView's tick by re-reading the wallclock each
+    /// time the Canvas asks for a position.
+    @State private var layoutTransition: LayoutTransition?
+
+    struct LayoutTransition: Equatable {
+        var from: [String: CGPoint]
+        var to: [String: CGPoint]
+        var startTime: TimeInterval
+        var duration: TimeInterval
+    }
+
     /// While the user is dragging a node, this holds its id.
     @State private var draggingNodeID: String?
     /// World-space position of the dragging node at drag start.
@@ -475,14 +487,6 @@ struct GraphCanvasView: View {
                             triggerHeroLoad(for: node)
                         }
 
-                        // Pinned indicator — small white outline so the pin
-                        // status is legible at a glance.
-                        if pinnedPositions[node.id] != nil {
-                            context.stroke(Path(ellipseIn: rect),
-                                           with: .color(.white.opacity(inHighlight ? 0.95 : dimOpacity)),
-                                           lineWidth: 1.5)
-                        }
-
                         // Bridge ring — dashed gold halo for nodes the
                         // Systems lens has flagged as topology
                         // bridges. Only painted when the Systems lens
@@ -539,12 +543,6 @@ struct GraphCanvasView: View {
                             ctx.fill(Path(ellipseIn: rect), with: .color(fill))
                         }
                         applyNodeHighlight(in: &context, rect: rect)
-
-                        if pinnedPositions[node.id] != nil {
-                            context.stroke(Path(ellipseIn: rect),
-                                           with: .color(.white),
-                                           lineWidth: 1.5)
-                        }
 
                         let r = drawRadius + 2 + ambientPuff * 2
                         let ring = CGRect(x: p.x - r, y: p.y - r,
@@ -811,13 +809,8 @@ struct GraphCanvasView: View {
                 if oldValue != newValue { persistLayout() }
                 return
             }
-            let fixed = LayoutEngine.enforceNoOverlap(
-                layout,
-                pinned: Set(pinnedPositions.keys)
-            )
-            withAnimation(.easeInOut(duration: 0.6)) {
-                layout = fixed
-            }
+            let fixed = LayoutEngine.enforceNoOverlap(layout)
+            beginLayoutTransition(to: fixed)
             persistLayout()
         }
     }
@@ -901,8 +894,7 @@ struct GraphCanvasView: View {
             }
             return .zero
         }()
-        pinnedPositions[pending.id] = spawn
-        layout[pending.id] = spawn          // also seed the global layout
+        layout[pending.id] = spawn
         selectedNodeID = pending.id
         persistLayout()
         // Defer the frame to the next runloop so the new node is in
@@ -1152,7 +1144,6 @@ struct GraphCanvasView: View {
             let saved = persisted.cgPositions
             if Set(nodeIDs).isSubset(of: Set(saved.keys)) {
                 layout = saved
-                pinnedPositions = persisted.cgPinned
                 scale = max(minScale, min(maxScale, CGFloat(persisted.scale)))
                 offset = CGSize(width: persisted.offsetX, height: persisted.offsetY)
                 layoutAlgorithm = persisted.algorithm ?? .forceDirected
@@ -1161,10 +1152,7 @@ struct GraphCanvasView: View {
                     highlightDepth = max(1, min(4, d))
                 }
                 if noOverlap {
-                    layout = LayoutEngine.enforceNoOverlap(
-                        layout,
-                        pinned: Set(pinnedPositions.keys)
-                    )
+                    layout = LayoutEngine.enforceNoOverlap(layout)
                 }
                 store.layoutSettleTick &+= 1
                 return
@@ -1184,21 +1172,17 @@ struct GraphCanvasView: View {
         // Bail if the graph has been replaced under us while we were thinking.
         guard store.graph.nodes.count == nodeIDs.count else { return }
 
-        withAnimation(.easeInOut(duration: 0.6)) {
-            layout = noOverlap
-                ? LayoutEngine.enforceNoOverlap(computed,
-                                                pinned: Set(pinnedPositions.keys))
-                : computed
-            layoutAlgorithm = .forceDirected
-        }
+        let next = noOverlap
+            ? LayoutEngine.enforceNoOverlap(computed)
+            : computed
+        beginLayoutTransition(to: next)
+        layoutAlgorithm = .forceDirected
         persistLayout()
         store.layoutSettleTick &+= 1
     }
 
-    /// Switch to a specific layout algorithm. Animates the camera over
-    /// ~600ms so the user keeps spatial memory through the transition.
-    /// Pinned positions survive — the layout only moves nodes the user
-    /// hasn't manually placed.
+    /// Switch to a specific layout algorithm. Springs the positions
+    /// across so the user keeps spatial memory through the transition.
     func applyLayout(_ algorithm: LayoutAlgorithm) async {
         let nodeIDs = Array(store.graph.nodes.keys)
         guard !nodeIDs.isEmpty else { return }
@@ -1257,19 +1241,12 @@ struct GraphCanvasView: View {
         }
 
         guard store.graph.nodes.count == nodeIDs.count else { return }
-        // Pinned nodes are sacred — keep their user-set positions.
         var next = computed
-        for (id, p) in pinnedPositions { next[id] = p }
         if noOverlap {
-            next = LayoutEngine.enforceNoOverlap(
-                next,
-                pinned: Set(pinnedPositions.keys)
-            )
+            next = LayoutEngine.enforceNoOverlap(next)
         }
-        withAnimation(.easeInOut(duration: 0.6)) {
-            layout = next
-            layoutAlgorithm = algorithm
-        }
+        beginLayoutTransition(to: next)
+        layoutAlgorithm = algorithm
         persistLayout()
     }
 
@@ -1277,7 +1254,6 @@ struct GraphCanvasView: View {
     private func persistLayout() {
         var snapshot = PersistedLayout()
         snapshot.positions = layout.mapValues(PersistedLayout.Point.init)
-        snapshot.pinned = pinnedPositions.mapValues(PersistedLayout.Point.init)
         snapshot.scale = Double(scale)
         snapshot.offsetX = Double(offset.width)
         snapshot.offsetY = Double(offset.height)
@@ -1685,7 +1661,7 @@ struct GraphCanvasView: View {
                     // node center to the touch, losing the depth
                     // parallax offset and producing the "jumps above
                     // the finger" feel.)
-                    pinnedPositions[id] = CGPoint(
+                    layout[id] = CGPoint(
                         x: start.x + value.translation.width / scale,
                         y: start.y + value.translation.height / scale
                     )
@@ -1715,10 +1691,52 @@ struct GraphCanvasView: View {
     }
 
     /// World-space position the canvas should render for a given node.
-    /// Priority: pinned position → global layout.
+    /// During an active `layoutTransition`, eases from the snapshotted
+    /// `from` toward the target `to` based on wallclock time so the
+    /// Canvas's per-frame reads sample a smooth interpolation rather
+    /// than a teleport. Nodes present in only one side of the
+    /// transition snap to whichever side they exist in.
     private func effectivePosition(for id: String) -> CGPoint? {
-        if let pinned = pinnedPositions[id] { return pinned }
+        if let tx = layoutTransition,
+           let from = tx.from[id], let to = tx.to[id] {
+            let elapsed = Date().timeIntervalSinceReferenceDate - tx.startTime
+            if elapsed < tx.duration {
+                let raw = max(0, min(1, elapsed / tx.duration))
+                // easeOutQuart — fast settle without overshoot, so the
+                // graph "lands" cleanly on big atlases where overshoot
+                // looks like jitter.
+                let alpha = 1 - pow(1 - raw, 4)
+                return CGPoint(
+                    x: from.x + (to.x - from.x) * alpha,
+                    y: from.y + (to.y - from.y) * alpha
+                )
+            }
+        }
         return layout[id]
+    }
+
+    /// Snapshot the current `layout` and animate every node toward
+    /// `target` over `duration`. Replaces SwiftUI `withAnimation` for
+    /// the layout dictionary — the Canvas reads positions imperatively
+    /// per frame and can't see SwiftUI's view-tree interpolation.
+    private func beginLayoutTransition(to target: [String: CGPoint],
+                                       duration: TimeInterval = 0.8) {
+        let start = Date().timeIntervalSinceReferenceDate
+        layoutTransition = LayoutTransition(
+            from: layout,
+            to: target,
+            startTime: start,
+            duration: duration
+        )
+        layout = target
+        // Drop the transition once it's done so per-frame lookups
+        // short-circuit to the cheap `layout[id]` path again.
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(duration + 0.05))
+            if layoutTransition?.startTime == start {
+                layoutTransition = nil
+            }
+        }
     }
 
     /// Convert a screen-space point inside the canvas to a world-space
@@ -1907,38 +1925,14 @@ struct GraphCanvasView: View {
 
     @ViewBuilder
     private func selectedNodeMenu() -> some View {
-        if let id = selectedNodeID, let node = store.graph.nodes[id] {
+        if let node = selectedNodeID.flatMap({ store.graph.nodes[$0] }) {
             Text(node.label)
             Button("Open note") { openSelectedNote(node) }
                 .disabled(noteURL(for: node) == nil)
             Divider()
-            if pinnedPositions[id] != nil {
-                Button("Unpin") {
-                    pinnedPositions.removeValue(forKey: id)
-                    persistLayout()
-                }
-            } else {
-                Button("Pin in place") {
-                    if let p = layout[id] { pinnedPositions[id] = p }
-                    persistLayout()
-                }
-            }
-            if !pinnedPositions.isEmpty {
-                Button("Unpin all (\(pinnedPositions.count))") {
-                    pinnedPositions.removeAll()
-                    persistLayout()
-                }
-            }
-            Divider()
             Button("Clear selection") { selectedNodeID = nil }
         } else {
             Text("No node selected")
-            if !pinnedPositions.isEmpty {
-                Button("Unpin all (\(pinnedPositions.count))") {
-                    pinnedPositions.removeAll()
-                    persistLayout()
-                }
-            }
         }
     }
 

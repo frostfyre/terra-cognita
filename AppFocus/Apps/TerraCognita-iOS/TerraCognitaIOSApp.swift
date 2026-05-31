@@ -50,16 +50,22 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
             object: nil,
             queue: .main
         ) { notification in
-            // Already on the main queue (queue: .main above), so
-            // touch UIKit state directly. No async hop — that would
-            // both invite a data-race warning and let the white frame
-            // through.
+            // `queue: .main` guarantees this fires on the main thread
+            // at runtime, but the closure is `@Sendable` so Swift 6
+            // can't statically prove main-actor access. Extract the
+            // scene from `Notification` (a non-Sendable struct) here
+            // in the outer Sendable context — only the scene
+            // reference crosses into the main-actor block below.
+            // `assumeIsolated` keeps everything synchronous, so no
+            // async hop and no white frame on cold start.
             guard let windowScene = notification.object as? UIWindowScene
             else { return }
-            for window in windowScene.windows {
-                window.backgroundColor = AppDelegate.substrate
-                window.rootViewController?.view.backgroundColor =
-                    AppDelegate.substrate
+            MainActor.assumeIsolated {
+                for window in windowScene.windows {
+                    window.backgroundColor = AppDelegate.substrate
+                    window.rootViewController?.view.backgroundColor =
+                        AppDelegate.substrate
+                }
             }
         }
         return true

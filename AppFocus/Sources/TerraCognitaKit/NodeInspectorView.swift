@@ -128,6 +128,11 @@ struct NodeInspectorView: View {
                             )
                         }
                     }
+                    // Pin column width to the inspector's content area so a
+                    // wide child (long chip, oversized embed) can't inflate
+                    // the VStack and drag wrapping body text past the
+                    // trailing edge on iPhone.
+                    .frame(maxWidth: .infinity, alignment: .leading)
                     .padding()
                 }
                 .onAppear {
@@ -477,8 +482,15 @@ struct InspectorFlowLayout: Layout {
         var currentRow: [(LayoutSubview, CGSize)] = []
         var rowWidth: CGFloat = 0
         var rowHeight: CGFloat = 0
+        // Propose the row width to each subview so chips with long labels
+        // truncate via their own `lineLimit(1)` instead of reporting their
+        // unconstrained intrinsic width and forcing the parent column wider
+        // than the inspector (which on iPhone clips body text past the
+        // trailing edge).
+        let proposal = ProposedViewSize(width: width, height: nil)
         for subview in subviews {
-            let size = subview.sizeThatFits(.unspecified)
+            let raw = subview.sizeThatFits(proposal)
+            let size = CGSize(width: min(raw.width, width), height: raw.height)
             let needed = rowWidth == 0 ? size.width : rowWidth + spacing + size.width
             if needed > width && !currentRow.isEmpty {
                 result.rows.append(currentRow)

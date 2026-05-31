@@ -3,14 +3,13 @@ import CoreGraphics
 
 /// Snapshot of the canvas view state that survives across launches.
 ///
-/// We persist three things:
+/// We persist two things:
 ///   - The force-directed layout result (so the second launch doesn't have
-///     to recompute it and the graph reads the same)
-///   - Manually pinned node positions (the user's deliberate placements)
-///   - Scale + offset (so the user returns to where they were looking)
+///     to recompute it and the graph reads the same), including any
+///     user-dragged positions which are written into `positions` directly.
+///   - Scale + offset (so the user returns to where they were looking).
 struct PersistedLayout: Codable, Equatable {
     var positions: [String: Point] = [:]
-    var pinned: [String: Point] = [:]
     var scale: Double = 1
     var offsetX: Double = 0
     var offsetY: Double = 0
@@ -36,10 +35,6 @@ struct PersistedLayout: Codable, Equatable {
 
     var cgPositions: [String: CGPoint] {
         positions.mapValues(\.cg)
-    }
-
-    var cgPinned: [String: CGPoint] {
-        pinned.mapValues(\.cg)
     }
 }
 

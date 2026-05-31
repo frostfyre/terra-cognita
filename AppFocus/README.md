@@ -23,15 +23,16 @@ document and is kept for historical context.
 
 ## Status
 
-**Working preview.** Builds and runs as three targets sharing one Swift
-package (`TerraCognitaKit`):
+**Near-beta — prepping for TestFlight.** All three targets debug + release
+green, release-build performance solid through hundreds of nodes / thousands
+of edges on the heritage atlas. Currently in fit-and-finish for the v1
+TestFlight cut. Foundation Models AI features require macOS 26 / iOS 26.
 
-- **TerraCognita-macOS** — macOS 14+ `.app`
+- **TerraCognita-macOS** — macOS 14+ `.app`, hardened runtime + app-sandbox
+  entitlement (mic + user-selected files + app-scope bookmarks) for App
+  Store / TestFlight eligibility
 - **TerraCognita-iOS** — iPhone + iPad universal, iOS 17+
 - **TerraCognita** — SwiftPM exec for the fastest dev loop on macOS (`swift run TerraCognita`)
-
-All three are debug + release green. Foundation Models AI features
-require macOS 26 / iOS 26.
 
 ### What's shipped
 
@@ -43,16 +44,24 @@ require macOS 26 / iOS 26.
   Grid (deterministic √N × √N). Cluster is reserved for Phase 3
   (community detection).
 - **No-overlap toggle** — optional iterative push-apart post-pass
-  on any layout; pinned nodes stay anchored.
+  on any layout.
+- **Smooth layout interpolation** — switching algorithms (or toggling
+  no-overlap) eases every node from its current position to the new
+  one via an explicit per-frame lerp driven by the 20 Hz TimelineView,
+  so the graph settles into the new arrangement instead of
+  teleporting. (SwiftUI's `withAnimation` doesn't animate values read
+  inside a `Canvas`, hence the explicit interpolation.)
 - Layout choice + no-overlap preference persist per-atlas.
 - Era-driven **depth axis** with parallax-on-pan: older eras drift in
   the background, current era sits forward
 - **Ambient drift** + **idle puff** so the field feels alive even when
   the user isn't interacting
 - **Hover ring** (iPad pointer + Mac mouse) on the targeted node
-- Persistent layout: pinned positions + scale + offset + algorithm
-  + no-overlap survive relaunch
-- Performance: smooth to ~1,500 nodes (see `scripts/stress_test.swift`)
+- Persistent layout: node positions (including drag results) + scale
+  + offset + algorithm + no-overlap survive relaunch
+- Performance: smooth to ~1,500 nodes (see `scripts/stress_test.swift`);
+  release builds run smoothly with the user's heritage atlas
+  (hundreds of nodes, thousands of edges)
 
 **Aesthetic**
 - Deep-indigo → near-black radial gradient field, persistent across
@@ -132,8 +141,8 @@ require macOS 26 / iOS 26.
   sheet. Replaces the previous operations row in the inspector
   with a single "Augment this node…" button.
 - **Long-press empty canvas → "Create node here"** — spatial drop-in
-  creation with the spawn point captured in world coordinates,
-  auto-pinned, auto-framed
+  creation with the spawn point captured in world coordinates and
+  auto-framed
 - **Inline note editing** — pencil icon in the Inspector's Note
   section opens a TextEditor seeded with the current body. Save
   (⌘S) writes through `AtlasEditor.replaceBody`; Cancel discards.
@@ -236,6 +245,16 @@ require macOS 26 / iOS 26.
 - Radial menus work identically on macOS, iPad, iPhone
 - Haptics on iOS (selection, subnet enter/exit, proposal accept)
 - App icon (Terra Cognita orrery) rendered by `scripts/render_icon.swift`
+
+### Known issues
+
+- **iOS — merge-duplicate-cluster doesn't persist across launches.** In
+  the current session the merge runs and the banner clears, but the
+  duplicate is back on relaunch. Suspected cause: the merge's file
+  writes / deletes inside `GraphStore.mergeNode` use `try?` (silent
+  failures) without an `NSFileCoordinator` wrap, so iOS sandbox /
+  Files-app providers can reject the writes invisibly. Fix queued.
+  See `BUGS.md`.
 
 ### What's still missing / rough
 
@@ -479,6 +498,20 @@ See [`PLAN.md`](PLAN.md) for the phased plan. Short version:
   panel).
 - **Phase 5** *(later)* — Pro tier: sync, cloud AI augmentation,
   large-graph background workers. Pro never gates data access.
+
+**v1.1 (post-TestFlight) — audio identity layer.** Three-layer audio
+design lined up for after v1 ships silent. Chime sonification ships
+first as the identity piece: on node selection, chimes ring per
+connected node, with pitch derived from connected-node type/color,
+sequence from on-screen position, timbre from edge `relationshipType`,
+and spatial placement from on-screen X/Y — the AirPods spatial-audio
+read of "where the structure is" is the killer feature. Per-Atlas
+MusicKit binding (resume music when you reopen an atlas) ships
+second; an ambient generative bed ships last or skips entirely.
+Out of scope: voice control, TTS reading, music-creation tools,
+non-MusicKit streaming integrations. Whole doc lives in chat history;
+load-bearing decisions banked in agent memory under
+`project_audio_design`.
 
 Cross-cutting follow-ups regardless of phase: live atlas watch,
 spatial Capture preview, graph-wide AI, Barnes-Hut layout,
