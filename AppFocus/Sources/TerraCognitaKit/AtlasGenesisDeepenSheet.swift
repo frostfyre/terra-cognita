@@ -102,7 +102,6 @@ struct AtlasGenesisDeepenSheet: View {
                     .padding(.horizontal, 5).padding(.vertical, 1)
                     .background(typeTint(node.type).opacity(0.15),
                                 in: Capsule())
-                    .foregroundStyle(typeTint(node.type))
             }
         }
     }
@@ -223,7 +222,6 @@ struct AtlasGenesisDeepenSheet: View {
                         .font(.caption2)
                         .padding(.horizontal, 5).padding(.vertical, 1)
                         .background(tint.opacity(0.15), in: Capsule())
-                        .foregroundStyle(tint)
                     if let rel = node.parentRelationshipType,
                        !rel.isEmpty {
                         Text(rel)

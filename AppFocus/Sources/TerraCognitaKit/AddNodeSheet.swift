@@ -330,7 +330,10 @@ struct AddNodeSheet: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(node.label).font(.headline)
                     HStack(spacing: 6) {
-                        Text(node.type).font(.caption).foregroundStyle(tint)
+                        Text(node.type)
+                            .font(.caption)
+                            .padding(.horizontal, 5).padding(.vertical, 1)
+                            .background(tint.opacity(0.15), in: Capsule())
                         if let era = node.era, !era.isEmpty {
                             Text("· \(era)").font(.caption2).foregroundStyle(.secondary)
                         }

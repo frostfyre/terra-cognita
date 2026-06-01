@@ -404,10 +404,10 @@ extension GraphView {
             }
 
             Divider()
-            Button {
-                store.resetToDefaultAtlas()
+            Button(role: .destructive) {
+                showingRestoreDemoConfirm = true
             } label: {
-                Label("Use Default (Miyazaki)", systemImage: "sparkles")
+                Label("Restore Miyazaki Demo…", systemImage: "arrow.counterclockwise")
             }
         } label: {
             Label("Atlas", systemImage: "folder")
@@ -415,6 +415,18 @@ extension GraphView {
         .menuStyle(.borderlessButton)
         .fixedSize()
         .help("Open a markdown atlas folder (⌘O)")
+        .confirmationDialog(
+            "Restore Miyazaki Demo to its shipped state?",
+            isPresented: $showingRestoreDemoConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("Restore Demo", role: .destructive) {
+                store.resetToDefaultAtlas()
+            }
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            Text("This discards any edits you've made to the Miyazaki demo atlas. Your other atlases are not affected.")
+        }
     }
 
     /// Inspector body, factored out of `body` so SwiftUI's type

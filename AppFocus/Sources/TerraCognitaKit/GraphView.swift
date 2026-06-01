@@ -50,6 +50,11 @@ public struct GraphView: View {
     @State var pendingGEXFDocument: GEXFImporter.Document?
     @State var pendingGEXFName: String?
 
+    /// Drives the confirmation dialog before wiping the user's
+    /// edits to the Miyazaki demo. Triggered from the Atlas menu's
+    /// "Restore Miyazaki Demo…" item.
+    @State var showingRestoreDemoConfirm: Bool = false
+
     /// Incremented to request a "fit to view" pass from the canvas.
     /// The canvas observes `.onChange` and animates the camera so
     /// every visible node fits — driven by the top-bar Fit button

@@ -123,11 +123,19 @@ public final class GraphStore: ObservableObject {
     }
 
     /// Loads the default atlas: previously-bookmarked user folder if
-    /// one is saved, otherwise the bundled Miyazaki demo, otherwise the
-    /// development heritage atlas on disk.
+    /// one is saved, otherwise the writable copy of the bundled
+    /// Miyazaki demo (copied on first launch if it doesn't already
+    /// exist), otherwise the development heritage atlas on disk.
     func loadDefaultAtlas() {
         if let url = AtlasBookmark.load() {
             load(from: url, fromBookmark: true)
+        } else if let demoURL = Self.ensureWritableDemoCopy() {
+            // First launch (or post-reset): the bundled Miyazaki demo
+            // has been materialized into ~/Documents/Terra Cognita
+            // Atlases/Miyazaki Demo/ as a fully writable copy. Treat
+            // it like any user-chosen folder so editing, AI, and
+            // capture all work out of the box.
+            load(from: demoURL)
         } else {
             startLoadingPresentation()
             Task {
@@ -155,6 +163,45 @@ public final class GraphStore: ObservableObject {
                 }
             }
         }
+    }
+
+    /// Returns the URL of a writable copy of the bundled Miyazaki
+    /// demo atlas, materializing it from the app bundle on first
+    /// call. The destination is `~/Documents/Terra Cognita
+    /// Atlases/Miyazaki Demo/` — visible to the user, mirrors the
+    /// Genesis-flow "Terra Cognita Atlases" parent folder, and
+    /// editable like any user-chosen atlas.
+    ///
+    /// Returns `nil` when the bundle resource isn't present (e.g.
+    /// `swift run` builds without packaged resources). In that case
+    /// the caller falls back to the dev heritage-atlas search path.
+    static func ensureWritableDemoCopy() -> URL? {
+        let fm = FileManager.default
+        // Strictly the bundled Miyazaki — not the dev heritage atlas
+        // fallback. Don't materialize a writable copy of the
+        // developer's own data.
+        guard let bundleURL = Bundle.module.url(
+            forResource: "miyazaki-vault", withExtension: nil
+        ) else {
+            return nil
+        }
+        guard let docs = try? fm.url(
+            for: .documentDirectory, in: .userDomainMask,
+            appropriateFor: nil, create: true
+        ) else {
+            return nil
+        }
+        let parent = docs.appendingPathComponent(
+            "Terra Cognita Atlases", isDirectory: true
+        )
+        let dest = parent.appendingPathComponent(
+            "Miyazaki Demo", isDirectory: true
+        )
+        if !fm.fileExists(atPath: dest.path) {
+            try? fm.createDirectory(at: parent, withIntermediateDirectories: true)
+            try? fm.copyItem(at: bundleURL, to: dest)
+        }
+        return fm.fileExists(atPath: dest.path) ? dest : nil
     }
 
     /// Load an atlas from a user-chosen folder URL. Manages the
@@ -234,9 +281,23 @@ public final class GraphStore: ObservableObject {
         library.save()
     }
 
-    /// Forget the user-chosen atlas and revert to the default search.
+    /// Restore the Miyazaki demo to its shipped state. Clears any
+    /// user-chosen atlas bookmark, wipes the editable demo copy at
+    /// `~/Documents/Terra Cognita Atlases/Miyazaki Demo/`, then
+    /// reloads — which re-materializes a fresh copy from the bundle.
+    /// User's other atlases are untouched.
     func resetToDefaultAtlas() {
         AtlasBookmark.clear()
+        let fm = FileManager.default
+        if let docs = try? fm.url(
+            for: .documentDirectory, in: .userDomainMask,
+            appropriateFor: nil, create: false
+        ) {
+            let demo = docs
+                .appendingPathComponent("Terra Cognita Atlases", isDirectory: true)
+                .appendingPathComponent("Miyazaki Demo", isDirectory: true)
+            try? fm.removeItem(at: demo)
+        }
         loadDefaultAtlas()
     }
 
