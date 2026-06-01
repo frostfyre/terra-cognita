@@ -157,6 +157,26 @@ ios_target.build_configurations.each do |config|
   s['ASSETCATALOG_COMPILER_APPICON_NAME'] = 'AppIcon'
 end
 
+# --- Rewrite system framework references to use $(SDKROOT) ---
+# The xcodeproj gem hardcodes specific SDK versions into framework
+# paths (e.g. MacOSX15.0.sdk/..., iPhoneOS18.0.sdk/...). On a
+# machine running a different Xcode (and therefore a different
+# installed SDK) those paths don't resolve and the build fails
+# with "No such file or directory". Rewrite both system framework
+# refs to use the SDKROOT source tree so they resolve against
+# whatever SDK is current at build time.
+project.files.each do |file|
+  next unless file.path
+
+  if file.path =~ %r{Platforms/MacOSX\.platform/Developer/SDKs/MacOSX[\d.]+\.sdk/System/Library/Frameworks/Cocoa\.framework\z}
+    file.path = 'System/Library/Frameworks/Cocoa.framework'
+    file.source_tree = 'SDKROOT'
+  elsif file.path =~ %r{Platforms/iPhoneOS\.platform/Developer/SDKs/iPhoneOS[\d.]+\.sdk/System/Library/Frameworks/Foundation\.framework\z}
+    file.path = 'System/Library/Frameworks/Foundation.framework'
+    file.source_tree = 'SDKROOT'
+  end
+end
+
 # --- Shared schemes so the two apps surface in Xcode's scheme picker ---
 project.save
 
