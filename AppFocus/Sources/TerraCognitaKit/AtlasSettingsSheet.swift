@@ -50,14 +50,23 @@ struct AtlasSettingsSheet: View {
                 }
             }
         }
+        // Sizes the sheet window on macOS; on iOS the sheet is full-screen
+        // and a 520pt minWidth would force the Form wider than an iPhone,
+        // clipping content.
+        #if os(macOS)
         .frame(minWidth: 520, idealWidth: 620, minHeight: 540, idealHeight: 680)
+        #endif
     }
 
     // MARK: - Types
 
     private var typesSection: some View {
         Section {
-            ForEach(userTypes) { spec in
+            // Identify rows by position, not by `spec.id` (which is the
+            // editable `name`). Otherwise every keystroke renames the row,
+            // ForEach diffs it as new, and the focused TextField is
+            // re-created — on iOS that dismisses the keyboard.
+            ForEach(Array(userTypes.enumerated()), id: \.offset) { _, spec in
                 typeRow(spec)
             }
             .onDelete(perform: deleteTypes)
@@ -125,12 +134,15 @@ struct AtlasSettingsSheet: View {
 
     private var erasSection: some View {
         Section {
-            ForEach($draft.eras) { $era in
+            // Index-based identity for the same reason as types — `EraSpec.id`
+            // is the editable name, so binding-driven ForEach would re-create
+            // the row on every keystroke.
+            ForEach(Array(draft.eras.indices), id: \.self) { idx in
                 HStack {
-                    TextField("name", text: $era.name)
+                    TextField("name", text: $draft.eras[idx].name)
                         .textFieldStyle(.roundedBorder)
                     Text("weight").font(.caption2).foregroundStyle(.secondary)
-                    TextField("0", value: $era.weight, format: .number)
+                    TextField("0", value: $draft.eras[idx].weight, format: .number)
                         .textFieldStyle(.roundedBorder)
                         .frame(width: 70)
                 }
@@ -242,7 +254,12 @@ struct AtlasSettingsSheet: View {
             return
         }
         do {
-            try draft.save(to: atlasURL)
+            // Document-picker URLs are security-scoped — writing without
+            // bracketing fails with EPERM. Match the pattern every other
+            // write path in GraphStore uses.
+            try atlasURL.withSecurityScope {
+                try draft.save(to: atlasURL)
+            }
             store.config = draft
             isPresented = false
         } catch {
