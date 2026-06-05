@@ -62,12 +62,13 @@ struct AtlasSettingsSheet: View {
 
     private var typesSection: some View {
         Section {
-            // Identify rows by position, not by `spec.id` (which is the
-            // editable `name`). Otherwise every keystroke renames the row,
-            // ForEach diffs it as new, and the focused TextField is
-            // re-created — on iOS that dismisses the keyboard.
-            ForEach(Array(userTypes.enumerated()), id: \.offset) { _, spec in
-                typeRow(spec)
+            // Iterate indices INTO `draft.types` (not over a filtered copy)
+            // so each row gets a direct binding via `$draft.types[idx]`.
+            // The previous bindingForType wrapper looked up by stale id on
+            // each set, which let SwiftUI tear down the TextField mid-edit
+            // and drop the iOS keyboard after every character.
+            ForEach(userTypeIndices, id: \.self) { idx in
+                typeRow(at: idx)
             }
             .onDelete(perform: deleteTypes)
             Button {
@@ -89,41 +90,36 @@ struct AtlasSettingsSheet: View {
     }
 
     @ViewBuilder
-    private func typeRow(_ spec: AtlasConfig.TypeSpec) -> some View {
-        let binding = bindingForType(spec.id)
+    private func typeRow(at idx: Int) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
-                Image(systemName: binding.wrappedValue.icon)
-                    .foregroundStyle(binding.wrappedValue.color)
+                Image(systemName: draft.types[idx].icon)
+                    .foregroundStyle(draft.types[idx].color)
                     .frame(width: 22)
                 TextField("name", text: Binding(
-                    get: { binding.wrappedValue.name },
-                    set: { binding.wrappedValue.name = $0.lowercased() }
+                    get: { draft.types[idx].name },
+                    set: { draft.types[idx].name = $0.lowercased() }
                 ))
                 .textFieldStyle(.roundedBorder)
-                ColorPicker("", selection: binding.color, supportsOpacity: false)
+                ColorPicker("", selection: $draft.types[idx].color, supportsOpacity: false)
                     .labelsHidden()
                     .frame(width: 36)
             }
             HStack(spacing: 6) {
                 TextField("display name (optional)",
                           text: Binding(
-                            get: { binding.wrappedValue.displayName ?? "" },
-                            set: { binding.wrappedValue.displayName = $0.isEmpty ? nil : $0 }
+                            get: { draft.types[idx].displayName ?? "" },
+                            set: { draft.types[idx].displayName = $0.isEmpty ? nil : $0 }
                           ))
                 .textFieldStyle(.roundedBorder)
-                TextField("SF Symbol",
-                          text: Binding(
-                            get: { binding.wrappedValue.icon },
-                            set: { binding.wrappedValue.icon = $0 }
-                          ))
-                .textFieldStyle(.roundedBorder)
-                .frame(maxWidth: 140)
+                TextField("SF Symbol", text: $draft.types[idx].icon)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(maxWidth: 140)
             }
             TextField("folder (optional)",
                       text: Binding(
-                        get: { binding.wrappedValue.folder ?? "" },
-                        set: { binding.wrappedValue.folder = $0.isEmpty ? nil : $0 }
+                        get: { draft.types[idx].folder ?? "" },
+                        set: { draft.types[idx].folder = $0.isEmpty ? nil : $0 }
                       ))
             .textFieldStyle(.roundedBorder)
         }
@@ -214,20 +210,10 @@ struct AtlasSettingsSheet: View {
         draft.types.filter { !syntheticNames.contains($0.name) }
     }
 
-    /// Returns a binding to the type spec with the given id, plus a
-    /// derived `.color` binding for the ColorPicker. Mutates `draft`
-    /// in place by index lookup.
-    private func bindingForType(_ id: String) -> TypeSpecBinding {
-        TypeSpecBinding(
-            base: Binding(
-                get: { draft.types.first { $0.id == id } ?? .init(name: "?", color: .gray, icon: "circle") },
-                set: { newValue in
-                    if let idx = draft.types.firstIndex(where: { $0.id == id }) {
-                        draft.types[idx] = newValue
-                    }
-                }
-            )
-        )
+    /// Indices into `draft.types` of all non-synthetic types — used by
+    /// the section so each row binds directly via `$draft.types[idx]`.
+    private var userTypeIndices: [Int] {
+        draft.types.indices.filter { !syntheticNames.contains(draft.types[$0].name) }
     }
 
     private func addType() {
@@ -241,11 +227,11 @@ struct AtlasSettingsSheet: View {
     }
 
     private func deleteTypes(at offsets: IndexSet) {
-        // Map offsets in the filtered (user-only) list back into the
-        // full types array.
-        let user = userTypes
-        let idsToDelete = offsets.compactMap { user.indices.contains($0) ? user[$0].id : nil }
-        draft.types.removeAll { idsToDelete.contains($0.id) }
+        // Offsets index into userTypeIndices (the ForEach data source);
+        // map each one back to its position in `draft.types`, then remove.
+        let userIdx = userTypeIndices
+        let draftIdxToDelete = offsets.compactMap { userIdx.indices.contains($0) ? userIdx[$0] : nil }
+        draft.types.remove(atOffsets: IndexSet(draftIdxToDelete))
     }
 
     private func save() {
@@ -265,23 +251,5 @@ struct AtlasSettingsSheet: View {
         } catch {
             errorMessage = "Couldn't save: \(error.localizedDescription)"
         }
-    }
-}
-
-/// Small wrapper providing a derived `.color` binding alongside the
-/// base TypeSpec binding so the ColorPicker can drive it.
-private struct TypeSpecBinding {
-    let base: Binding<AtlasConfig.TypeSpec>
-
-    var wrappedValue: AtlasConfig.TypeSpec {
-        get { base.wrappedValue }
-        nonmutating set { base.wrappedValue = newValue }
-    }
-
-    var color: Binding<Color> {
-        Binding(
-            get: { base.wrappedValue.color },
-            set: { base.wrappedValue.color = $0 }
-        )
     }
 }

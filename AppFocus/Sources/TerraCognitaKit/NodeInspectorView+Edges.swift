@@ -120,6 +120,7 @@ extension NodeInspectorView {
                     .font(.caption2)
                     .padding(.horizontal, 4).padding(.vertical, 1)
                     .background(.secondary.opacity(0.20), in: Capsule())
+                    .foregroundStyle(.primary)
             } else {
                 HStack(spacing: 3) {
                     Image(systemName: "plus").font(.caption2)
@@ -127,6 +128,7 @@ extension NodeInspectorView {
                 }
                 .padding(.horizontal, 4).padding(.vertical, 1)
                 .background(.secondary.opacity(0.20), in: Capsule())
+                .foregroundStyle(.primary)
             }
         }
         .menuStyle(.borderlessButton)

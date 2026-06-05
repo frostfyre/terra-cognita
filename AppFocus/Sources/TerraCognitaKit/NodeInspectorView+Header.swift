@@ -190,6 +190,10 @@ extension NodeInspectorView {
                 }
                 .padding(.horizontal, 6).padding(.vertical, 2)
                 .background(.secondary.opacity(0.20), in: Capsule())
+                // Explicit `.primary` — Menu labels otherwise inherit the
+                // system tint (orange on this build), which against a pale
+                // capsule bg goes effectively invisible.
+                .foregroundStyle(.primary)
             }
         }
         .menuStyle(.borderlessButton)
@@ -239,6 +243,7 @@ extension NodeInspectorView {
                 }
                 .padding(.horizontal, 6).padding(.vertical, 2)
                 .background(.secondary.opacity(0.20), in: Capsule())
+                .foregroundStyle(.primary)
             } else {
                 HStack(spacing: 3) {
                     Text(current).font(.caption2)
