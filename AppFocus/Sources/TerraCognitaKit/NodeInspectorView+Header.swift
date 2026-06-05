@@ -189,8 +189,7 @@ extension NodeInspectorView {
                     Text("set type").font(.caption2)
                 }
                 .padding(.horizontal, 6).padding(.vertical, 2)
-                .background(.secondary.opacity(0.15), in: Capsule())
-                .foregroundStyle(.secondary)
+                .background(.secondary.opacity(0.20), in: Capsule())
             }
         }
         .menuStyle(.borderlessButton)
@@ -239,8 +238,7 @@ extension NodeInspectorView {
                     Text("set era").font(.caption2)
                 }
                 .padding(.horizontal, 6).padding(.vertical, 2)
-                .background(.secondary.opacity(0.15), in: Capsule())
-                .foregroundStyle(.secondary)
+                .background(.secondary.opacity(0.20), in: Capsule())
             } else {
                 HStack(spacing: 3) {
                     Text(current).font(.caption2)

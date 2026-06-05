@@ -195,8 +195,7 @@ struct NodeInspectorView: View {
                 Text("\(count)")
                     .font(.caption2.monospacedDigit())
                     .padding(.horizontal, 5).padding(.vertical, 1)
-                    .background(.secondary.opacity(0.15), in: Capsule())
-                    .foregroundStyle(.secondary)
+                    .background(.secondary.opacity(0.20), in: Capsule())
             }
         }
     }

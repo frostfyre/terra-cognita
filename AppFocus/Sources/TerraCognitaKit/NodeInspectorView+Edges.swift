@@ -47,9 +47,8 @@ extension NodeInspectorView {
             } else if let rel = edge.relationshipType {
                 Text(rel)
                     .font(.caption2)
-                    .foregroundStyle(.secondary)
                     .padding(.horizontal, 4).padding(.vertical, 1)
-                    .background(.secondary.opacity(0.15), in: Capsule())
+                    .background(.secondary.opacity(0.20), in: Capsule())
             }
             Button {
                 onSelectNode(otherID)
@@ -119,17 +118,15 @@ extension NodeInspectorView {
             if let rel = edge.relationshipType {
                 Text(rel)
                     .font(.caption2)
-                    .foregroundStyle(.secondary)
                     .padding(.horizontal, 4).padding(.vertical, 1)
-                    .background(.secondary.opacity(0.15), in: Capsule())
+                    .background(.secondary.opacity(0.20), in: Capsule())
             } else {
                 HStack(spacing: 3) {
                     Image(systemName: "plus").font(.caption2)
                     Text("type").font(.caption2)
                 }
                 .padding(.horizontal, 4).padding(.vertical, 1)
-                .background(.secondary.opacity(0.10), in: Capsule())
-                .foregroundStyle(.secondary)
+                .background(.secondary.opacity(0.20), in: Capsule())
             }
         }
         .menuStyle(.borderlessButton)
