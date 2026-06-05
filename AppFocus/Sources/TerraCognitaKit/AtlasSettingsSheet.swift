@@ -24,7 +24,7 @@ struct AtlasSettingsSheet: View {
     var body: some View {
         NavigationStack {
             Form {
-                typesSection
+                typesSections
                 erasSection
                 extractorsSection
                 if let errorMessage {
@@ -60,27 +60,20 @@ struct AtlasSettingsSheet: View {
 
     // MARK: - Types
 
-    private var typesSection: some View {
+    /// One Section per type so the Form gives each its own visual card with
+    /// a header identifying which type's fields you're editing. Previous
+    /// layout crammed every type into three back-to-back rows inside a
+    /// single section, with no visual separation between types.
+    @ViewBuilder
+    private var typesSections: some View {
+        ForEach(userTypeIndices, id: \.self) { idx in
+            typeSection(at: idx)
+        }
         Section {
-            // Iterate indices INTO `draft.types` (not over a filtered copy)
-            // so each row gets a direct binding via `$draft.types[idx]`.
-            // The previous bindingForType wrapper looked up by stale id on
-            // each set, which let SwiftUI tear down the TextField mid-edit
-            // and drop the iOS keyboard after every character.
-            ForEach(userTypeIndices, id: \.self) { idx in
-                typeRow(at: idx)
-            }
-            .onDelete(perform: deleteTypes)
             Button {
                 addType()
             } label: {
                 Label("Add type", systemImage: "plus.circle")
-            }
-        } header: {
-            HStack {
-                Text("Types")
-                Spacer()
-                Text("\(userTypes.count)").foregroundStyle(.secondary)
             }
         } footer: {
             Text("Built-in synthetic types (tag / embed / placeholder) are always available and aren't shown here.")
@@ -90,58 +83,66 @@ struct AtlasSettingsSheet: View {
     }
 
     @ViewBuilder
-    private func typeRow(at idx: Int) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                Image(systemName: draft.types[idx].icon)
-                    .foregroundStyle(draft.types[idx].color)
-                    .frame(width: 22)
-                // iOS default autocapitalization fights with `.lowercased()`
-                // in the setter: user types "h" → iOS caps it to "H" → setter
-                // reverts to "h" → SwiftUI treats it as an external mutation
-                // and drops focus → keyboard dismisses on every character.
-                // Disable autocap/autocorrect for these technical strings.
+    private func typeSection(at idx: Int) -> some View {
+        Section {
+            // iOS default autocapitalization fights with `.lowercased()`
+            // in the setter: typed "h" → iOS caps it to "H" → setter
+            // reverts to "h" → SwiftUI treats that as an external
+            // mutation and drops focus → keyboard dismisses on every
+            // character. Disable autocap/autocorrect on these technical
+            // strings so the setter has nothing to revert.
+            LabeledContent("Name") {
                 TextField("name", text: Binding(
                     get: { draft.types[idx].name },
                     set: { draft.types[idx].name = $0.lowercased() }
                 ))
-                .textFieldStyle(.roundedBorder)
+                .multilineTextAlignment(.trailing)
                 .autocorrectionDisabled()
                 #if os(iOS)
                 .textInputAutocapitalization(.never)
                 #endif
-                ColorPicker("", selection: $draft.types[idx].color, supportsOpacity: false)
-                    .labelsHidden()
-                    .frame(width: 36)
             }
-            HStack(spacing: 6) {
-                TextField("display name (optional)",
-                          text: Binding(
-                            get: { draft.types[idx].displayName ?? "" },
-                            set: { draft.types[idx].displayName = $0.isEmpty ? nil : $0 }
-                          ))
-                .textFieldStyle(.roundedBorder)
+            LabeledContent("Display name") {
+                TextField("optional", text: Binding(
+                    get: { draft.types[idx].displayName ?? "" },
+                    set: { draft.types[idx].displayName = $0.isEmpty ? nil : $0 }
+                ))
+                .multilineTextAlignment(.trailing)
                 .autocorrectionDisabled()
-                TextField("SF Symbol", text: $draft.types[idx].icon)
-                    .textFieldStyle(.roundedBorder)
-                    .frame(maxWidth: 140)
+            }
+            LabeledContent("SF Symbol") {
+                TextField("circle.fill", text: $draft.types[idx].icon)
+                    .multilineTextAlignment(.trailing)
                     .autocorrectionDisabled()
                     #if os(iOS)
                     .textInputAutocapitalization(.never)
                     #endif
             }
-            TextField("folder (optional)",
-                      text: Binding(
-                        get: { draft.types[idx].folder ?? "" },
-                        set: { draft.types[idx].folder = $0.isEmpty ? nil : $0 }
-                      ))
-            .textFieldStyle(.roundedBorder)
-            .autocorrectionDisabled()
-            #if os(iOS)
-            .textInputAutocapitalization(.never)
-            #endif
+            ColorPicker("Color", selection: $draft.types[idx].color, supportsOpacity: false)
+            LabeledContent("Folder") {
+                TextField("optional", text: Binding(
+                    get: { draft.types[idx].folder ?? "" },
+                    set: { draft.types[idx].folder = $0.isEmpty ? nil : $0 }
+                ))
+                .multilineTextAlignment(.trailing)
+                .autocorrectionDisabled()
+                #if os(iOS)
+                .textInputAutocapitalization(.never)
+                #endif
+            }
+            Button(role: .destructive) {
+                draft.types.remove(at: idx)
+            } label: {
+                Label("Delete type", systemImage: "trash")
+            }
+        } header: {
+            HStack(spacing: 6) {
+                Image(systemName: draft.types[idx].icon)
+                    .foregroundStyle(draft.types[idx].color)
+                Text(draft.types[idx].name.isEmpty ? "(unnamed)" : draft.types[idx].name)
+                    .textCase(nil)
+            }
         }
-        .padding(.vertical, 2)
     }
 
     // MARK: - Eras
@@ -152,17 +153,20 @@ struct AtlasSettingsSheet: View {
             // is the editable name, so binding-driven ForEach would re-create
             // the row on every keystroke.
             ForEach(Array(draft.eras.indices), id: \.self) { idx in
-                HStack {
-                    TextField("name", text: $draft.eras[idx].name)
-                        .textFieldStyle(.roundedBorder)
-                        .autocorrectionDisabled()
-                        #if os(iOS)
-                        .textInputAutocapitalization(.never)
-                        #endif
-                    Text("weight").font(.caption2).foregroundStyle(.secondary)
-                    TextField("0", value: $draft.eras[idx].weight, format: .number)
-                        .textFieldStyle(.roundedBorder)
-                        .frame(width: 70)
+                LabeledContent {
+                    HStack(spacing: 8) {
+                        TextField("name", text: $draft.eras[idx].name)
+                            .multilineTextAlignment(.trailing)
+                            .autocorrectionDisabled()
+                            #if os(iOS)
+                            .textInputAutocapitalization(.never)
+                            #endif
+                        TextField("0", value: $draft.eras[idx].weight, format: .number)
+                            .multilineTextAlignment(.trailing)
+                            .frame(width: 56)
+                    }
+                } label: {
+                    Text("Era \(idx + 1)")
                 }
             }
             .onDelete { offsets in
@@ -246,14 +250,6 @@ struct AtlasSettingsSheet: View {
             folder: nil
         )
         draft.types.insert(new, at: max(0, draft.types.count - 3))  // before synthetic block
-    }
-
-    private func deleteTypes(at offsets: IndexSet) {
-        // Offsets index into userTypeIndices (the ForEach data source);
-        // map each one back to its position in `draft.types`, then remove.
-        let userIdx = userTypeIndices
-        let draftIdxToDelete = offsets.compactMap { userIdx.indices.contains($0) ? userIdx[$0] : nil }
-        draft.types.remove(atOffsets: IndexSet(draftIdxToDelete))
     }
 
     private func save() {
