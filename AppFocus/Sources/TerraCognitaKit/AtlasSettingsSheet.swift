@@ -96,11 +96,20 @@ struct AtlasSettingsSheet: View {
                 Image(systemName: draft.types[idx].icon)
                     .foregroundStyle(draft.types[idx].color)
                     .frame(width: 22)
+                // iOS default autocapitalization fights with `.lowercased()`
+                // in the setter: user types "h" → iOS caps it to "H" → setter
+                // reverts to "h" → SwiftUI treats it as an external mutation
+                // and drops focus → keyboard dismisses on every character.
+                // Disable autocap/autocorrect for these technical strings.
                 TextField("name", text: Binding(
                     get: { draft.types[idx].name },
                     set: { draft.types[idx].name = $0.lowercased() }
                 ))
                 .textFieldStyle(.roundedBorder)
+                .autocorrectionDisabled()
+                #if os(iOS)
+                .textInputAutocapitalization(.never)
+                #endif
                 ColorPicker("", selection: $draft.types[idx].color, supportsOpacity: false)
                     .labelsHidden()
                     .frame(width: 36)
@@ -112,9 +121,14 @@ struct AtlasSettingsSheet: View {
                             set: { draft.types[idx].displayName = $0.isEmpty ? nil : $0 }
                           ))
                 .textFieldStyle(.roundedBorder)
+                .autocorrectionDisabled()
                 TextField("SF Symbol", text: $draft.types[idx].icon)
                     .textFieldStyle(.roundedBorder)
                     .frame(maxWidth: 140)
+                    .autocorrectionDisabled()
+                    #if os(iOS)
+                    .textInputAutocapitalization(.never)
+                    #endif
             }
             TextField("folder (optional)",
                       text: Binding(
@@ -122,6 +136,10 @@ struct AtlasSettingsSheet: View {
                         set: { draft.types[idx].folder = $0.isEmpty ? nil : $0 }
                       ))
             .textFieldStyle(.roundedBorder)
+            .autocorrectionDisabled()
+            #if os(iOS)
+            .textInputAutocapitalization(.never)
+            #endif
         }
         .padding(.vertical, 2)
     }
@@ -137,6 +155,10 @@ struct AtlasSettingsSheet: View {
                 HStack {
                     TextField("name", text: $draft.eras[idx].name)
                         .textFieldStyle(.roundedBorder)
+                        .autocorrectionDisabled()
+                        #if os(iOS)
+                        .textInputAutocapitalization(.never)
+                        #endif
                     Text("weight").font(.caption2).foregroundStyle(.secondary)
                     TextField("0", value: $draft.eras[idx].weight, format: .number)
                         .textFieldStyle(.roundedBorder)

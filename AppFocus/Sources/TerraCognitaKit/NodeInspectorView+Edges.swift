@@ -132,6 +132,7 @@ extension NodeInspectorView {
             }
         }
         .menuStyle(.borderlessButton)
+        .tint(.primary)
         .fixedSize()
     }
 

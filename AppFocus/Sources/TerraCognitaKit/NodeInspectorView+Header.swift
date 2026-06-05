@@ -197,6 +197,10 @@ extension NodeInspectorView {
             }
         }
         .menuStyle(.borderlessButton)
+        // `.tint(.primary)` belts-and-braces the `.foregroundStyle(.primary)`
+        // on the label content — on iOS, Menu's button-styled label re-tints
+        // via the accent color, which can beat per-Text foreground overrides.
+        .tint(.primary)
         .fixedSize()
         .disabled(!store.canIngest)
     }
@@ -255,6 +259,7 @@ extension NodeInspectorView {
             }
         }
         .menuStyle(.borderlessButton)
+        .tint(.primary)
         .fixedSize()
         .disabled(!store.canIngest)
     }
