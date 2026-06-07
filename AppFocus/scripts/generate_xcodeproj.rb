@@ -136,22 +136,15 @@ ios_target.build_configurations.each do |config|
   s = config.build_settings
   s['PRODUCT_BUNDLE_IDENTIFIER'] = 'com.frostfyre.terracognita.ios'
   s['TARGETED_DEVICE_FAMILY'] = '1,2' # iPhone + iPad
-  s['INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents'] = 'YES'
-  s['INFOPLIST_KEY_UILaunchScreen_Generation'] = 'YES'
-  # Match the canvas's inner indigo so the launch screen reads as
-  # the same scene the app is about to show. The color lives in
-  # Apps/TerraCognita-iOS/Assets.xcassets/LaunchBackground.colorset.
-  s['INFOPLIST_KEY_UILaunchScreen_BackgroundColor'] = 'LaunchBackground'
-  # Full splash composition (portrait, navy bg with gold glyph) centered
-  # on the launch surface so the cold-start reads as "Terra Cognita is
-  # launching" rather than a flat-color void. Asset at
-  # Apps/TerraCognita-iOS/Assets.xcassets/TerraCognitaLaunch.imageset.
-  # Source + reference exports live under Design/launch/.
-  s['INFOPLIST_KEY_UILaunchScreen_Image'] = 'TerraCognitaLaunch'
-  s['INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone'] =
-    'UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight'
-  s['INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad'] =
-    'UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight'
+  # iOS uses a hand-rolled Info.plist instead of GENERATE_INFOPLIST_FILE
+  # because Xcode 26's INFOPLIST_KEY_* auto-aliasing produced an empty
+  # UILaunchScreen dict no matter what spelling we tried (Image,
+  # UIImageName, BackgroundColor, UIColorName). The file at
+  # Apps/TerraCognita-iOS/Info.plist sets the UILaunchScreen dict
+  # directly per Apple's spec, with UIImageName = TerraCognitaLaunch
+  # and UIColorName = LaunchBackground.
+  s['GENERATE_INFOPLIST_FILE'] = 'NO'
+  s['INFOPLIST_FILE'] = 'Apps/TerraCognita-iOS/Info.plist'
   # Sim-only signing during local development; xcodebuild w/ iOS Simulator
   # ignores signing requirements unless CODE_SIGNING_ALLOWED is set.
   s['CODE_SIGN_IDENTITY[sdk=iphoneos*]'] = 'Apple Development'
