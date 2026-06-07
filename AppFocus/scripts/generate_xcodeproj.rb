@@ -39,7 +39,7 @@ PROJECT_PATH = File.join(ROOT, 'TerraCognita.xcodeproj')
 # Without DEVELOPMENT_TEAM, the project falls back to its dev-mode
 # ad-hoc Mac signing + simulator-only iOS signing.
 TEAM_ID              = ENV['DEVELOPMENT_TEAM']
-MARKETING_VERSION    = ENV['MARKETING_VERSION'] || '1.0'
+MARKETING_VERSION    = ENV['MARKETING_VERSION'] || '1.0.1'
 CURRENT_BUILD_NUMBER = ENV['CURRENT_PROJECT_VERSION'] || Time.now.strftime('%y%m%d%H%M')
 
 # Wipe any previous project so generation is idempotent.
@@ -142,11 +142,12 @@ ios_target.build_configurations.each do |config|
   # the same scene the app is about to show. The color lives in
   # Apps/TerraCognita-iOS/Assets.xcassets/LaunchBackground.colorset.
   s['INFOPLIST_KEY_UILaunchScreen_BackgroundColor'] = 'LaunchBackground'
-  # Gold core + six orbital sparks centered on the launch surface so
-  # the cold-start reads as "Terra Cognita is launching" rather than a
-  # flat-color void. Asset at
-  # Apps/TerraCognita-iOS/Assets.xcassets/LaunchLogo.imageset.
-  s['INFOPLIST_KEY_UILaunchScreen_Image'] = 'LaunchLogo'
+  # Full splash composition (portrait, navy bg with gold glyph) centered
+  # on the launch surface so the cold-start reads as "Terra Cognita is
+  # launching" rather than a flat-color void. Asset at
+  # Apps/TerraCognita-iOS/Assets.xcassets/TerraCognitaLaunch.imageset.
+  # Source + reference exports live under Design/launch/.
+  s['INFOPLIST_KEY_UILaunchScreen_Image'] = 'TerraCognitaLaunch'
   s['INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone'] =
     'UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight'
   s['INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad'] =
