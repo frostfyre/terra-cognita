@@ -161,6 +161,35 @@ extension NodeInspectorView {
     /// yet, one is materialized on first set.
     @ViewBuilder
     func typePicker(_ node: Node) -> some View {
+        // Render the visible pill as a plain view so iOS Menu's accent-color
+        // inheritance can't reach it, then layer a transparent Menu over the
+        // pill to capture taps. Every foreground-styling modifier we tried
+        // (`.foregroundStyle`, `.tint`, `.foregroundColor` on leaves) lost
+        // the tug-of-war against UIKit when the content lived inside the
+        // Menu's label slot; the overlay pattern sidesteps it entirely.
+        typePickerVisible(node)
+            .overlay(typePickerMenu(node))
+            .fixedSize()
+            .disabled(!store.canIngest)
+            .opacity(store.canIngest ? 1 : 0.5)
+    }
+
+    @ViewBuilder
+    private func typePickerVisible(_ node: Node) -> some View {
+        if let t = node.type, !t.isEmpty {
+            TagPill(text: t, color: typeColor(t))
+        } else {
+            HStack(spacing: 3) {
+                Image(systemName: "tag").font(.caption2)
+                Text("set type").font(.caption2)
+            }
+            .padding(.horizontal, 6).padding(.vertical, 2)
+            .background(.secondary.opacity(0.20), in: Capsule())
+        }
+    }
+
+    @ViewBuilder
+    private func typePickerMenu(_ node: Node) -> some View {
         let current = node.type?.lowercased() ?? ""
         Menu {
             ForEach(promotableTypes(), id: \.name) { spec in
@@ -181,27 +210,10 @@ extension NodeInspectorView {
                 }
             }
         } label: {
-            if let t = node.type, !t.isEmpty {
-                TagPill(text: t, color: typeColor(t))
-            } else {
-                // `.foregroundColor(.primary)` (deprecated form) applied to
-                // each leaf Text / Image is the only override that beats iOS
-                // Menu's accent-color inheritance on the label content. The
-                // modern `.foregroundStyle(.primary)` on the container and
-                // `.tint(.primary)` on the Menu both lose to UIKit's accent
-                // propagation on iOS.
-                HStack(spacing: 3) {
-                    Image(systemName: "tag").font(.caption2).foregroundColor(.primary)
-                    Text("set type").font(.caption2).foregroundColor(.primary)
-                }
-                .padding(.horizontal, 6).padding(.vertical, 2)
-                .background(.secondary.opacity(0.20), in: Capsule())
-            }
+            // Transparent hit target — the visible pill sits underneath.
+            Color.clear.contentShape(Rectangle())
         }
         .menuStyle(.borderlessButton)
-        .tint(.primary)
-        .fixedSize()
-        .disabled(!store.canIngest)
     }
 
     /// Tappable era pill — opens a menu with every era taxonomy value
@@ -209,6 +221,36 @@ extension NodeInspectorView {
     /// immediately; the depth axis updates on the next render tick.
     @ViewBuilder
     func eraPicker(_ node: Node) -> some View {
+        // Same overlay-Menu-over-plain-pill pattern as typePicker.
+        eraPickerVisible(node)
+            .overlay(eraPickerMenu(node))
+            .fixedSize()
+            .disabled(!store.canIngest)
+            .opacity(store.canIngest ? 1 : 0.5)
+    }
+
+    @ViewBuilder
+    private func eraPickerVisible(_ node: Node) -> some View {
+        let current = node.era ?? ""
+        if current.isEmpty {
+            HStack(spacing: 3) {
+                Image(systemName: "calendar.badge.plus").font(.caption2)
+                Text("set era").font(.caption2)
+            }
+            .padding(.horizontal, 6).padding(.vertical, 2)
+            .background(.secondary.opacity(0.20), in: Capsule())
+        } else {
+            HStack(spacing: 3) {
+                Text(current).font(.caption2)
+                Image(systemName: "chevron.down").font(.caption2.weight(.semibold))
+            }
+            .padding(.horizontal, 6).padding(.vertical, 2)
+            .background(.secondary.opacity(0.25), in: Capsule())
+        }
+    }
+
+    @ViewBuilder
+    private func eraPickerMenu(_ node: Node) -> some View {
         let current = node.era ?? ""
         Menu {
             ForEach(store.config.eraTagValues, id: \.self) { value in
@@ -239,25 +281,8 @@ extension NodeInspectorView {
                 }
             }
         } label: {
-            if current.isEmpty {
-                HStack(spacing: 3) {
-                    Image(systemName: "calendar.badge.plus").font(.caption2).foregroundColor(.primary)
-                    Text("set era").font(.caption2).foregroundColor(.primary)
-                }
-                .padding(.horizontal, 6).padding(.vertical, 2)
-                .background(.secondary.opacity(0.20), in: Capsule())
-            } else {
-                HStack(spacing: 3) {
-                    Text(current).font(.caption2).foregroundColor(.primary)
-                    Image(systemName: "chevron.down").font(.caption2.weight(.semibold)).foregroundColor(.primary)
-                }
-                .padding(.horizontal, 6).padding(.vertical, 2)
-                .background(.secondary.opacity(0.25), in: Capsule())
-            }
+            Color.clear.contentShape(Rectangle())
         }
         .menuStyle(.borderlessButton)
-        .tint(.primary)
-        .fixedSize()
-        .disabled(!store.canIngest)
     }
 }

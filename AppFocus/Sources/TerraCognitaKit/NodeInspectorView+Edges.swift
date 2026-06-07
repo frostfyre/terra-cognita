@@ -94,45 +94,55 @@ extension NodeInspectorView {
     /// "Clear" affordance, and a "Custom…" route via an alert.
     @ViewBuilder
     func edgeRelationshipMenu(edge: Edge) -> some View {
-        Menu {
-            ForEach(knownRelationshipTypes(), id: \.self) { rel in
-                Button {
-                    apply(newRel: rel, to: edge)
-                } label: {
-                    if rel.lowercased() == (edge.relationshipType ?? "").lowercased() {
-                        Label(rel, systemImage: "checkmark")
-                    } else {
-                        Text(rel)
+        // Overlay-Menu-over-plain-pill: same pattern as the type / era
+        // pickers. The visible pill renders with default foreground (which
+        // resolves to primary), and a transparent Menu sits on top so taps
+        // open the picker without UIKit tinting the visible text gold.
+        edgeRelationshipVisible(edge: edge)
+            .overlay {
+                Menu {
+                    ForEach(knownRelationshipTypes(), id: \.self) { rel in
+                        Button {
+                            apply(newRel: rel, to: edge)
+                        } label: {
+                            if rel.lowercased() == (edge.relationshipType ?? "").lowercased() {
+                                Label(rel, systemImage: "checkmark")
+                            } else {
+                                Text(rel)
+                            }
+                        }
                     }
-                }
-            }
-            if edge.relationshipType != nil {
-                Divider()
-                Button(role: .destructive) {
-                    apply(newRel: nil, to: edge)
+                    if edge.relationshipType != nil {
+                        Divider()
+                        Button(role: .destructive) {
+                            apply(newRel: nil, to: edge)
+                        } label: {
+                            Label("Clear", systemImage: "minus.circle")
+                        }
+                    }
                 } label: {
-                    Label("Clear", systemImage: "minus.circle")
+                    Color.clear.contentShape(Rectangle())
                 }
+                .menuStyle(.borderlessButton)
             }
-        } label: {
-            if let rel = edge.relationshipType {
-                Text(rel)
-                    .font(.caption2)
-                    .foregroundColor(.primary)
-                    .padding(.horizontal, 4).padding(.vertical, 1)
-                    .background(.secondary.opacity(0.20), in: Capsule())
-            } else {
-                HStack(spacing: 3) {
-                    Image(systemName: "plus").font(.caption2).foregroundColor(.primary)
-                    Text("type").font(.caption2).foregroundColor(.primary)
-                }
+            .fixedSize()
+    }
+
+    @ViewBuilder
+    private func edgeRelationshipVisible(edge: Edge) -> some View {
+        if let rel = edge.relationshipType {
+            Text(rel)
+                .font(.caption2)
                 .padding(.horizontal, 4).padding(.vertical, 1)
                 .background(.secondary.opacity(0.20), in: Capsule())
+        } else {
+            HStack(spacing: 3) {
+                Image(systemName: "plus").font(.caption2)
+                Text("type").font(.caption2)
             }
+            .padding(.horizontal, 4).padding(.vertical, 1)
+            .background(.secondary.opacity(0.20), in: Capsule())
         }
-        .menuStyle(.borderlessButton)
-        .tint(.primary)
-        .fixedSize()
     }
 
     func apply(newRel: String?, to edge: Edge) {
