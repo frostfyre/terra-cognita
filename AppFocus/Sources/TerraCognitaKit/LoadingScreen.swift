@@ -31,20 +31,24 @@ struct LoadingScreen: View {
             )
             .ignoresSafeArea()
 
+            // macOS has no native UILaunchScreen, so the TerraCognitaLaunch
+            // artwork (a landscape composition with the portrait piece
+            // centered over an extended blurred bg) carries the cold-start
+            // surface here, rendered full-bleed. iOS already showed the
+            // portrait artwork via the native launch screen before this
+            // view mounts; LoadingScreen there keeps the animated glyph
+            // for continuity with the in-app "loading…" affordance.
+            #if os(macOS)
+            Image("TerraCognitaLaunch")
+                .resizable()
+                .scaledToFill()
+                .ignoresSafeArea()
+                .accessibilityHidden(true)
+            #endif
+
             VStack(spacing: 36) {
                 Spacer()
-                // macOS has no native UILaunchScreen, so the TerraCognitaLaunch
-                // artwork carries the cold-start surface here. iOS already
-                // showed the same artwork via the native launch screen before
-                // this view mounts, so the animated glyph keeps continuity
-                // with the in-app "loading…" affordance there.
-                #if os(macOS)
-                Image("TerraCognitaLaunch")
-                    .resizable()
-                    .scaledToFit()
-                    .frame(maxWidth: 420, maxHeight: 720)
-                    .accessibilityHidden(true)
-                #else
+                #if !os(macOS)
                 LoadingGlyph()
                     .frame(width: 140, height: 140)
                 #endif
@@ -53,9 +57,12 @@ struct LoadingScreen: View {
                     .foregroundStyle(.white.opacity(0.88))
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 40)
+                    .padding(.bottom, 60)
                     .id(caption)
                     .transition(.opacity)
+                #if !os(macOS)
                 Spacer()
+                #endif
             }
             .animation(.easeInOut(duration: 0.4), value: caption)
         }
