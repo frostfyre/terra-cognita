@@ -33,8 +33,21 @@ struct LoadingScreen: View {
 
             VStack(spacing: 36) {
                 Spacer()
+                // macOS has no native UILaunchScreen, so the TerraCognitaLaunch
+                // artwork carries the cold-start surface here. iOS already
+                // showed the same artwork via the native launch screen before
+                // this view mounts, so the animated glyph keeps continuity
+                // with the in-app "loading…" affordance there.
+                #if os(macOS)
+                Image("TerraCognitaLaunch")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(maxWidth: 420, maxHeight: 720)
+                    .accessibilityHidden(true)
+                #else
                 LoadingGlyph()
                     .frame(width: 140, height: 140)
+                #endif
                 Text(caption)
                     .font(.title3.weight(.light))
                     .foregroundStyle(.white.opacity(0.88))
