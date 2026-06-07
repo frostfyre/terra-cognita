@@ -10,6 +10,13 @@ struct AtlasSettingsSheet: View {
 
     @State private var draft: AtlasConfig
     @State private var errorMessage: String?
+    /// Snapshot of non-synthetic type names at the moment the sheet
+    /// opened, in their position order. On save we diff this against
+    /// the current names to detect renames, then sweep the graph and
+    /// rewrite every affected node's `type:` front-matter. Without
+    /// this, renaming "person" → "people" would orphan every Person
+    /// node under a name the config no longer recognizes.
+    @State private var originalUserTypeNames: [String]
 
     init(store: GraphStore, isPresented: Binding<Bool>) {
         self.store = store
@@ -17,6 +24,12 @@ struct AtlasSettingsSheet: View {
         // Start from the live config; user edits build up locally
         // until they hit Save.
         self._draft = State(initialValue: store.config)
+        let synthetic: Set<String> = ["tag", "embed", "placeholder"]
+        self._originalUserTypeNames = State(
+            initialValue: store.config.types
+                .filter { !synthetic.contains($0.name) }
+                .map(\.name)
+        )
     }
 
     private let syntheticNames: Set<String> = ["tag", "embed", "placeholder"]
@@ -265,9 +278,37 @@ struct AtlasSettingsSheet: View {
                 try draft.save(to: atlasURL)
             }
             store.config = draft
+            applyTypeRenames()
             isPresented = false
         } catch {
             errorMessage = "Couldn't save: \(error.localizedDescription)"
+        }
+    }
+
+    /// Sweep any node whose `type:` matches a renamed type, rewriting
+    /// the front-matter to the new name. Only fires when no types
+    /// were added or deleted in the same edit — otherwise position-
+    /// based pairing would mispair, and we prefer skipping silently
+    /// over rewriting nodes under the wrong type.
+    private func applyTypeRenames() {
+        let currentUserTypeNames = userTypes.map(\.name)
+        guard currentUserTypeNames.count == originalUserTypeNames.count else { return }
+        let renames: [(old: String, new: String)] = zip(originalUserTypeNames, currentUserTypeNames)
+            .compactMap { old, new in
+                let oldNorm = old.lowercased()
+                let newNorm = new.lowercased()
+                return oldNorm != newNorm ? (old: oldNorm, new: newNorm) : nil
+            }
+        guard !renames.isEmpty else { return }
+        for (old, new) in renames {
+            let affectedIDs = store.graph.nodes.values
+                .filter { $0.type?.lowercased() == old }
+                .map(\.id)
+            for nodeID in affectedIDs {
+                if let err = store.setType(in: nodeID, to: new) {
+                    print("Type rename failed for node \(nodeID): \(err)")
+                }
+            }
         }
     }
 }
