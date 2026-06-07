@@ -114,6 +114,15 @@ struct GraphCanvasView: View {
     /// changes (first to a circular seed, then to a force-directed layout
     /// once the background computation finishes).
     @State private var layout: [String: CGPoint] = [:]
+
+    /// Handle on the currently-running force-directed compute. Captured so
+    /// we can cancel it before kicking off a new pipeline (atlas switch,
+    /// graph reload) — otherwise the old solver keeps running on a
+    /// background thread, wastes CPU, and its stale result can race the
+    /// new layout into the canvas. We check `task.isCancelled` after
+    /// `.value` returns and discard the result if the task was cancelled
+    /// while we were awaiting.
+    @State private var layoutTask: Task<[String: CGPoint], Never>?
     /// The algorithm currently applied to `layout`. Surfaced upward
     /// so the toolbar Layout menu can show a checkmark next to the
     /// active row. `nil` before any layout pass has run.
@@ -1126,6 +1135,12 @@ struct GraphCanvasView: View {
     // MARK: - Layout pipeline (circular seed → background force-directed)
 
     private func rebuildLayoutPipeline() async {
+        // Cancel any prior force-directed compute so its result gets
+        // discarded by the isCancelled check below, rather than racing
+        // the new layout into the canvas.
+        layoutTask?.cancel()
+        layoutTask = nil
+
         let snapshotNodes = Array(store.graph.nodes.values)
         let nodeIDs = snapshotNodes.map { $0.id }
         let edgePairs = store.graph.edges.map { ($0.sourceID, $0.targetID) }
@@ -1165,12 +1180,16 @@ struct GraphCanvasView: View {
 
         // 2. Background force-directed layout, swapped in once it converges.
         let solver = ForceDirectedLayout()
-        let computed = await Task.detached(priority: .userInitiated) {
+        let task = Task.detached(priority: .userInitiated) {
             solver.compute(nodeIDs: nodeIDs, edges: edgePairs)
-        }.value
+        }
+        layoutTask = task
+        let computed = await task.value
 
-        // Bail if the graph has been replaced under us while we were thinking.
-        guard store.graph.nodes.count == nodeIDs.count else { return }
+        // Bail if a newer pipeline cancelled us, or the graph has been
+        // replaced under us while we were thinking.
+        guard !task.isCancelled,
+              store.graph.nodes.count == nodeIDs.count else { return }
 
         let next = noOverlap
             ? LayoutEngine.enforceNoOverlap(computed)
@@ -1191,10 +1210,15 @@ struct GraphCanvasView: View {
         let computed: [String: CGPoint]
         switch algorithm {
         case .forceDirected:
+            layoutTask?.cancel()
             let solver = ForceDirectedLayout()
-            computed = await Task.detached(priority: .userInitiated) {
+            let task = Task.detached(priority: .userInitiated) {
                 solver.compute(nodeIDs: nodeIDs, edges: edgePairs)
-            }.value
+            }
+            layoutTask = task
+            let result = await task.value
+            guard !task.isCancelled else { return }
+            computed = result
         case .circular:
             computed = makeCircularLayout(for: nodeIDs)
         case .grid:

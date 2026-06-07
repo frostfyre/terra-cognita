@@ -252,6 +252,11 @@ public final class GraphStore: ObservableObject {
                                    nodeCount: g.nodes.count,
                                    edgeCount: g.edges.count)
                 self.library.save()
+                // Fire-and-forget sweep of stale `.bak` snapshots so the
+                // atlas folder doesn't accumulate them indefinitely.
+                // AtlasEditor writes one `.bak` per file on first edit per
+                // session — that's a safety rail, not an archival history.
+                Self.cleanupStaleBackups(in: url)
             } catch {
                 self.loadStatus = "Couldn't read \(url.lastPathComponent): \(error.localizedDescription)"
                 self.writableAtlasURL = nil
@@ -1437,6 +1442,60 @@ public final class GraphStore: ObservableObject {
         // dev heritage atlas, etc.) is treated as writable.
         let isBundle = atlasURL.path.contains("/Resources/")
         return (atlasURL.lastPathComponent, g, !isBundle, atlasURL)
+    }
+
+    // MARK: - .bak cleanup
+
+    /// `AtlasEditor` writes one `.bak` snapshot next to each .md on first
+    /// edit per session. They're a "give me my pre-AI text back" safety
+    /// rail, not archival history — git / Time Machine are the deeper
+    /// backstop. Sweep `.bak` files older than 14 days when an atlas
+    /// loads so the folder doesn't accumulate them indefinitely.
+    ///
+    /// Runs on a detached background task so it never blocks the load.
+    /// Failures (sandbox refusal, missing permission) are logged and
+    /// swallowed — there's nothing the user can do about it and the
+    /// atlas is otherwise readable.
+    nonisolated static func cleanupStaleBackups(in atlasURL: URL) {
+        Task.detached(priority: .utility) {
+            let removed = sweepBackups(atlasURL: atlasURL)
+            if removed > 0 {
+                print("GraphStore: cleaned up \(removed) stale .bak file(s) from \(atlasURL.lastPathComponent)")
+            }
+        }
+    }
+
+    /// Synchronous worker — kept non-async so `FileManager.DirectoryEnumerator`
+    /// can be driven by a Swift `while let` loop without tripping Swift 6's
+    /// rule against `makeIterator()` in async contexts. `nonisolated` so the
+    /// detached Task can call into it without crossing the @MainActor boundary.
+    private nonisolated static func sweepBackups(atlasURL: URL) -> Int {
+        let didStart = atlasURL.startAccessingSecurityScopedResource()
+        defer { if didStart { atlasURL.stopAccessingSecurityScopedResource() } }
+        let fm = FileManager.default
+        guard let walker = fm.enumerator(
+            at: atlasURL,
+            includingPropertiesForKeys: [.contentModificationDateKey, .isRegularFileKey],
+            options: [.skipsHiddenFiles, .skipsPackageDescendants]
+        ) else { return 0 }
+        let cutoff = Date().addingTimeInterval(-14 * 24 * 60 * 60)
+        var removed = 0
+        while let next = walker.nextObject() {
+            guard let url = next as? URL, url.pathExtension == "bak" else { continue }
+            guard
+                let values = try? url.resourceValues(forKeys: [.isRegularFileKey, .contentModificationDateKey]),
+                values.isRegularFile == true,
+                let mtime = values.contentModificationDate,
+                mtime < cutoff
+            else { continue }
+            do {
+                try fm.removeItem(at: url)
+                removed += 1
+            } catch {
+                print("GraphStore: failed to remove stale .bak \(url.path): \(error)")
+            }
+        }
+        return removed
     }
 }
 
