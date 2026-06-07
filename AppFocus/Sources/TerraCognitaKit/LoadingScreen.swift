@@ -22,6 +22,14 @@ struct LoadingScreen: View {
     static let substrate = Color(red: 0.04, green: 0.06, blue: 0.16)
     static let substrateBottom = Color(red: 0.09, green: 0.12, blue: 0.30)
 
+    /// Flipped from false → true after the first dismissal of the
+    /// loading screen. Drives whether macOS shows the TerraCognitaLaunch
+    /// splash artwork (cold-start only) or the standard glyph (atlas
+    /// switches / reloads mid-session). iOS already gets the splash
+    /// via its native UILaunchScreen, so the iOS path never reads
+    /// this — it always renders the glyph.
+    private static var hasShownInitialLaunch = false
+
     var body: some View {
         ZStack {
             LinearGradient(
@@ -34,21 +42,29 @@ struct LoadingScreen: View {
             // macOS has no native UILaunchScreen, so the TerraCognitaLaunch
             // artwork (a landscape composition with the portrait piece
             // centered over an extended blurred bg) carries the cold-start
-            // surface here, rendered full-bleed. iOS already showed the
-            // portrait artwork via the native launch screen before this
-            // view mounts; LoadingScreen there keeps the animated glyph
-            // for continuity with the in-app "loading…" affordance.
+            // surface here, rendered full-bleed. Mid-session atlas
+            // switches drop back to the glyph + caption — the splash is a
+            // launch moment, not a regular loading affordance. iOS always
+            // shows the glyph; its native UILaunchScreen already covered
+            // the cold-start splash before this view mounted.
             #if os(macOS)
-            Image("TerraCognitaLaunch")
-                .resizable()
-                .scaledToFill()
-                .ignoresSafeArea()
-                .accessibilityHidden(true)
+            if !Self.hasShownInitialLaunch {
+                Image("TerraCognitaLaunch")
+                    .resizable()
+                    .scaledToFill()
+                    .ignoresSafeArea()
+                    .accessibilityHidden(true)
+            }
             #endif
 
             VStack(spacing: 36) {
                 Spacer()
-                #if !os(macOS)
+                #if os(macOS)
+                if Self.hasShownInitialLaunch {
+                    LoadingGlyph()
+                        .frame(width: 140, height: 140)
+                }
+                #else
                 LoadingGlyph()
                     .frame(width: 140, height: 140)
                 #endif
@@ -57,15 +73,33 @@ struct LoadingScreen: View {
                     .foregroundStyle(.white.opacity(0.88))
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 40)
-                    .padding(.bottom, 60)
+                    .padding(.bottom, splashBottomPadding)
                     .id(caption)
                     .transition(.opacity)
-                #if !os(macOS)
+                #if os(macOS)
+                if Self.hasShownInitialLaunch { Spacer() }
+                #else
                 Spacer()
                 #endif
             }
             .animation(.easeInOut(duration: 0.4), value: caption)
         }
+        .onDisappear {
+            // First dismissal = cold-start splash has done its job. Any
+            // subsequent LoadingScreen (atlas switch) renders the glyph.
+            Self.hasShownInitialLaunch = true
+        }
+    }
+
+    /// More breathing room beneath the caption on the cold-start splash
+    /// (caption sits over the artwork's "WHERE IDEAS MEET …" tagline area),
+    /// standard padding once we're back to the glyph layout.
+    private var splashBottomPadding: CGFloat {
+        #if os(macOS)
+        Self.hasShownInitialLaunch ? 0 : 60
+        #else
+        0
+        #endif
     }
 }
 
