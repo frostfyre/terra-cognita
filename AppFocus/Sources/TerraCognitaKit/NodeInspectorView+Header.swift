@@ -184,22 +184,21 @@ extension NodeInspectorView {
             if let t = node.type, !t.isEmpty {
                 TagPill(text: t, color: typeColor(t))
             } else {
+                // `.foregroundColor(.primary)` (deprecated form) applied to
+                // each leaf Text / Image is the only override that beats iOS
+                // Menu's accent-color inheritance on the label content. The
+                // modern `.foregroundStyle(.primary)` on the container and
+                // `.tint(.primary)` on the Menu both lose to UIKit's accent
+                // propagation on iOS.
                 HStack(spacing: 3) {
-                    Image(systemName: "tag").font(.caption2)
-                    Text("set type").font(.caption2)
+                    Image(systemName: "tag").font(.caption2).foregroundColor(.primary)
+                    Text("set type").font(.caption2).foregroundColor(.primary)
                 }
                 .padding(.horizontal, 6).padding(.vertical, 2)
                 .background(.secondary.opacity(0.20), in: Capsule())
-                // Explicit `.primary` — Menu labels otherwise inherit the
-                // system tint (orange on this build), which against a pale
-                // capsule bg goes effectively invisible.
-                .foregroundStyle(.primary)
             }
         }
         .menuStyle(.borderlessButton)
-        // `.tint(.primary)` belts-and-braces the `.foregroundStyle(.primary)`
-        // on the label content — on iOS, Menu's button-styled label re-tints
-        // via the accent color, which can beat per-Text foreground overrides.
         .tint(.primary)
         .fixedSize()
         .disabled(!store.canIngest)
@@ -242,20 +241,18 @@ extension NodeInspectorView {
         } label: {
             if current.isEmpty {
                 HStack(spacing: 3) {
-                    Image(systemName: "calendar.badge.plus").font(.caption2)
-                    Text("set era").font(.caption2)
+                    Image(systemName: "calendar.badge.plus").font(.caption2).foregroundColor(.primary)
+                    Text("set era").font(.caption2).foregroundColor(.primary)
                 }
                 .padding(.horizontal, 6).padding(.vertical, 2)
                 .background(.secondary.opacity(0.20), in: Capsule())
-                .foregroundStyle(.primary)
             } else {
                 HStack(spacing: 3) {
-                    Text(current).font(.caption2)
-                    Image(systemName: "chevron.down").font(.caption2.weight(.semibold))
+                    Text(current).font(.caption2).foregroundColor(.primary)
+                    Image(systemName: "chevron.down").font(.caption2.weight(.semibold)).foregroundColor(.primary)
                 }
                 .padding(.horizontal, 6).padding(.vertical, 2)
                 .background(.secondary.opacity(0.25), in: Capsule())
-                .foregroundStyle(.primary)
             }
         }
         .menuStyle(.borderlessButton)

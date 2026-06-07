@@ -118,17 +118,16 @@ extension NodeInspectorView {
             if let rel = edge.relationshipType {
                 Text(rel)
                     .font(.caption2)
+                    .foregroundColor(.primary)
                     .padding(.horizontal, 4).padding(.vertical, 1)
                     .background(.secondary.opacity(0.20), in: Capsule())
-                    .foregroundStyle(.primary)
             } else {
                 HStack(spacing: 3) {
-                    Image(systemName: "plus").font(.caption2)
-                    Text("type").font(.caption2)
+                    Image(systemName: "plus").font(.caption2).foregroundColor(.primary)
+                    Text("type").font(.caption2).foregroundColor(.primary)
                 }
                 .padding(.horizontal, 4).padding(.vertical, 1)
                 .background(.secondary.opacity(0.20), in: Capsule())
-                .foregroundStyle(.primary)
             }
         }
         .menuStyle(.borderlessButton)

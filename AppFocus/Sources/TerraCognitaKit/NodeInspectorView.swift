@@ -434,12 +434,12 @@ struct TagPill: View {
     var body: some View {
         Text(text)
             .font(.caption2)
-            // TagPill renders inside Menu labels (the type pill in the
-            // inspector header), which would otherwise tint the text in
-            // the system accent color and lose contrast against the pale
-            // capsule background. Pin to .primary so the label stays
-            // legible regardless of context.
-            .foregroundStyle(.primary)
+            // `.foregroundColor(.primary)` (deprecated form) — the only way
+            // to win against iOS Menu's accent-color inheritance for label
+            // content. The modern `.foregroundStyle(.primary)` was applied
+            // to a parent container and lost the tug-of-war with UIKit's
+            // accent propagation on iOS.
+            .foregroundColor(.primary)
             .padding(.horizontal, 6).padding(.vertical, 2)
             .background(color.opacity(0.25), in: Capsule())
     }
