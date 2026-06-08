@@ -116,7 +116,12 @@ add_terra_cognita_kit_dependency(mac_target, local_package)
 shared_build_settings(mac_target, 'MACOSX_DEPLOYMENT_TARGET', '14.0')
 mac_target.build_configurations.each do |config|
   s = config.build_settings
-  s['PRODUCT_BUNDLE_IDENTIFIER'] = 'com.frostfyre.terracognita.mac'
+  # Share the iOS bundle id so iOS + macOS link as a single Universal
+  # Purchase in App Store Connect. Two separate ASC app records (one
+  # per platform), one customer purchase, one customer-facing identity.
+  # The iOS record must have Universal Purchase enabled; the macOS
+  # record is created separately under the same bundle id.
+  s['PRODUCT_BUNDLE_IDENTIFIER'] = 'com.frostfyre.terracognitaatlas'
   s['INFOPLIST_KEY_LSApplicationCategoryType'] = 'public.app-category.productivity'
   s['ENABLE_HARDENED_RUNTIME'] = 'YES'
   # App Sandbox + microphone + user-selected-file access. Required for
