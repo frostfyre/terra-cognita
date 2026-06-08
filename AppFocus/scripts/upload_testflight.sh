@@ -49,6 +49,17 @@ esac
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
+# Mirror all output to a per-platform log so callers don't need to
+# `| tee` themselves (the outer pipe loses our exit code unless they
+# remember `set -o pipefail`). Process substitution keeps the
+# script's own exit status intact.
+LOG_FILE="/tmp/upload_${PLATFORM}.log"
+exec > >(tee "$LOG_FILE") 2>&1
+
+# Final-status trap: makes success/failure unambiguous even if the
+# build log scrolls past the screen.
+trap 'rc=$?; if [ $rc -eq 0 ]; then echo "✓ DONE — upload submitted (log: $LOG_FILE)"; else echo "✗ FAILED (exit $rc) — see $LOG_FILE" >&2; fi' EXIT
+
 # 1) Regenerate to bump the build number to a fresh timestamp.
 echo "==> [1/4] Regenerating project (timestamp build number bump)…"
 if [ "$PLATFORM" = "macos" ]; then
