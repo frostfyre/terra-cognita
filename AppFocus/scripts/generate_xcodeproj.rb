@@ -38,7 +38,10 @@ PROJECT_PATH = File.join(ROOT, 'TerraCognita.xcodeproj')
 #
 # Without DEVELOPMENT_TEAM, the project falls back to its dev-mode
 # ad-hoc Mac signing + simulator-only iOS signing.
-TEAM_ID              = ENV['DEVELOPMENT_TEAM']
+# Default to Paul's Apple Developer Team. Override with
+# `DEVELOPMENT_TEAM=… ./generate_xcodeproj.rb` if you ever need to ship
+# from a different team.
+TEAM_ID              = ENV['DEVELOPMENT_TEAM'] || 'TUMFPT4C67'
 MARKETING_VERSION    = ENV['MARKETING_VERSION'] || '1.0.1'
 CURRENT_BUILD_NUMBER = ENV['CURRENT_PROJECT_VERSION'] || Time.now.strftime('%y%m%d%H%M')
 
@@ -116,6 +119,9 @@ mac_target.build_configurations.each do |config|
   s['PRODUCT_BUNDLE_IDENTIFIER'] = 'com.frostfyre.terracognita.mac'
   s['INFOPLIST_KEY_LSApplicationCategoryType'] = 'public.app-category.productivity'
   s['ENABLE_HARDENED_RUNTIME'] = 'YES'
+  # App Sandbox + microphone + user-selected-file access. Required for
+  # Mac App Store distribution; harmless for ad-hoc dev signing too.
+  s['CODE_SIGN_ENTITLEMENTS'] = 'Apps/TerraCognita-macOS/TerraCognita-macOS.entitlements'
   # Mac signing is opt-in via MAC_SIGN=1 — requires a Mac Development
   # certificate in your keychain. Without it we keep ad-hoc signing
   # so the Mac app builds locally even when a Developer Team is set
@@ -134,7 +140,9 @@ add_terra_cognita_kit_dependency(ios_target, local_package)
 shared_build_settings(ios_target, 'IPHONEOS_DEPLOYMENT_TARGET', '17.0')
 ios_target.build_configurations.each do |config|
   s = config.build_settings
-  s['PRODUCT_BUNDLE_IDENTIFIER'] = 'com.frostfyre.terracognita.ios'
+  # Bundle id is `.atlas` (not `.ios`) — that's what's registered in
+  # App Store Connect under the TUMFPT4C67 team for the iOS app.
+  s['PRODUCT_BUNDLE_IDENTIFIER'] = 'com.frostfyre.terracognita.atlas'
   s['TARGETED_DEVICE_FAMILY'] = '1,2' # iPhone + iPad
   # iOS uses a hand-rolled Info.plist instead of GENERATE_INFOPLIST_FILE
   # because Xcode 26's INFOPLIST_KEY_* auto-aliasing produced an empty
