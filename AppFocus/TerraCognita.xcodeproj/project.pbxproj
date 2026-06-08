@@ -432,7 +432,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0.1;
-				PRODUCT_BUNDLE_IDENTIFIER = com.frostfyre.terracognita.atlas;
+				PRODUCT_BUNDLE_IDENTIFIER = com.frostfyre.terracognitaatlas;
 				SDKROOT = iphoneos;
 				SWIFT_VERSION = 6.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -459,7 +459,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0.1;
-				PRODUCT_BUNDLE_IDENTIFIER = com.frostfyre.terracognita.atlas;
+				PRODUCT_BUNDLE_IDENTIFIER = com.frostfyre.terracognitaatlas;
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				SDKROOT = iphoneos;
 				SWIFT_VERSION = 6.0;

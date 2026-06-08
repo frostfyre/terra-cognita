@@ -140,9 +140,11 @@ add_terra_cognita_kit_dependency(ios_target, local_package)
 shared_build_settings(ios_target, 'IPHONEOS_DEPLOYMENT_TARGET', '17.0')
 ios_target.build_configurations.each do |config|
   s = config.build_settings
-  # Bundle id is `.atlas` (not `.ios`) — that's what's registered in
-  # App Store Connect under the TUMFPT4C67 team for the iOS app.
-  s['PRODUCT_BUNDLE_IDENTIFIER'] = 'com.frostfyre.terracognita.atlas'
+  # Bundle id is `terracognitaatlas` (one word, no dot before atlas) —
+  # that's the exact string registered in App Store Connect under the
+  # TUMFPT4C67 team for the iOS app. Don't dot-separate; ASC sees it
+  # as a different app.
+  s['PRODUCT_BUNDLE_IDENTIFIER'] = 'com.frostfyre.terracognitaatlas'
   s['TARGETED_DEVICE_FAMILY'] = '1,2' # iPhone + iPad
   # iOS uses a hand-rolled Info.plist instead of GENERATE_INFOPLIST_FILE
   # because Xcode 26's INFOPLIST_KEY_* auto-aliasing produced an empty
