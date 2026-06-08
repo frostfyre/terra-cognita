@@ -1,0 +1,25 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__xcode-tools__XcodeRefreshCodeIssuesInFile",
+      "mcp__xcode-tools__XcodeRead",
+      "mcp__xcode-tools__XcodeGrep",
+      "mcp__xcode-tools__XcodeGlob",
+      "mcp__xcode-tools__XcodeLS",
+      "mcp__xcode-tools__DocumentationSearch",
+      "mcp__xcode-tools__XcodeListNavigatorIssues",
+      "mcp__xcode-tools__GetBuildLog",
+      "Bash(plutil -p *)",
+      "Bash(plutil -extract *)",
+      "Bash(codesign -d *)",
+      "Bash(codesign -dvv *)",
+      "Bash(security find-identity *)",
+      "Bash(xcrun assetutil --info *)",
+      "Bash(xcodebuild -showSDKs *)",
+      "Bash(xcodebuild -showBuildSettings *)",
+      "Bash(xcodebuild -list *)",
+      "Bash(xcrun --find *)",
+      "Bash(xcrun --show-sdk-path *)"
+    ]
+  }
+}
