@@ -42,6 +42,31 @@ public final class GraphStore: ObservableObject {
     @Published var loadingCaption: String? = LoadingCaptions.next(after: nil)
     private var captionRotator: Task<Void, Never>?
 
+    /// Wall-clock moment the current loading presentation began. Used
+    /// by `finishLoadingPresentation()` to enforce a minimum-visible
+    /// floor so the splash/loading surface isn't a sub-second flash on
+    /// fast loads. Initialized at construction to align with the
+    /// default `loadingCaption` above; reset by every
+    /// `startLoadingPresentation()`.
+    private var loadingStartedAt: Date? = Date()
+
+    /// Pending `finishLoadingPresentation()` deferred to satisfy the
+    /// minimum-visible floor. Cancelled if another `start*`/`finish*`
+    /// arrives while it's still sleeping.
+    private var deferredFinishTask: Task<Void, Never>?
+
+    /// Floor for how long the loading surface stays up before fading.
+    /// 3 s reads as deliberate without dragging — enough for the
+    /// cold-start splash artwork / glyph + caption to register, then
+    /// the existing 2 s ease-out begins.
+    private static let minimumLoadingDuration: TimeInterval = 3.0
+
+    /// Flipped to true the first time the loading surface dismisses.
+    /// After that, `startLoadingPresentation()` becomes a no-op so
+    /// atlas switches / mid-session reloads don't re-mount the splash
+    /// — the loading screen is a cold-start moment only.
+    private var hasCompletedColdStart: Bool = false
+
     /// Monotonic counter incremented after each successful atlas load
     /// that produced content. `GraphView` observes this to schedule
     /// the post-load auto-frame and clear the loading overlay. Using
@@ -61,8 +86,15 @@ public final class GraphStore: ObservableObject {
 
     /// Begin (or restart) the loading-caption rotation. Idempotent
     /// per load — calling twice cancels the previous rotator.
+    ///
+    /// No-op after the first cold-start dismissal: atlas switches /
+    /// mid-session reloads shouldn't re-mount the splash.
     func startLoadingPresentation() {
+        guard !hasCompletedColdStart else { return }
         captionRotator?.cancel()
+        deferredFinishTask?.cancel()
+        deferredFinishTask = nil
+        loadingStartedAt = Date()
         loadingCaption = LoadingCaptions.next(after: nil)
         captionRotator = Task { [weak self] in
             while !Task.isCancelled {
@@ -81,13 +113,40 @@ public final class GraphStore: ObservableObject {
     /// Called from `GraphView` after the post-load auto-frame
     /// animation has settled, so the cross-fade lands on a
     /// fully-framed canvas instead of a half-laid-out blink.
+    ///
+    /// Honors `minimumLoadingDuration` — if the canvas settled
+    /// before that floor, defers the actual dismissal until the
+    /// floor is met so the splash/glyph never flashes by.
     func finishLoadingPresentation() {
+        let elapsed = loadingStartedAt
+            .map { Date().timeIntervalSince($0) } ?? Self.minimumLoadingDuration
+        let remaining = Self.minimumLoadingDuration - elapsed
+
+        if remaining > 0 {
+            deferredFinishTask?.cancel()
+            deferredFinishTask = Task { [weak self] in
+                try? await Task.sleep(for: .seconds(remaining))
+                guard !Task.isCancelled else { return }
+                await MainActor.run {
+                    self?.dismissLoadingPresentation()
+                }
+            }
+        } else {
+            dismissLoadingPresentation()
+        }
+    }
+
+    /// Inner dismissal — stops the caption rotator and runs the
+    /// 2 s ease-out so the gradient + glyph dissolve into the
+    /// canvas instead of snapping away. The fade reveals an already-
+    /// laid-out, framed view — see `LoadingScreen` wiring in
+    /// `GraphView`.
+    private func dismissLoadingPresentation() {
         captionRotator?.cancel()
         captionRotator = nil
-        // 2 s ease-out so the gradient + glyph dissolve into the
-        // canvas instead of snapping away. The fade reveals an already-
-        // laid-out, framed view — see `LoadingScreen` wiring in
-        // `GraphView`.
+        deferredFinishTask = nil
+        loadingStartedAt = nil
+        hasCompletedColdStart = true
         withAnimation(.easeOut(duration: 2.0)) {
             loadingCaption = nil
         }
