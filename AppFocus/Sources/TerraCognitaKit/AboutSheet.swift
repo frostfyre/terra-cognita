@@ -120,15 +120,17 @@ struct AboutSheet: View {
 }
 
 /// Canonical URLs surfaced in the About sheet (and anywhere else the
-/// app needs to link out). All point at `terra-cognita.app` paths so
-/// the destination is redirectable — e.g. `/support` can route to
-/// Buy Me A Coffee today, Ko-fi tomorrow, GitHub Sponsors after that,
-/// all without an app update.
+/// app needs to link out). `terra-cognita.app/*` paths are
+/// redirectable on the landing side — handy for repointing privacy /
+/// legal targets without an app update. The donation link points
+/// straight at Buy Me A Coffee instead so it works today without
+/// requiring a /support redirect to be set up first; switching
+/// donation channels later means an app update, which is fine.
 enum AppLinks {
-    /// Donation landing — the page on terra-cognita.app that redirects
-    /// to whatever channel is currently primary (Buy Me A Coffee as
-    /// of 2026-06-08).
-    static let support = URL(string: "https://terra-cognita.app/support")!
+    /// Donation landing — Buy Me A Coffee (the Frostfyre Studios
+    /// channel for Terra Cognita, separate from the TTRPG Ko-fi).
+    /// Set up 2026-06-09.
+    static let support = URL(string: "https://buymeacoffee.com/frostfyre")!
 
     /// Public marketing / landing.
     static let marketing = URL(string: "https://terra-cognita.app")!
