@@ -294,6 +294,8 @@ extension GraphView {
             .keyboardShortcut("f", modifiers: .command)
             .help("Find a node by name (⌘F)")
 
+            audioToggleButton
+
             Button {
                 inspectorVisible.toggle()
             } label: {
@@ -307,6 +309,29 @@ extension GraphView {
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
         .background(.thinMaterial)
+    }
+
+    /// Audio identity control. Reflects the current atlas's chime
+    /// preference; tapping flips it (and persists globally + to the
+    /// atlas's on-disk config when writable). On enable, fires a
+    /// confirmation chime so the change is *heard*, not just toggled.
+    var audioToggleButton: some View {
+        let enabled = store.config.audio.chimeEnabled
+        return Button {
+            store.setChimeEnabled(!enabled)
+            if !enabled {
+                // Just turned ON — confirm with the launch tone so
+                // the user immediately hears what they enabled.
+                ChimeSonifier.fireLaunchTone(enabled: true)
+            }
+        } label: {
+            Image(systemName: enabled ? "speaker.wave.2.fill" : "speaker.slash.fill")
+                .foregroundStyle(enabled ? Color.yellow : Color.secondary)
+                .symbolRenderingMode(.hierarchical)
+        }
+        .help(enabled
+              ? "Chime on selection enabled for this atlas — tap to mute"
+              : "Chime on selection muted — tap to hear the atlas")
     }
 
     /// Zero-size keyboard-shortcut catchers for affordances we

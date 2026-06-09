@@ -25,6 +25,7 @@ public struct GraphView: View {
         case templatePicker
         case duplicateReview
         case about
+        case audioIntro
 
         var id: Self { self }
     }
@@ -299,7 +300,9 @@ public struct GraphView: View {
                 store.finishLoadingPresentation()
             }
         }
-        .modifier(ChimeWiring(store: store, selectedNodeID: $selectedNodeID))
+        .modifier(AudioWiring(store: store,
+                              selectedNodeID: $selectedNodeID,
+                              activeSheet: $activeSheet))
         // Folder-picker presentation differs by platform:
         //   - macOS uses SwiftUI's `.fileImporter` (NSOpenPanel under
         //     the hood), which handles `.folder` cleanly.
@@ -372,6 +375,10 @@ public struct GraphView: View {
         }
         .sheet(isPresented: sheetBinding(for: .about)) {
             AboutSheet(isPresented: sheetBinding(for: .about))
+        }
+        .sheet(isPresented: sheetBinding(for: .audioIntro)) {
+            AudioIntroSheet(store: store,
+                            isPresented: sheetBinding(for: .audioIntro))
         }
         .sheet(isPresented: sheetBinding(for: .importRecipe)) {
             ImportRecipeSheet(store: store,
@@ -704,24 +711,41 @@ public struct GraphView: View {
     }
 }
 
-// MARK: - Chime sonification wiring
+// MARK: - Audio wiring
 
-/// Two `.onChange` hooks that drive the chime sonifier — extracted
-/// from the GraphView body so the type-checker doesn't blow its
-/// budget on the already-deep modifier chain. Behaviorally:
-///   - Splash dismissal (loadingCaption: non-nil → nil) fires a
-///     single root tone as the app's audio identity signature.
+/// Audio-related `.onChange` hooks lifted out of the GraphView body
+/// so the type-checker doesn't blow its budget on the already-deep
+/// modifier chain. Behaviorally:
+///   - Splash dismissal (loadingCaption: non-nil → nil) fires the
+///     launch tone if chimes are on, AND on the *first* cold-start
+///     where the audio intro hasn't been shown, presents the
+///     `AudioIntroSheet` so the user is introduced to the audio
+///     identity instead of stumbling onto it.
 ///   - Selection change fires a chord — foundation root + chimes
 ///     for each neighbor — gated on the per-atlas chime preference.
-private struct ChimeWiring: ViewModifier {
+private struct AudioWiring: ViewModifier {
     @ObservedObject var store: GraphStore
     @Binding var selectedNodeID: String?
+    @Binding var activeSheet: GraphView.ActiveSheet?
 
     func body(content: Content) -> some View {
         content
             .onChange(of: store.loadingCaption) { oldCaption, newCaption in
-                if oldCaption != nil, newCaption == nil {
-                    ChimeSonifier.fireLaunchTone(enabled: store.config.audio.chimeEnabled)
+                guard oldCaption != nil, newCaption == nil else { return }
+                // Cold-start dismissal — launch tone (no-op when off)
+                // plus the one-time audio intro if the user hasn't
+                // made an explicit audio choice yet.
+                ChimeSonifier.fireLaunchTone(enabled: store.config.audio.chimeEnabled)
+                if !AudioUserPreference.introSeen {
+                    // Brief delay so the canvas has rendered and the
+                    // user can see where they are before the sheet
+                    // covers it.
+                    Task { @MainActor in
+                        try? await Task.sleep(for: .milliseconds(900))
+                        if activeSheet == nil {
+                            activeSheet = .audioIntro
+                        }
+                    }
                 }
             }
             .onChange(of: selectedNodeID) { _, newID in

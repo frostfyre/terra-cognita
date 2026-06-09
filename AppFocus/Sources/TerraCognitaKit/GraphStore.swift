@@ -115,6 +115,22 @@ public final class GraphStore: ObservableObject {
         }
     }
 
+    /// Flip the current atlas's chime preference and persist:
+    /// - The in-memory `config.audio.chimeEnabled` so the next
+    ///   selection or node-add chime knows the new state immediately.
+    /// - The atlas's on-disk `.terracognita/config.yaml` if the
+    ///   atlas is writable (no-op for the bundled Miyazaki demo).
+    /// - `AudioUserPreference.chimeOptIn` so the user's choice
+    ///   carries to other atlases / future sessions even when the
+    ///   per-atlas config can't be saved (read-only bundled demo).
+    func setChimeEnabled(_ enabled: Bool) {
+        config.audio.chimeEnabled = enabled
+        AudioUserPreference.chimeOptIn = enabled
+        if let url = writableAtlasURL {
+            url.withSecurityScope { try? config.save(to: url) }
+        }
+    }
+
     /// End the loading-caption rotation and clear the overlay.
     /// Called from `GraphView` after the post-load auto-frame
     /// animation has settled, so the cross-fade lands on a
