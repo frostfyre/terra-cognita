@@ -323,7 +323,7 @@ extension GraphView {
             Button {
                 showingMusicSuggestion = true
             } label: {
-                Image(systemName: "music.note")
+                Image(systemName: "music.note.list")
                     .foregroundStyle(Color.yellow.opacity(0.85))
                     .symbolEffect(.pulse)
             }
@@ -340,6 +340,12 @@ extension GraphView {
     /// preference; tapping flips it (and persists globally + to the
     /// atlas's on-disk config when writable). On enable, fires a
     /// confirmation chime so the change is *heard*, not just toggled.
+    ///
+    /// Uses `music.note` rather than a speaker glyph because what
+    /// we're toggling is the atlas's *audio identity*, not a system
+    /// volume control — speaker glyphs convention-suggest mute / volume
+    /// and read as a system-tray control. The note reads as "this
+    /// surface has sound" and matches the suggestion badge family.
     var audioToggleButton: some View {
         let enabled = store.config.audio.chimeEnabled
         return Button {
@@ -350,8 +356,9 @@ extension GraphView {
                 ChimeSonifier.fireLaunchTone(enabled: true)
             }
         } label: {
-            Image(systemName: enabled ? "speaker.wave.2.fill" : "speaker.slash.fill")
+            Image(systemName: "music.note")
                 .foregroundStyle(enabled ? Color.yellow : Color.secondary)
+                .opacity(enabled ? 1.0 : 0.55)
                 .symbolRenderingMode(.hierarchical)
         }
         .help(enabled
