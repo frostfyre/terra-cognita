@@ -24,6 +24,7 @@ public struct GraphView: View {
         case importRecipe
         case templatePicker
         case duplicateReview
+        case about
 
         var id: Self { self }
     }
@@ -382,6 +383,9 @@ public struct GraphView: View {
         .sheet(isPresented: sheetBinding(for: .atlasSettings)) {
             AtlasSettingsSheet(store: store,
                                isPresented: sheetBinding(for: .atlasSettings))
+        }
+        .sheet(isPresented: sheetBinding(for: .about)) {
+            AboutSheet(isPresented: sheetBinding(for: .about))
         }
         .sheet(isPresented: sheetBinding(for: .importRecipe)) {
             ImportRecipeSheet(store: store,

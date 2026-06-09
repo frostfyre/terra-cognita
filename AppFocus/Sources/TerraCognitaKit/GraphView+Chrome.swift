@@ -376,6 +376,12 @@ extension GraphView {
             }
             .disabled(!store.canIngest)
 
+            Button {
+                activeSheet = .about
+            } label: {
+                Label("About Terra Cognita…", systemImage: "info.circle")
+            }
+
             if !store.library.entries.isEmpty {
                 Divider()
                 Text("Recent")
