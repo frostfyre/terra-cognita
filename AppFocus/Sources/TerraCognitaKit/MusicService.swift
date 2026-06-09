@@ -88,6 +88,46 @@ final class MusicService {
         }
     }
 
+    /// Catalog lookup — given a kind + ID, fetch the human-readable
+    /// name + attribution so the manual music-picker UI can show the
+    /// user what they're about to bind to. Same authorization path
+    /// as playback. Returns `.notFound` if the ID doesn't resolve
+    /// (typo or out-of-date catalog).
+    func lookup(kind: AtlasConfig.SuggestedMusic.Kind, id: String) async -> LookupResult {
+        let status = await requestAuthorization()
+        guard status == .authorized else {
+            return status == .denied ? .denied : .unavailable
+        }
+
+        do {
+            switch kind {
+            case .playlist:
+                let request = MusicCatalogResourceRequest<Playlist>(
+                    matching: \.id, equalTo: MusicItemID(id))
+                let response = try await request.response()
+                guard let item = response.items.first else { return .notFound }
+                return .found(displayName: item.name,
+                              attribution: item.curatorName)
+            case .album:
+                let request = MusicCatalogResourceRequest<Album>(
+                    matching: \.id, equalTo: MusicItemID(id))
+                let response = try await request.response()
+                guard let item = response.items.first else { return .notFound }
+                return .found(displayName: item.title,
+                              attribution: item.artistName)
+            case .song:
+                let request = MusicCatalogResourceRequest<Song>(
+                    matching: \.id, equalTo: MusicItemID(id))
+                let response = try await request.response()
+                guard let item = response.items.first else { return .notFound }
+                return .found(displayName: item.title,
+                              attribution: item.artistName)
+            }
+        } catch {
+            return .failure(error)
+        }
+    }
+
     /// Stop the active music player. Used when the user toggles audio
     /// off and we want to honor the silence preference completely.
     func stop() {
@@ -126,6 +166,18 @@ final class MusicService {
         /// Likely an out-of-date author suggestion.
         case notFound
         /// Underlying MusicKit / network error.
+        case failure(Error)
+    }
+
+    /// Result of a `lookup(...)` call — used by the manual music
+    /// picker to verify a pasted URL resolves before saving it as
+    /// the atlas's binding. Failure paths mirror `PlayResult` so
+    /// callers can share error-handling helpers.
+    enum LookupResult {
+        case found(displayName: String, attribution: String?)
+        case notFound
+        case denied
+        case unavailable
         case failure(Error)
     }
 }

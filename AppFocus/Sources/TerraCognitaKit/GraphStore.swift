@@ -115,6 +115,23 @@ public final class GraphStore: ObservableObject {
         }
     }
 
+    /// Replace the current atlas's music suggestion (or clear it,
+    /// passing `nil`) and persist to the atlas's on-disk config
+    /// when writable. For read-only bundled atlases (Miyazaki demo)
+    /// the change is in-memory only and lost on relaunch — by
+    /// design, since the demo's bundled config carries the canonical
+    /// suggestion.
+    ///
+    /// Also wipes any per-atlas accept/decline state so the new
+    /// suggestion gets a clean shot at appearing.
+    func setSuggestedMusic(_ music: AtlasConfig.SuggestedMusic?) {
+        config.audio.suggestedMusic = music
+        MusicSuggestion.resetState(for: self)
+        if let url = writableAtlasURL {
+            url.withSecurityScope { try? config.save(to: url) }
+        }
+    }
+
     /// Flip the current atlas's chime preference and persist:
     /// - The in-memory `config.audio.chimeEnabled` so the next
     ///   selection or node-add chime knows the new state immediately.

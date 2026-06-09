@@ -10,6 +10,7 @@ struct AtlasSettingsSheet: View {
 
     @State private var draft: AtlasConfig
     @State private var errorMessage: String?
+    @State private var showingMusicPicker: Bool = false
     /// Snapshot of non-synthetic type names at the moment the sheet
     /// opened, in their position order. On save we diff this against
     /// the current names to detect renames, then sweep the graph and
@@ -257,11 +258,67 @@ struct AtlasSettingsSheet: View {
                     }
                 } icon: { Image(systemName: "waveform").foregroundStyle(.yellow) }
             }
+
+            // Soundtrack row — current binding (or "None"), plus a
+            // Change button that opens the manual picker. Clear
+            // wipes the binding so the suggestion never offers.
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: "music.note")
+                    .foregroundStyle(.yellow)
+                    .frame(width: 28)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Soundtrack")
+                    if let m = draft.audio.suggestedMusic {
+                        Text(m.displayName)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
+                        if let a = m.attribution, !a.isEmpty {
+                            Text(a)
+                                .font(.caption2)
+                                .foregroundStyle(.tertiary)
+                        }
+                    } else {
+                        Text("None — atlas plays no music")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                Spacer()
+                VStack(spacing: 4) {
+                    Button(draft.audio.suggestedMusic == nil ? "Set…" : "Change…") {
+                        showingMusicPicker = true
+                    }
+                    .buttonStyle(.bordered)
+                    if draft.audio.suggestedMusic != nil {
+                        Button("Clear", role: .destructive) {
+                            draft.audio.suggestedMusic = nil
+                            // Persist immediately via the same path
+                            // the picker uses — keeps in-memory and
+                            // on-disk in sync so the popover badge
+                            // disappears right away.
+                            store.setSuggestedMusic(nil)
+                        }
+                        .buttonStyle(.borderless)
+                        .controlSize(.small)
+                    }
+                }
+            }
         } header: {
             Text("Audio")
         } footer: {
             Text("Audio settings are per-atlas — turning chime on here doesn't affect other atlases. Mixes with whatever music you're already playing.")
                 .font(.caption2)
+        }
+        .sheet(isPresented: $showingMusicPicker) {
+            MusicBindingPickerSheet(store: store, isPresented: $showingMusicPicker)
+                .onDisappear {
+                    // Picker writes through `store.setSuggestedMusic`,
+                    // which updates `store.config.audio.suggestedMusic`.
+                    // Re-seed `draft` so the row redraws with the new
+                    // binding.
+                    draft.audio.suggestedMusic = store.config.audio.suggestedMusic
+                }
         }
     }
 
