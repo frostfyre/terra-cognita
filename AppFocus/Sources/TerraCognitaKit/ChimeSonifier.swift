@@ -40,9 +40,12 @@ enum ChimeSonifier {
     static let padVelocity: Float = 0.35
 
     /// Fire a chime for `selected` and each of its `connected` neighbors.
-    /// No-op when the user has chimes disabled (the default).
-    static func fire(selected: Node, connected: [Node]) {
-        guard AudioToggle.isChimeEnabled else { return }
+    /// `enabled` is the per-atlas opt-in flag (`AtlasConfig.audio.chimeEnabled`);
+    /// when false this returns before touching the audio engine, so the
+    /// system audio session stays untouched until the user opts in for
+    /// the active atlas.
+    static func fire(selected: Node, connected: [Node], enabled: Bool) {
+        guard enabled else { return }
 
         // 1. Foundation: a single deep root for the selected node,
         //    centered in the mix.
@@ -101,15 +104,3 @@ enum ChimeSonifier {
     }
 }
 
-/// User preference for chime audio. **Off by default** per the design
-/// memo — discovery is opt-in, never surprise the user with sound on
-/// first launch. The UI to toggle this lands in the Atlas Settings
-/// sheet (or app Settings on macOS) in a follow-up pass.
-enum AudioToggle {
-    private static let chimeEnabledKey = "audio.chime.enabled"
-
-    static var isChimeEnabled: Bool {
-        get { UserDefaults.standard.bool(forKey: chimeEnabledKey) }
-        set { UserDefaults.standard.set(newValue, forKey: chimeEnabledKey) }
-    }
-}

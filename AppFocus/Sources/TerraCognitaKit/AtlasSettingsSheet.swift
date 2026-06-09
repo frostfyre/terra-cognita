@@ -40,6 +40,7 @@ struct AtlasSettingsSheet: View {
                 typesSections
                 erasSection
                 extractorsSection
+                audioSection
                 if let errorMessage {
                     Section {
                         Label(errorMessage, systemImage: "exclamationmark.triangle")
@@ -240,6 +241,27 @@ struct AtlasSettingsSheet: View {
             }
         } header: {
             Text("Extractors")
+        }
+    }
+
+    // MARK: - Audio
+
+    private var audioSection: some View {
+        Section {
+            Toggle(isOn: $draft.audio.chimeEnabled) {
+                Label {
+                    VStack(alignment: .leading) {
+                        Text("Chime on selection")
+                        Text("Selecting a node rings a short chord — one tone per neighbor, pitch from node type, panned across the stereo field. AirPods spatial audio works.")
+                            .font(.caption2).foregroundStyle(.secondary)
+                    }
+                } icon: { Image(systemName: "waveform").foregroundStyle(.yellow) }
+            }
+        } header: {
+            Text("Audio")
+        } footer: {
+            Text("Audio settings are per-atlas — turning chime on here doesn't affect other atlases. Mixes with whatever music you're already playing.")
+                .font(.caption2)
         }
     }
 

@@ -24,6 +24,7 @@ struct AtlasConfig: Equatable {
     var types: [TypeSpec]
     var eras: [EraSpec]
     var extractors: Extractors
+    var audio: Audio = Audio()
 
     struct TypeSpec: Equatable, Identifiable {
         var name: String                  // canonical front-matter value, lowercased
@@ -54,6 +55,19 @@ struct AtlasConfig: Equatable {
         /// Surface `[[Name]]` targets that have no matching `.md` as
         /// hollow placeholder nodes (Obsidian convention).
         var placeholders: Bool = true
+    }
+
+    /// Per-atlas audio preferences. Sonification is **off by default**
+    /// per the design memo — the user opts in once they want to hear
+    /// the atlas. Lives at the atlas level because different atlases
+    /// merit different sonic identities (a heritage atlas full of
+    /// people, a project atlas full of ideas).
+    struct Audio: Equatable {
+        /// Whether selection-driven chime sonification fires. When
+        /// false, `ChimeSonifier.fire(...)` is a no-op before any
+        /// audio engine activation, so the user's iOS audio session
+        /// stays untouched until they opt in.
+        var chimeEnabled: Bool = false
     }
 
     // MARK: - Defaults (the original hardcoded ontology)
@@ -87,7 +101,8 @@ struct AtlasConfig: Equatable {
             EraSpec(name: "current",                 weight: 8),
             EraSpec(name: "career-spanning",         weight: 6.5),
         ],
-        extractors: Extractors()
+        extractors: Extractors(),
+        audio: Audio()
     )
 
     // MARK: - Lookup helpers
@@ -181,6 +196,9 @@ struct AtlasConfig: Equatable {
         lines.append("  embeds: \(extractors.embeds)")
         lines.append("  placeholders: \(extractors.placeholders)")
         lines.append("")
+        lines.append("audio:")
+        lines.append("  chime: \(audio.chimeEnabled)")
+        lines.append("")
         return lines.joined(separator: "\n")
     }
 
@@ -251,9 +269,10 @@ extension AtlasConfig {
         var typeSpecs: [TypeSpec] = []
         var eraSpecs: [EraSpec] = []
         var extractors = Extractors()
+        var audio = Audio()
         var mode: Mode = .continuity
 
-        enum Section { case none, types, eras, extractors }
+        enum Section { case none, types, eras, extractors, audio }
         var section: Section = .none
         var current: [String: String] = [:]
 
@@ -278,7 +297,7 @@ extension AtlasConfig {
                 guard let name = current["name"], !name.isEmpty else { return }
                 let weight = Double(current["weight"] ?? "") ?? Double(eraSpecs.count)
                 eraSpecs.append(EraSpec(name: name, weight: weight))
-            case .extractors, .none:
+            case .extractors, .audio, .none:
                 break
             }
         }
@@ -314,6 +333,7 @@ extension AtlasConfig {
                 case "types:":      section = .types
                 case "eras:":       section = .eras
                 case "extractors:": section = .extractors
+                case "audio:":      section = .audio
                 default:
                     section = .none
                     // Scalar top-level keys land here. We currently
@@ -347,6 +367,17 @@ extension AtlasConfig {
                     }
                     continue
                 }
+                if section == .audio {
+                    // `audio:` is a flat map of booleans (chime today;
+                    // music + ambient as those layers land per the memo).
+                    if let (k, v) = parseKV(stripped), let b = parseBool(v) {
+                        switch k.lowercased() {
+                        case "chime": audio.chimeEnabled = b
+                        default: break
+                        }
+                    }
+                    continue
+                }
                 if let (k, v) = parseKV(stripped) { current[k] = v }
             }
         }
@@ -372,7 +403,8 @@ extension AtlasConfig {
             mode: mode,
             types: mergedTypes,
             eras:  eraSpecs.isEmpty  ? AtlasConfig.default.eras  : eraSpecs,
-            extractors: extractors
+            extractors: extractors,
+            audio: audio
         )
     }
 
