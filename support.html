@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Support Terra Cognita</title>
+  <meta name="description" content="Terra Cognita is free, donation-supported, and source-available. If it's earning a spot in your workflow, a contribution helps keep development going." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;1,300;1,400&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --navy:        #0a1628;
+      --deep-blue:   #0d2244;
+      --mid-blue:    #1a3a6e;
+      --gold:        #c9a84c;
+      --gold-light:  #e8c97a;
+      --ink:         #e8e0d0;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      background-color: var(--navy);
+      color: var(--ink);
+      font-family: 'Cormorant Garamond', Georgia, serif;
+      min-height: 100vh;
+      position: relative;
+    }
+
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+      background-image:
+        repeating-linear-gradient(0deg, transparent, transparent 38px,
+          rgba(201,168,76,0.04) 38px, rgba(201,168,76,0.04) 39px),
+        repeating-linear-gradient(90deg, transparent, transparent 38px,
+          rgba(201,168,76,0.03) 38px, rgba(201,168,76,0.03) 39px);
+      pointer-events: none;
+    }
+
+    body::after {
+      content: '';
+      position: fixed;
+      inset: 0;
+      z-index: 1;
+      background: radial-gradient(ellipse at center, transparent 50%, rgba(10,22,40,0.6) 100%);
+      pointer-events: none;
+    }
+
+    .page {
+      position: relative;
+      z-index: 2;
+      max-width: 640px;
+      margin: 0 auto;
+      padding: 3rem 1.5rem 5rem;
+    }
+
+    /* ── Top nav ── */
+    nav.top {
+      display: flex;
+      align-items: center;
+      gap: 0.85rem;
+      margin-bottom: 4rem;
+      animation: fadeDown 0.8s ease both;
+    }
+
+    nav.top a {
+      font-family: 'Cinzel', serif;
+      font-size: 0.7rem;
+      letter-spacing: 0.25em;
+      text-transform: uppercase;
+      color: var(--gold);
+      text-decoration: none;
+      transition: color 0.2s;
+    }
+
+    nav.top a:hover { color: var(--gold-light); }
+
+    .compass-mini {
+      width: 18px;
+      height: 18px;
+      opacity: 0.7;
+    }
+
+    /* ── Heading ── */
+    h1 {
+      font-family: 'Cinzel', serif;
+      font-size: clamp(1.4rem, 4vw, 2rem);
+      letter-spacing: 0.12em;
+      color: var(--gold-light);
+      font-weight: 600;
+      margin-bottom: 0.6rem;
+      text-align: center;
+      animation: fadeUp 0.9s 0.1s ease both;
+    }
+
+    .divider {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 1rem;
+      margin: 1.8rem 0 2.8rem;
+      animation: fadeUp 0.9s 0.2s ease both;
+    }
+
+    .divider-line {
+      flex: 1;
+      max-width: 80px;
+      height: 1px;
+      background: rgba(201,168,76,0.4);
+    }
+
+    .divider-glyph {
+      color: var(--gold);
+      font-size: 1rem;
+    }
+
+    /* ── Pitch text ── */
+    .pitch {
+      font-size: 1.1rem;
+      line-height: 1.7;
+      color: rgba(232,224,208,0.85);
+      text-align: center;
+      margin-bottom: 1.4rem;
+      animation: fadeUp 0.9s 0.3s ease both;
+    }
+
+    .pitch em { color: var(--gold-light); font-style: italic; }
+
+    /* ── Button ── */
+    .cta {
+      display: block;
+      margin: 2.6rem auto 1rem;
+      max-width: 320px;
+      text-align: center;
+      padding: 1rem 2rem;
+      background: var(--gold);
+      color: var(--navy);
+      font-family: 'Cinzel', serif;
+      font-size: 0.78rem;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      font-weight: 600;
+      text-decoration: none;
+      border-radius: 3px;
+      border: none;
+      transition: background 0.2s, transform 0.1s;
+      animation: fadeUp 0.9s 0.4s ease both;
+    }
+
+    .cta:hover { background: var(--gold-light); }
+    .cta:active { transform: scale(0.98); }
+
+    .cta-note {
+      text-align: center;
+      font-size: 0.85rem;
+      font-style: italic;
+      color: rgba(232,224,208,0.45);
+      margin-bottom: 3.5rem;
+      animation: fadeUp 0.9s 0.45s ease both;
+    }
+
+    /* ── Card section ── */
+    .card {
+      background: rgba(13,34,68,0.55);
+      border: 1px solid rgba(201,168,76,0.2);
+      border-radius: 6px;
+      padding: 1.6rem 1.8rem;
+      margin-bottom: 1.8rem;
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      animation: fadeUp 0.9s 0.55s ease both;
+    }
+
+    .card h2 {
+      font-family: 'Cinzel', serif;
+      font-size: 0.72rem;
+      letter-spacing: 0.28em;
+      color: var(--gold);
+      text-transform: uppercase;
+      font-weight: 600;
+      margin-bottom: 0.9rem;
+    }
+
+    .card p {
+      font-size: 1rem;
+      line-height: 1.7;
+      color: rgba(232,224,208,0.78);
+      margin-bottom: 0.7rem;
+    }
+
+    .card p:last-child { margin-bottom: 0; }
+
+    a.inline {
+      color: var(--gold-light);
+      text-decoration: none;
+      border-bottom: 1px solid rgba(201,168,76,0.3);
+      transition: border-color 0.2s;
+    }
+
+    a.inline:hover { border-color: var(--gold-light); }
+
+    /* ── Footer ── */
+    footer {
+      margin-top: 4rem;
+      padding-top: 2rem;
+      border-top: 1px solid rgba(201,168,76,0.15);
+      text-align: center;
+      font-size: 0.85rem;
+      font-style: italic;
+      color: rgba(232,224,208,0.3);
+    }
+
+    footer .glyph {
+      color: var(--gold);
+      margin: 0 0.5rem;
+      opacity: 0.6;
+    }
+
+    /* ── Keyframes ── */
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(12px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    @keyframes fadeDown {
+      from { opacity: 0; transform: translateY(-8px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="page">
+    <nav class="top">
+      <svg class="compass-mini" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="50" cy="50" r="46" stroke="#c9a84c" stroke-width="2" opacity="0.4"/>
+        <polygon points="50,4 46,50 50,44 54,50" fill="#e8c97a"/>
+        <polygon points="50,96 46,50 50,56 54,50" fill="#c9a84c" opacity="0.5"/>
+        <polygon points="4,50 50,46 44,50 50,54" fill="#c9a84c" opacity="0.5"/>
+        <polygon points="96,50 50,46 56,50 50,54" fill="#c9a84c" opacity="0.5"/>
+        <circle cx="50" cy="50" r="4" fill="#c9a84c" opacity="0.7"/>
+      </svg>
+      <a href="/">← Terra Cognita</a>
+    </nav>
+
+    <h1>Support Development</h1>
+
+    <div class="divider">
+      <div class="divider-line"></div>
+      <div class="divider-glyph">✦</div>
+      <div class="divider-line"></div>
+    </div>
+
+    <p class="pitch">
+      Terra Cognita is free, donation-supported, and source-available. If it's earning a spot in <em>your</em> workflow, a contribution helps keep development going.
+    </p>
+
+    <a class="cta" href="https://buymeacoffee.com/frostfyre" rel="noopener">Buy Me a Coffee</a>
+    <p class="cta-note">Opens Buy Me a Coffee — Apple Pay, one tap, no account needed.</p>
+
+    <div class="card">
+      <h2>What This Supports</h2>
+      <p>Active development of Terra Cognita itself: new layouts, audio sonification, performance work, polish, App Store releases. Plus the time spent reading and responding to feedback you send to <a class="inline" href="mailto:info@terra-cognita.app">info@terra-cognita.app</a>.</p>
+    </div>
+
+    <div class="card">
+      <h2>Source-Available</h2>
+      <p>Terra Cognita is licensed under <a class="inline" href="https://polyformproject.org/licenses/noncommercial/1.0.0" rel="noopener">PolyForm Noncommercial 1.0.0</a> — free for personal, research, and nonprofit use. Read the source, fork it, modify it for your own use. Commercial use is reserved.</p>
+      <p>If you're using Terra Cognita commercially and want to discuss licensing terms, reach out at <a class="inline" href="mailto:info@terra-cognita.app">info@terra-cognita.app</a>.</p>
+    </div>
+
+    <div class="card">
+      <h2>Other Ways To Help</h2>
+      <p>Beta feedback, bug reports, screenshots of weird behavior — all welcome at <a class="inline" href="mailto:info@terra-cognita.app">info@terra-cognita.app</a>. Word-of-mouth to friends who think in graphs helps more than a coffee.</p>
+    </div>
+
+    <footer>
+      © 2026 Frostfyre Studios <span class="glyph">✦</span> <a href="/" style="color: rgba(232,224,208,0.5);">Terra Cognita</a> <span class="glyph">✦</span> <a href="/privacy" style="color: rgba(232,224,208,0.5);">Privacy</a>
+    </footer>
+  </div>
+
+</body>
+</html>

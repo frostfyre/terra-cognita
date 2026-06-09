@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Privacy Policy — Terra Cognita</title>
+  <meta name="description" content="Terra Cognita does not collect, transmit, or have access to anything about you or your atlas. The full privacy policy." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;1,300;1,400&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --navy:        #0a1628;
+      --deep-blue:   #0d2244;
+      --mid-blue:    #1a3a6e;
+      --gold:        #c9a84c;
+      --gold-light:  #e8c97a;
+      --ink:         #e8e0d0;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      background-color: var(--navy);
+      color: var(--ink);
+      font-family: 'Cormorant Garamond', Georgia, serif;
+      min-height: 100vh;
+      position: relative;
+    }
+
+    /* Static topographic + vignette overlay — keeps the visual
+       continuity with the landing page without the heavier
+       animated canvas (overkill for a long-text page). */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+      background-image:
+        repeating-linear-gradient(0deg, transparent, transparent 38px,
+          rgba(201,168,76,0.04) 38px, rgba(201,168,76,0.04) 39px),
+        repeating-linear-gradient(90deg, transparent, transparent 38px,
+          rgba(201,168,76,0.03) 38px, rgba(201,168,76,0.03) 39px);
+      pointer-events: none;
+    }
+
+    body::after {
+      content: '';
+      position: fixed;
+      inset: 0;
+      z-index: 1;
+      background: radial-gradient(ellipse at center, transparent 50%, rgba(10,22,40,0.6) 100%);
+      pointer-events: none;
+    }
+
+    .page {
+      position: relative;
+      z-index: 2;
+      max-width: 760px;
+      margin: 0 auto;
+      padding: 3rem 1.5rem 5rem;
+    }
+
+    /* ── Top nav: back to home ── */
+    nav.top {
+      display: flex;
+      align-items: center;
+      gap: 0.85rem;
+      margin-bottom: 3rem;
+      animation: fadeDown 0.8s ease both;
+    }
+
+    nav.top a {
+      font-family: 'Cinzel', serif;
+      font-size: 0.7rem;
+      letter-spacing: 0.25em;
+      text-transform: uppercase;
+      color: var(--gold);
+      text-decoration: none;
+      transition: color 0.2s;
+    }
+
+    nav.top a:hover { color: var(--gold-light); }
+
+    .compass-mini {
+      width: 18px;
+      height: 18px;
+      opacity: 0.7;
+    }
+
+    /* ── Document heading ── */
+    h1 {
+      font-family: 'Cinzel', serif;
+      font-size: clamp(1.4rem, 4vw, 2rem);
+      letter-spacing: 0.12em;
+      color: var(--gold-light);
+      font-weight: 600;
+      margin-bottom: 0.4rem;
+      animation: fadeUp 0.9s 0.1s ease both;
+    }
+
+    .effective {
+      font-size: 0.85rem;
+      font-style: italic;
+      color: rgba(232,224,208,0.5);
+      margin-bottom: 2.2rem;
+      animation: fadeUp 0.9s 0.2s ease both;
+    }
+
+    /* ── Lede card (the "we collect nothing" TL;DR) ── */
+    .lede {
+      background: rgba(13,34,68,0.55);
+      border: 1px solid rgba(201,168,76,0.2);
+      border-radius: 6px;
+      padding: 1.6rem 1.8rem;
+      margin-bottom: 2.8rem;
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      animation: fadeUp 0.9s 0.3s ease both;
+    }
+
+    .lede p {
+      font-size: 1.05rem;
+      line-height: 1.65;
+      color: rgba(232,224,208,0.88);
+    }
+
+    /* ── Section headings ── */
+    h2 {
+      font-family: 'Cinzel', serif;
+      font-size: 0.78rem;
+      letter-spacing: 0.28em;
+      color: var(--gold);
+      text-transform: uppercase;
+      font-weight: 600;
+      margin-top: 2.4rem;
+      margin-bottom: 0.9rem;
+      animation: fadeUp 0.9s ease both;
+    }
+
+    /* ── Body text ── */
+    p, ul, ol {
+      font-size: 1rem;
+      line-height: 1.7;
+      color: rgba(232,224,208,0.78);
+      margin-bottom: 1rem;
+    }
+
+    ul, ol { padding-left: 1.6rem; }
+
+    li { margin-bottom: 0.4rem; }
+
+    code {
+      font-family: 'SF Mono', 'Courier New', monospace;
+      font-size: 0.9rem;
+      background: rgba(201,168,76,0.1);
+      padding: 0.1em 0.4em;
+      border-radius: 3px;
+      color: var(--gold-light);
+    }
+
+    a {
+      color: var(--gold-light);
+      text-decoration: none;
+      border-bottom: 1px solid rgba(201,168,76,0.3);
+      transition: border-color 0.2s;
+    }
+
+    a:hover { border-color: var(--gold-light); }
+
+    /* ── Permissions table ── */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 1.2rem;
+      font-size: 0.95rem;
+    }
+
+    th, td {
+      text-align: left;
+      padding: 0.7rem 0.9rem;
+      border-bottom: 1px solid rgba(201,168,76,0.15);
+      vertical-align: top;
+    }
+
+    th {
+      font-family: 'Cinzel', serif;
+      font-size: 0.72rem;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--gold);
+      font-weight: 600;
+    }
+
+    /* ── Footer ── */
+    footer {
+      margin-top: 4rem;
+      padding-top: 2rem;
+      border-top: 1px solid rgba(201,168,76,0.15);
+      text-align: center;
+      font-size: 0.85rem;
+      font-style: italic;
+      color: rgba(232,224,208,0.3);
+    }
+
+    footer .glyph {
+      color: var(--gold);
+      margin: 0 0.5rem;
+      opacity: 0.6;
+    }
+
+    /* ── Keyframes ── */
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(12px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    @keyframes fadeDown {
+      from { opacity: 0; transform: translateY(-8px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="page">
+    <nav class="top">
+      <svg class="compass-mini" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="50" cy="50" r="46" stroke="#c9a84c" stroke-width="2" opacity="0.4"/>
+        <polygon points="50,4 46,50 50,44 54,50" fill="#e8c97a"/>
+        <polygon points="50,96 46,50 50,56 54,50" fill="#c9a84c" opacity="0.5"/>
+        <polygon points="4,50 50,46 44,50 50,54" fill="#c9a84c" opacity="0.5"/>
+        <polygon points="96,50 50,46 56,50 50,54" fill="#c9a84c" opacity="0.5"/>
+        <circle cx="50" cy="50" r="4" fill="#c9a84c" opacity="0.7"/>
+      </svg>
+      <a href="/">← Terra Cognita</a>
+    </nav>
+
+    <h1>Privacy Policy</h1>
+    <p class="effective">Last updated: 2026-06-08 · Effective when you install Terra Cognita and use the app</p>
+
+    <div class="lede">
+      <p>
+        This policy describes how <strong>Terra Cognita</strong>, published by <strong>Frostfyre Studios</strong>, handles your information. We've designed the app so that we collect nothing — this policy spells out what that means in practice and what data flows do exist.
+      </p>
+      <p style="margin-top: 0.8rem;">
+        <em>The short version: we don't collect, transmit, or have access to anything about you or your atlas.</em>
+      </p>
+    </div>
+
+    <h2>1 · What We Collect</h2>
+    <p><strong>Nothing.</strong> The app does not collect or transmit personal information, usage analytics, crash reports, device identifiers, advertising IDs, location, contacts, or any other data about you or your device to us or any third party for our benefit.</p>
+    <p>We have no accounts, no logins, no servers that store your data. We do not know who installed the app, how often you use it, or what is in your atlas.</p>
+
+    <h2>2 · Your Files</h2>
+    <p>Terra Cognita stores your atlas as <strong>plain Markdown files</strong> in a folder you choose on your device. Those files are <strong>yours</strong>:</p>
+    <ul>
+      <li>You retain all ownership and copyright in the content.</li>
+      <li>The app does not upload, copy, transmit, or remotely analyze your atlas.</li>
+      <li>You are responsible for your own backups (e.g., Git, iCloud Drive, Time Machine).</li>
+    </ul>
+    <p>If we ever introduce optional sync or cloud-storage features, they will be <strong>opt-in</strong>, clearly disclosed, and never enabled silently.</p>
+
+    <h2>3 · AI Features (On-Device)</h2>
+    <p>The app's AI features — text generation, summarization, link suggestion, era inference, and similar — run <strong>entirely on your device</strong> through Apple's Foundation Models framework. Your prompts, the model's responses, and any intermediate state stay on your device. We do not see them, and Apple's Foundation Models terms govern that on-device processing.</p>
+
+    <h2>4 · Speech-to-Text (On-Device)</h2>
+    <p>When you use dictation in the app, transcription uses Apple's <code>SFSpeechRecognizer</code> with <code>requiresOnDeviceRecognition = true</code>. <strong>Audio does not leave your device.</strong> The app requests microphone access only when you initiate dictation.</p>
+
+    <h2>5 · Network Requests</h2>
+    <p>The app is <strong>offline-first</strong>. The only outbound network requests are ones you explicitly invoke:</p>
+    <ul>
+      <li><strong>Wikipedia enrichment</strong> — when you paste a Wikipedia URL or use the Capture flow with a Wikipedia URL, your device fetches the corresponding article from Wikipedia's public API.</li>
+      <li><strong>Generic web fetches</strong> — when you paste a non-Wikipedia URL, your device fetches the page's HTML so it can be summarized on-device.</li>
+    </ul>
+    <p>These requests go <strong>directly from your device</strong> to the relevant third-party server. We don't proxy, log, or see them. They are subject to those servers' own terms and privacy policies (e.g., Wikipedia's Privacy Policy).</p>
+    <p>The app contains <strong>no analytics SDKs, no crash reporters that phone home, and no telemetry of any kind.</strong></p>
+
+    <h2>6 · Permissions We Request</h2>
+    <table>
+      <thead>
+        <tr><th>Permission</th><th>Why</th><th>When asked</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Folder access (user-selected)</td>
+          <td>To read and write the atlas folder you pick</td>
+          <td>When you pick a folder</td>
+        </tr>
+        <tr>
+          <td>Microphone</td>
+          <td>For on-device dictation in note input</td>
+          <td>When you first tap a dictation control</td>
+        </tr>
+        <tr>
+          <td>Speech recognition</td>
+          <td>For on-device transcription</td>
+          <td>Same as microphone</td>
+        </tr>
+      </tbody>
+    </table>
+    <p>You can revoke any of these in your device's Settings at any time. The app degrades gracefully — features that need a revoked permission stop working, but the app does not crash or surface aggressive re-prompts.</p>
+
+    <h2>7 · Children's Privacy</h2>
+    <p>The app is not directed to children under 13, and we do not knowingly collect information from anyone (children included) — see Section 1.</p>
+
+    <h2>8 · Your Rights</h2>
+    <p>Because we do not collect or store your information, requests under privacy frameworks like the GDPR or CCPA — to access, correct, delete, or export your data — have nothing on our end to act on.</p>
+    <p>Your atlas content lives on your device under your control. You can delete it, copy it, sync it, or back it up at any time, using your operating system's tools.</p>
+
+    <h2>9 · Changes to This Policy</h2>
+    <p>We may update this policy. When we do, we will revise the "Last updated" date above and post the new version in our repository and at <a href="https://terra-cognita.app/privacy">terra-cognita.app/privacy</a>. Material changes will be announced in-app or by email to anyone who has voluntarily contacted us.</p>
+
+    <h2>10 · Contact</h2>
+    <p>Questions about this policy: <a href="mailto:info@terra-cognita.app">info@terra-cognita.app</a></p>
+
+    <footer>
+      © 2026 Frostfyre Studios <span class="glyph">✦</span> <a href="/">Terra Cognita</a> <span class="glyph">✦</span> <a href="/support">Support</a>
+    </footer>
+  </div>
+
+</body>
+</html>
