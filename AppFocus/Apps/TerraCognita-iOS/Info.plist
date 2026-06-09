@@ -26,6 +26,8 @@
 	<string>public.app-category.lifestyle</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSAppleMusicUsageDescription</key>
+	<string>Terra Cognita can play Apple Music alongside your atlas — each atlas can suggest a soundtrack that fits its mood, like Joe Hisaishi for the Miyazaki demo. Only used when you opt in.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Terra Cognita uses the microphone for voice capture. Audio is transcribed on-device and never uploaded.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>

@@ -9,6 +9,11 @@ public struct GraphView: View {
     @State var selectedNodeID: String?
     @State var activeLens: Lens = .all
     @State var showingSearch: Bool = false
+    /// Drives the music-suggestion popover anchored to the toolbar
+    /// speaker / music-note button. Presented only when the current
+    /// atlas has an author-curated music suggestion that hasn't been
+    /// accepted or declined yet — see `MusicSuggestion.shouldOffer`.
+    @State var showingMusicSuggestion: Bool = false
     /// One modal sheet at a time. Folds six previously-separate
     /// `showing*` booleans (Capture, Composer, AtlasSettings,
     /// ImportRecipe, TemplatePicker, DuplicateReview) into one

@@ -93,6 +93,13 @@ def shared_build_settings(target, deployment_setting_key, deployment_value)
       'Terra Cognita uses on-device speech recognition to capture spoken notes. Audio stays on this device.'
     s['INFOPLIST_KEY_NSMicrophoneUsageDescription'] =
       'Terra Cognita uses the microphone for voice capture. Audio is transcribed on-device and never uploaded.'
+    # Apple Music binding (per-atlas soundtrack suggestions). Used
+    # only when the user opts into chime + accepts a music suggestion.
+    # iOS overrides the generated plist with its hand-rolled one and
+    # has its own NSAppleMusicUsageDescription entry there; this
+    # setting carries the macOS value.
+    s['INFOPLIST_KEY_NSAppleMusicUsageDescription'] =
+      'Terra Cognita can play Apple Music alongside your atlas — each atlas can suggest a soundtrack that fits its mood, like Joe Hisaishi for the Miyazaki demo. Only used when you opt in.'
   end
 end
 

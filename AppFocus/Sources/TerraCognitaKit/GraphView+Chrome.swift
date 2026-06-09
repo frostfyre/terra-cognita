@@ -295,6 +295,7 @@ extension GraphView {
             .help("Find a node by name (⌘F)")
 
             audioToggleButton
+            musicSuggestionButton
 
             Button {
                 inspectorVisible.toggle()
@@ -309,6 +310,30 @@ extension GraphView {
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
         .background(.thinMaterial)
+    }
+
+    /// Atlas-suggested music affordance. Appears as a subtle music
+    /// note next to the speaker when the current atlas carries an
+    /// author-curated suggestion AND the chime is on AND the user
+    /// hasn't already accepted or declined for this atlas. Tap opens
+    /// `MusicSuggestionPopover`.
+    @ViewBuilder
+    var musicSuggestionButton: some View {
+        if MusicSuggestion.shouldOffer(for: store) {
+            Button {
+                showingMusicSuggestion = true
+            } label: {
+                Image(systemName: "music.note")
+                    .foregroundStyle(Color.yellow.opacity(0.85))
+                    .symbolEffect(.pulse)
+            }
+            .help("This atlas suggests music — tap to listen")
+            .popover(isPresented: $showingMusicSuggestion,
+                     arrowEdge: .top) {
+                MusicSuggestionPopover(store: store,
+                                       isPresented: $showingMusicSuggestion)
+            }
+        }
     }
 
     /// Audio identity control. Reflects the current atlas's chime

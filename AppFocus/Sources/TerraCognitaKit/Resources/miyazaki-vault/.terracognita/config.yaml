@@ -1,0 +1,26 @@
+# Terra Cognita atlas configuration — bundled Miyazaki demo.
+# This file ships with the app so the demo atlas can carry author-
+# curated metadata (currently: a Joe Hisaishi music suggestion).
+# Types and eras are left to fall back to defaults — see AtlasConfig.default.
+
+mode: continuity
+
+audio:
+  # Chime stays off by default per the discover-on-opt-in principle.
+  # The Miyazaki demo opts in via the AudioIntroSheet on first launch.
+  chime: false
+
+  # Author-curated Apple Music suggestion. Surfaced as a music-note
+  # badge on the toolbar speaker icon after the user enables chime
+  # AND the atlas reaches density floor. Tap → popover with Listen /
+  # Not now.
+  #
+  # TODO before App Store submission: replace `music_id` with the real
+  # Apple Music catalog ID. In the Music app, find the Joe Hisaishi /
+  # Studio Ghibli playlist or album you want, tap Share → Copy Link,
+  # then extract the trailing identifier (looks like `pl.XXXX…` for a
+  # playlist or a numeric string for an album).
+  music_type: playlist
+  music_id: pl.PLACEHOLDER_HISAISHI_REPLACE_BEFORE_SUBMIT
+  music_name: "Joe Hisaishi · Studio Ghibli Essentials"
+  music_attribution: "Composer for nearly every Miyazaki film"

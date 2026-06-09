@@ -71,6 +71,36 @@ struct AtlasConfig: Equatable {
         /// posture for general users and would catch Apple reviewers
         /// off-guard. Users discover the chime via Atlas Settings.
         var chimeEnabled: Bool = false
+
+        /// Author-curated music suggestion the atlas surfaces to the
+        /// user as a soundtrack. Optional. When set and the user
+        /// hasn't already accepted / declined for this atlas, a
+        /// gentle music-note badge appears on the toolbar speaker
+        /// icon during canvas idle (see `MusicSuggestion` for the
+        /// trigger logic). Tapping the badge offers playback via
+        /// Apple Music.
+        var suggestedMusic: SuggestedMusic?
+    }
+
+    /// Pointer to an Apple Music item — playlist, album, or song —
+    /// that an atlas's author proposes as its soundtrack. Stored in
+    /// the atlas's config so the suggestion survives across devices
+    /// and gets versioned alongside the atlas itself.
+    struct SuggestedMusic: Equatable {
+        /// The kind of music resource the `id` points at.
+        enum Kind: String {
+            case playlist, album, song
+        }
+
+        var kind: Kind
+        /// Apple Music catalog ID (e.g., `pl.…` for a playlist,
+        /// numeric for album / song).
+        var id: String
+        /// Human-readable name to surface in the suggestion popover.
+        var displayName: String
+        /// Optional attribution line ("Studio Ghibli composer", etc.)
+        /// shown beneath the displayName.
+        var attribution: String?
     }
 
     // MARK: - Defaults (the original hardcoded ontology)
@@ -201,6 +231,18 @@ struct AtlasConfig: Equatable {
         lines.append("")
         lines.append("audio:")
         lines.append("  chime: \(audio.chimeEnabled)")
+        if let m = audio.suggestedMusic {
+            // Flat key prefix instead of nested map — the parser is
+            // a single-level YAML reader, and a one-line-per-field
+            // suggested-music block keeps that constraint without
+            // adding nested-section support.
+            lines.append("  music_type: \(m.kind.rawValue)")
+            lines.append("  music_id: \(yamlEscape(m.id))")
+            lines.append("  music_name: \(yamlEscape(m.displayName))")
+            if let a = m.attribution, !a.isEmpty {
+                lines.append("  music_attribution: \(yamlEscape(a))")
+            }
+        }
         lines.append("")
         return lines.joined(separator: "\n")
     }
@@ -274,6 +316,14 @@ extension AtlasConfig {
         var extractors = Extractors()
         var audio = Audio()
         var mode: Mode = .continuity
+
+        // Suggested-music staging: parser collects these as flat
+        // sibling keys under `audio:` and materializes them into
+        // `audio.suggestedMusic` after the section ends.
+        var musicType: String?
+        var musicID: String?
+        var musicName: String?
+        var musicAttribution: String?
 
         enum Section { case none, types, eras, extractors, audio }
         var section: Section = .none
@@ -371,11 +421,24 @@ extension AtlasConfig {
                     continue
                 }
                 if section == .audio {
-                    // `audio:` is a flat map of booleans (chime today;
-                    // music + ambient as those layers land per the memo).
-                    if let (k, v) = parseKV(stripped), let b = parseBool(v) {
+                    // `audio:` is a flat map. Two kinds of keys:
+                    //   - chime (boolean)
+                    //   - music_type / music_id / music_name /
+                    //     music_attribution — author-curated music
+                    //     suggestion fields, materialized into a
+                    //     SuggestedMusic struct after the section ends.
+                    if let (k, v) = parseKV(stripped) {
                         switch k.lowercased() {
-                        case "chime": audio.chimeEnabled = b
+                        case "chime":
+                            if let b = parseBool(v) { audio.chimeEnabled = b }
+                        case "music_type":
+                            musicType = v.lowercased()
+                        case "music_id":
+                            musicID = v
+                        case "music_name":
+                            musicName = v
+                        case "music_attribution":
+                            musicAttribution = v
                         default: break
                         }
                     }
@@ -386,8 +449,12 @@ extension AtlasConfig {
         }
         flush()
 
-        // Empty file → treat as parse failure so caller falls back to defaults.
-        guard !(typeSpecs.isEmpty && eraSpecs.isEmpty) else { return nil }
+        // Empty file with no usable content → fall back to defaults.
+        // "Usable" here covers types, eras, *or* an author-curated
+        // music suggestion (the latter lets a bundled atlas ship a
+        // pure audio-config without restating the default ontology).
+        let hasMusic = !(musicID?.isEmpty ?? true) && !(musicName?.isEmpty ?? true)
+        guard !(typeSpecs.isEmpty && eraSpecs.isEmpty && !hasMusic) else { return nil }
 
         // Always ensure the synthetic types (tag/embed/placeholder)
         // are present so the extractors have somewhere to render to.
@@ -400,6 +467,19 @@ extension AtlasConfig {
                let spec = AtlasConfig.default.types.first(where: { $0.name == synthetic }) {
                 mergedTypes.append(spec)
             }
+        }
+
+        // Materialize the suggested-music staging into the audio
+        // struct if all required fields landed and the type parses.
+        if let t = musicType, let i = musicID, let n = musicName,
+           let kind = SuggestedMusic.Kind(rawValue: t),
+           !i.isEmpty, !n.isEmpty {
+            audio.suggestedMusic = SuggestedMusic(
+                kind: kind,
+                id: i,
+                displayName: n,
+                attribution: musicAttribution
+            )
         }
 
         return AtlasConfig(
