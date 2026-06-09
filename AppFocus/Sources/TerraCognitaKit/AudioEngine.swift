@@ -109,12 +109,14 @@ final class AudioEngine {
         return buffer
     }
 
-    /// Procedural chime: sine fundamental + three harmonics with
-    /// dropping amplitudes, fast attack, exponential decay. Cached
-    /// per-pitch so we only render each MIDI note once.
+    /// Procedural wind-chime tone: soft tinkle attack, long gentle
+    /// decay, harmonic stack with slight inharmonicity that gives
+    /// real bells / chimes their glassy character (perfectly integer
+    /// partials sound synthetic — small offsets read as "physical").
+    /// Cached per-pitch so we only render each MIDI note once.
     private func makeChimeBuffer(midiNote: Int) -> AVAudioPCMBuffer? {
         let sampleRate = format.sampleRate
-        let duration: Double = 3.0  // total buffer length; envelope dies out well before this
+        let duration: Double = 4.0  // long ring-out — wind chimes don't snap off
         let frameCount = AVAudioFrameCount(sampleRate * duration)
         guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount) else {
             return nil
@@ -122,14 +124,23 @@ final class AudioEngine {
         buffer.frameLength = frameCount
 
         let freq = midiNoteToFrequency(midiNote)
-        let attack = 0.005   // 5 ms attack — clean strike, no click
-        let decay = 1.6      // exponential decay time constant in seconds
+        let attack = 0.025   // 25 ms — soft tinkle, not a strike
+        let decay = 2.6      // 2.6 s exponential — sits in the background, drifts out
 
-        // Harmonic stack: bell-ish — fundamental dominates, harmonics
-        // taper. Sum of weights kept under 2 so we can normalize cheap.
-        let weights: [Double] = [1.0, 0.5, 0.25, 0.125]
-        let weightSum = weights.reduce(0, +)
-        let headroom = 0.35
+        // 5-partial stack with gentle taper toward the upper harmonics
+        // and small inharmonic offsets (1.0, 2.01, 3.04, 4.07, 5.11)
+        // that give the tone its glassy, slightly-detuned character.
+        // Volume halved from the previous synth bell so it sits as
+        // texture rather than feature.
+        let partials: [(ratio: Double, weight: Double)] = [
+            (1.00, 1.00),
+            (2.01, 0.35),
+            (3.04, 0.18),
+            (4.07, 0.08),
+            (5.11, 0.04),
+        ]
+        let weightSum = partials.map(\.weight).reduce(0, +)
+        let headroom = 0.18
 
         guard let channels = buffer.floatChannelData else { return nil }
         let channelCount = Int(format.channelCount)
@@ -139,8 +150,8 @@ final class AudioEngine {
                 let t = Double(n) / sampleRate
                 let env: Double = t < attack ? (t / attack) : exp(-(t - attack) / decay)
                 var s = 0.0
-                for (i, w) in weights.enumerated() {
-                    s += sin(2 * .pi * freq * Double(i + 1) * t) * w
+                for partial in partials {
+                    s += sin(2 * .pi * freq * partial.ratio * t) * partial.weight
                 }
                 ptr[n] = Float(env * (s / weightSum) * headroom)
             }

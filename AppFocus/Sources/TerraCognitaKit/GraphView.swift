@@ -299,23 +299,7 @@ public struct GraphView: View {
                 store.finishLoadingPresentation()
             }
         }
-        .onChange(of: selectedNodeID) { _, newID in
-            // Chime sonification — fire on every selection change
-            // (including programmatic ones from search / back-stack).
-            // Guard on the per-atlas opt-in flag (off by default) so
-            // unless the user has enabled chimes for *this* atlas,
-            // we don't even compute neighbors.
-            guard store.config.audio.chimeEnabled,
-                  let newID,
-                  let selected = store.graph.nodes[newID] else { return }
-            let connectedIDs = store.graph.edges.compactMap { edge -> String? in
-                if edge.sourceID == newID { return edge.targetID }
-                if edge.targetID == newID { return edge.sourceID }
-                return nil
-            }
-            let connected = connectedIDs.compactMap { store.graph.nodes[$0] }
-            ChimeSonifier.fire(selected: selected, connected: connected, enabled: true)
-        }
+        .modifier(ChimeWiring(store: store, selectedNodeID: $selectedNodeID))
         // Folder-picker presentation differs by platform:
         //   - macOS uses SwiftUI's `.fileImporter` (NSOpenPanel under
         //     the hood), which handles `.folder` cleanly.
@@ -717,6 +701,41 @@ public struct GraphView: View {
     static func isPrivate(_ node: Node) -> Bool {
         let v = (node.attributes["private"] ?? "").lowercased()
         return v == "true" || v == "yes" || v == "1"
+    }
+}
+
+// MARK: - Chime sonification wiring
+
+/// Two `.onChange` hooks that drive the chime sonifier — extracted
+/// from the GraphView body so the type-checker doesn't blow its
+/// budget on the already-deep modifier chain. Behaviorally:
+///   - Splash dismissal (loadingCaption: non-nil → nil) fires a
+///     single root tone as the app's audio identity signature.
+///   - Selection change fires a chord — foundation root + chimes
+///     for each neighbor — gated on the per-atlas chime preference.
+private struct ChimeWiring: ViewModifier {
+    @ObservedObject var store: GraphStore
+    @Binding var selectedNodeID: String?
+
+    func body(content: Content) -> some View {
+        content
+            .onChange(of: store.loadingCaption) { oldCaption, newCaption in
+                if oldCaption != nil, newCaption == nil {
+                    ChimeSonifier.fireLaunchTone(enabled: store.config.audio.chimeEnabled)
+                }
+            }
+            .onChange(of: selectedNodeID) { _, newID in
+                guard store.config.audio.chimeEnabled,
+                      let newID,
+                      let selected = store.graph.nodes[newID] else { return }
+                let connectedIDs = store.graph.edges.compactMap { edge -> String? in
+                    if edge.sourceID == newID { return edge.targetID }
+                    if edge.targetID == newID { return edge.sourceID }
+                    return nil
+                }
+                let connected = connectedIDs.compactMap { store.graph.nodes[$0] }
+                ChimeSonifier.fire(selected: selected, connected: connected, enabled: true)
+            }
     }
 }
 

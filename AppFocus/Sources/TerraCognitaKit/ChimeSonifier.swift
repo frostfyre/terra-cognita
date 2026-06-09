@@ -28,16 +28,16 @@ enum ChimeSonifier {
     static let softCap = 20
 
     /// Total time over which connected-node chimes stagger, in seconds.
-    /// 1.5 s sits mid-range of the design memo's 1-3 s window — tight
-    /// enough to feel like one event, loose enough that pitches don't
-    /// pile up at AirPods spatial resolution.
-    static let staggerWindow: TimeInterval = 1.5
+    /// 2 s reads as "wind through the chimes" — slow enough that each
+    /// pitch lands distinct, fast enough to register as one event.
+    static let staggerWindow: TimeInterval = 2.0
 
-    /// Velocity tiers — foundation a touch louder than chimes a touch
-    /// louder than pad. All under 1.0 so the mixer has headroom.
-    static let foundationVelocity: Float = 0.70
-    static let chimeVelocity: Float = 0.55
-    static let padVelocity: Float = 0.35
+    /// Velocity tiers — kept close together and quiet so the chord
+    /// sits as background texture, not as a feature demanding the
+    /// user's attention. Tighten/loosen the spread to taste.
+    static let foundationVelocity: Float = 0.50
+    static let chimeVelocity: Float = 0.40
+    static let padVelocity: Float = 0.20
 
     /// Fire a chime for `selected` and each of its `connected` neighbors.
     /// `enabled` is the per-atlas opt-in flag (`AtlasConfig.audio.chimeEnabled`);
@@ -90,6 +90,21 @@ enum ChimeSonifier {
                 delay: staggerWindow * 0.25
             )
         }
+    }
+
+    /// Single root chime — audio identity signature for the app's
+    /// cold-start moment. Fires once when the splash dissolves so
+    /// the first thing the user hears is the same root tone that
+    /// anchors every subsequent selection chord. No-op when the
+    /// per-atlas chime preference is off.
+    static func fireLaunchTone(enabled: Bool) {
+        guard enabled else { return }
+        AudioEngine.shared.schedule(
+            midiNote: ChimeScale.selectionRootMIDI,
+            velocity: foundationVelocity,
+            pan: 0,
+            delay: 0
+        )
     }
 
     /// FNV-1a 64-bit. Stable across runs (unlike Swift's hashValue)

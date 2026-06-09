@@ -57,17 +57,21 @@ struct AtlasConfig: Equatable {
         var placeholders: Bool = true
     }
 
-    /// Per-atlas audio preferences. Sonification is **off by default**
-    /// per the design memo — the user opts in once they want to hear
-    /// the atlas. Lives at the atlas level because different atlases
-    /// merit different sonic identities (a heritage atlas full of
-    /// people, a project atlas full of ideas).
+    /// Per-atlas audio preferences. Lives at the atlas level because
+    /// different atlases merit different sonic identities (a heritage
+    /// atlas full of people, a project atlas full of ideas).
     struct Audio: Equatable {
         /// Whether selection-driven chime sonification fires. When
         /// false, `ChimeSonifier.fire(...)` is a no-op before any
         /// audio engine activation, so the user's iOS audio session
         /// stays untouched until they opt in.
-        var chimeEnabled: Bool = false
+        ///
+        /// **Default `true`** during the limited beta — Paul is the
+        /// only tester for now and wants chimes on by default so the
+        /// audio identity gets exercised. Flip back to `false` before
+        /// the external beta widens, per the design memo's
+        /// discover-on-opt-in principle.
+        var chimeEnabled: Bool = true
     }
 
     // MARK: - Defaults (the original hardcoded ontology)
