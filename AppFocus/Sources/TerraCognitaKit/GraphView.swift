@@ -298,6 +298,21 @@ public struct GraphView: View {
                 store.finishLoadingPresentation()
             }
         }
+        .onChange(of: selectedNodeID) { _, newID in
+            // Chime sonification — fire on every selection change
+            // (including programmatic ones from search / back-stack).
+            // Internally guards on the AudioToggle preference (off by
+            // default) so unless the user has opted in, this is a
+            // no-op beyond a graph-edge lookup.
+            guard let newID, let selected = store.graph.nodes[newID] else { return }
+            let connectedIDs = store.graph.edges.compactMap { edge -> String? in
+                if edge.sourceID == newID { return edge.targetID }
+                if edge.targetID == newID { return edge.sourceID }
+                return nil
+            }
+            let connected = connectedIDs.compactMap { store.graph.nodes[$0] }
+            ChimeSonifier.fire(selected: selected, connected: connected)
+        }
         // Folder-picker presentation differs by platform:
         //   - macOS uses SwiftUI's `.fileImporter` (NSOpenPanel under
         //     the hood), which handles `.folder` cleanly.
