@@ -109,14 +109,28 @@ final class AudioEngine {
         return buffer
     }
 
-    /// Procedural wind-chime tone: soft tinkle attack, long gentle
-    /// decay, harmonic stack with slight inharmonicity that gives
-    /// real bells / chimes their glassy character (perfectly integer
-    /// partials sound synthetic — small offsets read as "physical").
-    /// Cached per-pitch so we only render each MIDI note once.
+    /// Procedural glass-bell tone. Two things make a real bell sound
+    /// like a bell rather than a synth:
+    ///
+    /// 1. **Strongly inharmonic partials.** Near-integer ratios (2.01,
+    ///    3.04, …) read as a detuned harmonic stack, i.e. synth. Real
+    ///    bell partials cluster around 1.0, 2.76, 5.40, 8.93 — well-
+    ///    studied tubular- and glass-bell acoustic ratios that give
+    ///    bells their characteristic non-pitched-instrument quality.
+    ///
+    /// 2. **Per-partial decay.** Higher partials die away fast — the
+    ///    initial "ting" — while the fundamental and low partials
+    ///    sustain — the hum. A single global decay flattens that
+    ///    distinction and removes the bell's character.
+    ///
+    /// Sharp 5 ms attack reads as "struck object." Total buffer 2 s
+    /// because the longest decay constant is 1.4 s and we want
+    /// silence by the time it ends.
+    ///
+    /// Cached per-pitch so we render each MIDI note once.
     private func makeChimeBuffer(midiNote: Int) -> AVAudioPCMBuffer? {
         let sampleRate = format.sampleRate
-        let duration: Double = 4.0  // long ring-out — wind chimes don't snap off
+        let duration: Double = 2.0
         let frameCount = AVAudioFrameCount(sampleRate * duration)
         guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount) else {
             return nil
@@ -124,23 +138,19 @@ final class AudioEngine {
         buffer.frameLength = frameCount
 
         let freq = midiNoteToFrequency(midiNote)
-        let attack = 0.025   // 25 ms — soft tinkle, not a strike
-        let decay = 2.6      // 2.6 s exponential — sits in the background, drifts out
+        let attack = 0.005
 
-        // 5-partial stack with gentle taper toward the upper harmonics
-        // and small inharmonic offsets (1.0, 2.01, 3.04, 4.07, 5.11)
-        // that give the tone its glassy, slightly-detuned character.
-        // Volume halved from the previous synth bell so it sits as
-        // texture rather than feature.
-        let partials: [(ratio: Double, weight: Double)] = [
-            (1.00, 1.00),
-            (2.01, 0.35),
-            (3.04, 0.18),
-            (4.07, 0.08),
-            (5.11, 0.04),
+        // (ratio, weight, decay-seconds). Fundamental sustains; upper
+        // partials taper into the ring fast so we get "ting → hum"
+        // rather than "synth tone."
+        let partials: [(ratio: Double, weight: Double, decay: Double)] = [
+            (1.00, 1.00, 1.40),
+            (2.76, 0.50, 0.70),
+            (5.40, 0.25, 0.40),
+            (8.93, 0.12, 0.22),
         ]
         let weightSum = partials.map(\.weight).reduce(0, +)
-        let headroom = 0.18
+        let headroom = 0.22
 
         guard let channels = buffer.floatChannelData else { return nil }
         let channelCount = Int(format.channelCount)
@@ -148,12 +158,14 @@ final class AudioEngine {
             let ptr = channels[ch]
             for n in 0..<Int(frameCount) {
                 let t = Double(n) / sampleRate
-                let env: Double = t < attack ? (t / attack) : exp(-(t - attack) / decay)
                 var s = 0.0
                 for partial in partials {
-                    s += sin(2 * .pi * freq * partial.ratio * t) * partial.weight
+                    let env: Double = t < attack
+                        ? (t / attack)
+                        : exp(-(t - attack) / partial.decay)
+                    s += sin(2 * .pi * freq * partial.ratio * t) * partial.weight * env
                 }
-                ptr[n] = Float(env * (s / weightSum) * headroom)
+                ptr[n] = Float((s / weightSum) * headroom)
             }
         }
         return buffer
