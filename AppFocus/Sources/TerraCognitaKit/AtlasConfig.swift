@@ -66,12 +66,11 @@ struct AtlasConfig: Equatable {
         /// audio engine activation, so the user's iOS audio session
         /// stays untouched until they opt in.
         ///
-        /// **Default `true`** during the limited beta — Paul is the
-        /// only tester for now and wants chimes on by default so the
-        /// audio identity gets exercised. Flip back to `false` before
-        /// the external beta widens, per the design memo's
-        /// discover-on-opt-in principle.
-        var chimeEnabled: Bool = true
+        /// **Default `false`** per the design memo's discover-on-opt-in
+        /// principle — surprise audio on first launch isn't the right
+        /// posture for general users and would catch Apple reviewers
+        /// off-guard. Users discover the chime via Atlas Settings.
+        var chimeEnabled: Bool = false
     }
 
     // MARK: - Defaults (the original hardcoded ontology)
