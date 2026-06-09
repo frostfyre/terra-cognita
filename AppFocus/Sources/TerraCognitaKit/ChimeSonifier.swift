@@ -92,6 +92,47 @@ enum ChimeSonifier {
         }
     }
 
+    /// Chime for newly-added nodes — single tone for one node, a
+    /// short staggered chord for many. Pitches map from each new
+    /// node's type via the pentatonic vocabulary so "what kind of
+    /// thing got added" is audible. Distinct from the selection
+    /// chord by *not* including the foundation root, so the ear can
+    /// tell a creation event apart from a selection event.
+    /// No-op when the per-atlas chime preference is off.
+    static func fireNodeAddTone(types: [String?], enabled: Bool) {
+        guard enabled, !types.isEmpty else { return }
+
+        if types.count == 1 {
+            // Single add — one centered chime at the type's pitch.
+            AudioEngine.shared.schedule(
+                midiNote: ChimeScale.midiNote(forType: types[0]),
+                velocity: chimeVelocity,
+                pan: 0,
+                delay: 0
+            )
+            return
+        }
+
+        // Multi add — tighter stagger (half the selection window) so
+        // a batch reads as one event rather than dragging out, with
+        // pan spread across the stereo field.
+        let count = types.count
+        let window = staggerWindow * 0.5
+        let step = window / TimeInterval(count)
+        for (i, type) in types.enumerated() {
+            let midi = ChimeScale.midiNote(forType: type)
+            let normalized = count > 1 ? (Double(i) / Double(count - 1)) * 2 - 1 : 0
+            let pan = Float(normalized * 0.7)
+            let delay = step * TimeInterval(i)
+            AudioEngine.shared.schedule(
+                midiNote: midi,
+                velocity: chimeVelocity,
+                pan: pan,
+                delay: delay
+            )
+        }
+    }
+
     /// Single root chime — audio identity signature for the app's
     /// cold-start moment. Fires once when the splash dissolves so
     /// the first thing the user hears is the same root tone that

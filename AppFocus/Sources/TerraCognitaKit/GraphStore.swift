@@ -67,6 +67,12 @@ public final class GraphStore: ObservableObject {
     /// — the loading screen is a cold-start moment only.
     private var hasCompletedColdStart: Bool = false
 
+    /// Set while `applyConstellation` is iterating its accepted nodes.
+    /// `createNode` checks this and suppresses its single-add chime
+    /// during the batch — the constellation flow fires one summary
+    /// multi-chord at the end instead.
+    private var inBatchAdd: Bool = false
+
     /// Monotonic counter incremented after each successful atlas load
     /// that produced content. `GraphView` observes this to schedule
     /// the post-load auto-frame and clear the loading overlay. Using
@@ -478,6 +484,15 @@ public final class GraphStore: ObservableObject {
             }
 
             loadStatus = "Created \"\(node.label)\""
+            // Single-node add chime — suppressed when inside an
+            // `applyConstellation` batch (that path fires one
+            // summary multi-chord at the end instead).
+            if !inBatchAdd {
+                ChimeSonifier.fireNodeAddTone(
+                    types: [type],
+                    enabled: config.audio.chimeEnabled
+                )
+            }
             return .success(slug)
         } catch let err as AtlasWriter.WriteError {
             return .failure(.writer(err))
@@ -987,9 +1002,14 @@ public final class GraphStore: ObservableObject {
         // Phase 1: create the new nodes. Track label → new-id so we can
         // resolve internal links in phase 2 even when the model
         // proposed labels that got disambiguated by the dedup check.
+        // `inBatchAdd` suppresses per-node chimes during the loop;
+        // we collect the types and fire one summary multi-chord at
+        // the end so the batch reads as a single event.
         var newLabelToID: [String: String] = [:]
         var firstCreatedID: String?
         var created: [(label: String, id: String, links: [String])] = []
+        var addedTypes: [String?] = []
+        inBatchAdd = true
         for node in accepted {
             // Combine internal + external links into a single list of
             // wikilinks to append once the bodies are settled.
@@ -1005,15 +1025,25 @@ public final class GraphStore: ObservableObject {
                 newLabelToID[node.label.lowercased()] = id
                 if firstCreatedID == nil { firstCreatedID = id }
                 created.append((node.label, id, combinedLinks))
+                addedTypes.append(node.type)
             case .failure(.duplicate(let existingID)):
                 // Treat the existing node as the materialization of
                 // this proposal — fold its outgoing links onto it.
+                // Don't add to `addedTypes`: nothing new was created.
                 newLabelToID[node.label.lowercased()] = existingID
                 created.append((node.label, existingID, combinedLinks))
             case .failure(let err):
                 loadStatus = "Couldn't create \"\(node.label)\": \(err.errorDescription ?? "")"
             }
         }
+        inBatchAdd = false
+        // Summary chime for the batch — single tone if only one node
+        // was newly created, multi-chord otherwise. Duplicates were
+        // intentionally excluded so the chime maps to what's new.
+        ChimeSonifier.fireNodeAddTone(
+            types: addedTypes,
+            enabled: config.audio.chimeEnabled
+        )
 
         // Phase 2: append wikilinks. We resolve each link via the
         // newLabelToID map first (to catch internal links between just-
