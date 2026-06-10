@@ -1334,6 +1334,11 @@ public final class GraphStore: ObservableObject {
         }
         graph.edges = newEdges
         graph.nodes.removeValue(forKey: loserID)
+        // Force canvas remount — without this, the loser node disc /
+        // edges stay rendered until the next atlas reload, making the
+        // merge *look* like it didn't stick even when the on-disk
+        // state is correct.
+        bumpRenderRevision()
 
         loadStatus = "Merged \"\(loser.label)\" into \"\(winner.label)\" — \(rewriteCount) cross-atlas links rewritten"
         return nil
