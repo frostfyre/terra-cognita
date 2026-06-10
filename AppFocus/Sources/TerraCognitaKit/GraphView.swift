@@ -595,16 +595,22 @@ public struct GraphView: View {
         }
     }
 
-    /// Set the routing mode and present the folder picker. The
-    /// presentation is deferred by one runloop tick so the host
-    /// `Menu` has time to dismiss before the picker mounts — on iOS,
-    /// firing them in the same tick causes the picker to silently
-    /// drop, which is why "Open Atlas Folder…" appeared to do nothing.
+    /// Set the routing mode and present the folder picker.
+    ///
+    /// **2026-06-10**: the previous `DispatchQueue.main.async`
+    /// deferral — originally a workaround for the iOS Menu silent-
+    /// noop bug — was itself causing the picker to silently drop on
+    /// the current SwiftUI version. Setting `showingFolderPicker`
+    /// synchronously (matching how `Import GEXF…` sets its flag, and
+    /// observed working) restores the presentation.
+    ///
+    /// If the iOS same-tick Menu issue resurfaces, the right fix is
+    /// to convert this to `.sheet(item:)` driven by `folderPickerMode`
+    /// directly — SwiftUI handles the timing implicitly — rather
+    /// than re-introducing the async dance.
     func presentFolderPicker(_ mode: FolderPickerMode) {
         folderPickerMode = mode
-        DispatchQueue.main.async {
-            showingFolderPicker = true
-        }
+        showingFolderPicker = true
     }
 
     /// Route a picked folder URL based on the currently-active
