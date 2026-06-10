@@ -64,6 +64,21 @@ struct AtlasSettingsSheet: View {
                         .disabled(!store.canIngest)
                 }
             }
+            // Sheet anchor for the music picker. Placed on the
+            // NavigationStack content (not on the audio Section) so
+            // it doesn't dismiss as the section recomposes on draft
+            // changes.
+            .sheet(isPresented: $showingMusicPicker) {
+                MusicBindingPickerSheet(store: store,
+                                        isPresented: $showingMusicPicker)
+                    .onDisappear {
+                        // Picker writes through `store.setSuggestedMusic`,
+                        // which updates `store.config.audio.suggestedMusic`.
+                        // Re-seed `draft` so the row redraws with the new
+                        // binding.
+                        draft.audio.suggestedMusic = store.config.audio.suggestedMusic
+                    }
+            }
         }
         // Sizes the sheet window on macOS; on iOS the sheet is full-screen
         // and a 520pt minWidth would force the Form wider than an iPhone,
@@ -310,16 +325,10 @@ struct AtlasSettingsSheet: View {
             Text("Audio settings are per-atlas — turning chime on here doesn't affect other atlases. Mixes with whatever music you're already playing.")
                 .font(.caption2)
         }
-        .sheet(isPresented: $showingMusicPicker) {
-            MusicBindingPickerSheet(store: store, isPresented: $showingMusicPicker)
-                .onDisappear {
-                    // Picker writes through `store.setSuggestedMusic`,
-                    // which updates `store.config.audio.suggestedMusic`.
-                    // Re-seed `draft` so the row redraws with the new
-                    // binding.
-                    draft.audio.suggestedMusic = store.config.audio.suggestedMusic
-                }
-        }
+        // The `.sheet` modifier lives on the NavigationStack body
+        // below — attaching it directly to a Section inside a Form
+        // causes the sheet to dismiss immediately as the section
+        // recomposes.
     }
 
     // MARK: - Bindings + actions
