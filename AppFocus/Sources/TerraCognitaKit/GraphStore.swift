@@ -73,6 +73,24 @@ public final class GraphStore: ObservableObject {
     /// multi-chord at the end instead.
     private var inBatchAdd: Bool = false
 
+    /// Monotonic counter the GraphCanvas observes as an `.id(...)`
+    /// trigger. Bumped on any mutation that should refresh the
+    /// rendered canvas — config changes (type colors, era weights,
+    /// renames), per-node attribute edits, per-edge edits. Without
+    /// this, `@Published` propagation alone has been observed to
+    /// fail to re-render the canvas on settings save / inspector
+    /// edits — the only reliable signal was atlas reload. Bumping
+    /// this counter forces SwiftUI to remount the canvas subtree,
+    /// guaranteeing a clean redraw.
+    @Published var renderRevision: Int = 0
+
+    /// Convenience accessor for the mutation sites that need to
+    /// signal "canvas should redraw" without juggling the counter
+    /// arithmetic inline.
+    func bumpRenderRevision() {
+        renderRevision &+= 1
+    }
+
     /// Monotonic counter incremented after each successful atlas load
     /// that produced content. `GraphView` observes this to schedule
     /// the post-load auto-frame and clear the loading overlay. Using
@@ -595,6 +613,7 @@ public final class GraphStore: ObservableObject {
                 node.markdownContent = updated
                 graph.nodes[nodeID] = node
             }
+            bumpRenderRevision()
             return nil
         } catch let err as AtlasEditor.EditError {
             return err.errorDescription
@@ -653,6 +672,7 @@ public final class GraphStore: ObservableObject {
                 let updated = try editor.replaceBody(in: fileURL, newBody: newBody)
                 node.markdownContent = updated
                 graph.nodes[nodeID] = node
+                bumpRenderRevision()
                 return nil
             } catch let err as AtlasEditor.EditError {
                 return err.errorDescription
@@ -844,6 +864,7 @@ public final class GraphStore: ObservableObject {
                 node.attributes.removeValue(forKey: "placeholder")
                 node.attributes.removeValue(forKey: "synthetic")
                 graph.nodes[nodeID] = node
+                bumpRenderRevision()
                 return nil
             } catch let err as AtlasEditor.EditError {
                 return err.errorDescription

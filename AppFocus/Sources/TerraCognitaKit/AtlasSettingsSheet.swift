@@ -367,6 +367,10 @@ struct AtlasSettingsSheet: View {
             }
             store.config = draft
             applyTypeRenames()
+            // Force the canvas to remount so color / type / era
+            // changes are visible immediately rather than only after
+            // a full atlas reload.
+            store.bumpRenderRevision()
             isPresented = false
         } catch {
             errorMessage = "Couldn't save: \(error.localizedDescription)"

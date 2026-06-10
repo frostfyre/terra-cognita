@@ -57,6 +57,15 @@ extension GraphView {
                 },
                 bridgeNodeIDs: bridgeNodeIDs
             )
+            // Force re-mount when the GraphStore signals a mutation
+            // that affects rendering (config / node attributes / etc).
+            // @Published propagation alone has been observed not to
+            // refresh this canvas subtree on settings save or inspector
+            // edits — the only reliable signal was atlas reload. The
+            // `.id(...)` tied to `renderRevision` tears down and
+            // rebuilds the canvas on every bump, guaranteeing a clean
+            // redraw with the new state.
+            .id(store.renderRevision)
             // Fade the current atlas out while the New Atlas sheet
             // is up so the user is building a fresh map against the
             // substrate, not visually mixing it with the loaded
