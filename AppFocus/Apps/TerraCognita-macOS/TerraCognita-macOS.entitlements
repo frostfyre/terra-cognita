@@ -10,9 +10,23 @@
 	<true/>
 	<key>com.apple.security.files.bookmarks.app-scope</key>
 	<true/>
+	<!--
+	  Outgoing-network bracket so MusicKit can reach Apple Music
+	  servers (catalog lookup, playback). Required for the music
+	  picker and the SystemMusicPlayer / ApplicationMusicPlayer
+	  paths in MusicService.
+
+	  Note: MusicKit on macOS does *not* need a
+	  `com.apple.developer.musickit` entitlement — Apple's docs only
+	  require the Info.plist NSAppleMusicUsageDescription key (set
+	  via INFOPLIST_KEY_* in scripts/generate_xcodeproj.rb) and the
+	  MusicKit App Service enabled on the App ID in the developer
+	  portal. We had `com.apple.developer.musickit` here briefly
+	  while debugging a provisioning failure; removing it lets the
+	  archive proceed without Xcode trying to build a Mac App
+	  Development profile we don't have devices registered for.
+	-->
 	<key>com.apple.security.network.client</key>
-	<true/>
-	<key>com.apple.developer.musickit</key>
 	<true/>
 </dict>
 </plist>
