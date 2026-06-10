@@ -322,10 +322,29 @@ struct GraphCanvasView: View {
                                              toScreen: toScreen)
                     let edgeLineWidth: CGFloat = 0.85
                     let edgeAlpha = 0.50
+                    // Viewport bounds for culling — include a generous
+                    // margin because curved edges can bulge outside
+                    // the straight line between their endpoints.
+                    let edgeCullMargin: CGFloat = 80
+                    let edgeMinX = -edgeCullMargin
+                    let edgeMinY = -edgeCullMargin
+                    let edgeMaxX = size.width + edgeCullMargin
+                    let edgeMaxY = size.height + edgeCullMargin
                     // Two passes (dim then bright) so highlight-subnet
                     // edges land on top. Per-endpoint opacity / desat
                     // is already baked into the gradient colors above.
+                    // Viewport-cull each edge before the (expensive)
+                    // linear-gradient stroke — at 10K+ edges this is
+                    // the dominant render cost.
                     for stroke in (groups.dim + groups.bright) {
+                        // Both endpoints share an off-screen half-plane?
+                        // Skip — the segment can't cross the viewport.
+                        if (stroke.from.x < edgeMinX && stroke.to.x < edgeMinX)
+                            || (stroke.from.x > edgeMaxX && stroke.to.x > edgeMaxX)
+                            || (stroke.from.y < edgeMinY && stroke.to.y < edgeMinY)
+                            || (stroke.from.y > edgeMaxY && stroke.to.y > edgeMaxY) {
+                            continue
+                        }
                         let path = edgePath(stroke)
                         context.stroke(
                             path,
@@ -375,6 +394,16 @@ struct GraphCanvasView: View {
                     // First pass — all non-deferred nodes, walked in
                     // depth order so the most "present" nodes overdraw
                     // older ones (DESIGN.md's "time as depth" idea).
+                    // Node viewport-cull margin sized generously to keep
+                    // hover rings + selection halos visible when the
+                    // disc center is just off-screen. At 10K+ nodes
+                    // this drops 90%+ of draws at any zoom level.
+                    let nodeCullMargin: CGFloat = 64
+                    let nodeMinX = -nodeCullMargin
+                    let nodeMinY = -nodeCullMargin
+                    let nodeMaxX = size.width + nodeCullMargin
+                    let nodeMaxY = size.height + nodeCullMargin
+
                     for node in depthOrderedNodes {
                         if let visibleSet, !visibleSet.contains(node.id) { continue }
                         guard let worldPoint = effectivePosition(for: node.id) else { continue }
@@ -392,6 +421,14 @@ struct GraphCanvasView: View {
                         }
                         if isAmbient {
                             deferredAmbient = (node, p, baseRadius)
+                            continue
+                        }
+                        // Viewport cull — selected + ambient nodes get
+                        // deferred drawing before this check so they're
+                        // never silently dropped even if the camera
+                        // panned away from them.
+                        if p.x < nodeMinX || p.x > nodeMaxX
+                            || p.y < nodeMinY || p.y > nodeMaxY {
                             continue
                         }
 
