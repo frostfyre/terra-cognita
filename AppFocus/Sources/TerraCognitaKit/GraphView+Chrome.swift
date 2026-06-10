@@ -416,7 +416,17 @@ extension GraphView {
                 Label("Create New Atlas…", systemImage: "folder.badge.plus")
             }
             Button {
+                // iOS silent-noop bug: `.fileImporter` mounted via a
+                // Menu button drops if the flag flips in the same
+                // runloop tick the Menu starts dismissing in. Defer
+                // by one tick so the picker presents after the Menu
+                // is gone. macOS doesn't need this — `.fileImporter`
+                // there bridges NSOpenPanel and has its own timing.
+                #if os(iOS)
+                DispatchQueue.main.async { showingGEXFPicker = true }
+                #else
                 showingGEXFPicker = true
+                #endif
             } label: {
                 Label("Import GEXF…", systemImage: "square.and.arrow.down.on.square")
             }

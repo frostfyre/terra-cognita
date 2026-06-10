@@ -68,7 +68,11 @@ enum MusicSuggestion {
         UserDefaults.standard.bool(forKey: declinedKey(for: store))
     }
 
-    private static func hasAccepted(for store: GraphStore) -> Bool {
+    /// Whether the user has previously accepted the music suggestion
+    /// for the current atlas. Drives the atlas-switch auto-resume:
+    /// when the user opens an atlas they've already approved music
+    /// for, playback starts again without re-asking.
+    static func hasAccepted(for store: GraphStore) -> Bool {
         UserDefaults.standard.bool(forKey: acceptedKey(for: store))
     }
 

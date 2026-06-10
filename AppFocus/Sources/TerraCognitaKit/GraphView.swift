@@ -738,6 +738,7 @@ private struct AudioWiring: ViewModifier {
     @ObservedObject var store: GraphStore
     @Binding var selectedNodeID: String?
     @Binding var activeSheet: GraphView.ActiveSheet?
+    @Environment(\.scenePhase) private var scenePhase
 
     func body(content: Content) -> some View {
         content
@@ -755,6 +756,30 @@ private struct AudioWiring: ViewModifier {
                 // toggle (yellow = on); the chime explains itself on
                 // first tap by firing the launch tone.
                 ChimeSonifier.fireLaunchTone(enabled: store.config.audio.chimeEnabled)
+            }
+            .onChange(of: store.loadCompletedTick) { _, _ in
+                // Atlas just finished loading. Stop whatever music
+                // was playing for the previous atlas — silence is
+                // the safer default than letting it bleed across.
+                // Then, if the *new* atlas carries a music binding
+                // the user previously accepted, auto-resume it so
+                // "open Miyazaki → hear Hisaishi" works on every
+                // visit, not just the first.
+                MusicService.shared.stop()
+                if let music = store.config.audio.suggestedMusic,
+                   MusicSuggestion.hasAccepted(for: store) {
+                    Task { _ = await MusicService.shared.play(music) }
+                }
+            }
+            .onChange(of: scenePhase) { _, newPhase in
+                // Leaving the app (background / inactive on iOS,
+                // resignActive on macOS) stops playback. The user
+                // explicitly chose this music *in the atlas*; once
+                // they leave Terra Cognita, they're back in their
+                // ambient audio environment.
+                if newPhase != .active {
+                    MusicService.shared.stop()
+                }
             }
             .onChange(of: selectedNodeID) { _, newID in
                 guard store.config.audio.chimeEnabled,
