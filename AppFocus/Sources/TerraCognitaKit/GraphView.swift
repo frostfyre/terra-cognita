@@ -737,21 +737,18 @@ private struct AudioWiring: ViewModifier {
         content
             .onChange(of: store.loadingCaption) { oldCaption, newCaption in
                 guard oldCaption != nil, newCaption == nil else { return }
-                // Cold-start dismissal — launch tone (no-op when off)
-                // plus the one-time audio intro if the user hasn't
-                // made an explicit audio choice yet.
+                // Cold-start dismissal — launch tone (no-op when off).
+                //
+                // **Audio intro auto-presentation removed 2026-06-09**:
+                // SwiftUI's sheet state machine wedges on first launch
+                // when activeSheet flips to `.audioIntro` via a
+                // deferred Task — subsequent .fileImporter / .sheet
+                // presentations (Open Atlas, Import GEXF) silently
+                // no-op. Until a stable auto-present path exists, the
+                // user discovers audio via the toolbar music-note
+                // toggle (yellow = on); the chime explains itself on
+                // first tap by firing the launch tone.
                 ChimeSonifier.fireLaunchTone(enabled: store.config.audio.chimeEnabled)
-                if !AudioUserPreference.introSeen {
-                    // Brief delay so the canvas has rendered and the
-                    // user can see where they are before the sheet
-                    // covers it.
-                    Task { @MainActor in
-                        try? await Task.sleep(for: .milliseconds(900))
-                        if activeSheet == nil {
-                            activeSheet = .audioIntro
-                        }
-                    }
-                }
             }
             .onChange(of: selectedNodeID) { _, newID in
                 guard store.config.audio.chimeEnabled,
