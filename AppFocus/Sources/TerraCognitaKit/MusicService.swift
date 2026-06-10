@@ -88,6 +88,53 @@ final class MusicService {
         }
     }
 
+    /// Catalog search — single-string query against the Apple Music
+    /// catalog returning songs, albums, and playlists that match.
+    /// Backs the in-app music picker so the user can find what they
+    /// want without leaving the app. Caller is expected to debounce
+    /// keystrokes; this method makes one network round-trip per call.
+    func search(query: String, limit: Int = 25) async -> SearchResult {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return .empty }
+
+        let status = await requestAuthorization()
+        guard status == .authorized else {
+            return status == .denied ? .denied : .unavailable
+        }
+
+        do {
+            var request = MusicCatalogSearchRequest(
+                term: trimmed,
+                types: [Song.self, Album.self, Playlist.self])
+            request.limit = limit
+            let response = try await request.response()
+            let songs = response.songs.map { song in
+                SearchItem(id: song.id.rawValue,
+                           kind: .song,
+                           title: song.title,
+                           subtitle: song.artistName,
+                           artworkURL: song.artwork?.url(width: 80, height: 80))
+            }
+            let albums = response.albums.map { album in
+                SearchItem(id: album.id.rawValue,
+                           kind: .album,
+                           title: album.title,
+                           subtitle: album.artistName,
+                           artworkURL: album.artwork?.url(width: 80, height: 80))
+            }
+            let playlists = response.playlists.map { playlist in
+                SearchItem(id: playlist.id.rawValue,
+                           kind: .playlist,
+                           title: playlist.name,
+                           subtitle: playlist.curatorName,
+                           artworkURL: playlist.artwork?.url(width: 80, height: 80))
+            }
+            return .results(songs: songs, albums: albums, playlists: playlists)
+        } catch {
+            return .failure(error)
+        }
+    }
+
     /// Catalog lookup — given a kind + ID, fetch the human-readable
     /// name + attribution so the manual music-picker UI can show the
     /// user what they're about to bind to. Same authorization path
@@ -176,6 +223,28 @@ final class MusicService {
     enum LookupResult {
         case found(displayName: String, attribution: String?)
         case notFound
+        case denied
+        case unavailable
+        case failure(Error)
+    }
+
+    /// One result row from a catalog search — kind-tagged so the
+    /// picker can render an appropriate badge and save with the
+    /// right `SuggestedMusic.Kind`.
+    struct SearchItem: Identifiable, Hashable {
+        let id: String
+        let kind: AtlasConfig.SuggestedMusic.Kind
+        let title: String
+        let subtitle: String?
+        let artworkURL: URL?
+    }
+
+    /// Result of a `search(...)` call. Empty query returns `.empty`
+    /// without a network round-trip. Authorization failures mirror
+    /// the other results so the picker can share handling code.
+    enum SearchResult {
+        case empty
+        case results(songs: [SearchItem], albums: [SearchItem], playlists: [SearchItem])
         case denied
         case unavailable
         case failure(Error)
