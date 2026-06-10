@@ -43,6 +43,12 @@ struct MusicBindingPickerSheet: View {
                         onSave: { music in
                             store.setSuggestedMusic(music)
                             isPresented = false
+                            // Same auto-play as the search path —
+                            // the URL fallback shouldn't behave
+                            // differently from the main flow.
+                            Task {
+                                _ = await MusicService.shared.play(music)
+                            }
                         }
                     )
                 }
@@ -279,6 +285,12 @@ struct MusicBindingPickerSheet: View {
         )
         store.setSuggestedMusic(music)
         isPresented = false
+        // Start playback immediately — the user explicitly picked
+        // this in a music-picking UI, so they expect to hear it
+        // *now*, not after going back through the suggestion popover.
+        Task {
+            _ = await MusicService.shared.play(music)
+        }
     }
 }
 
