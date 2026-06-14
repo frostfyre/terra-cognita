@@ -86,11 +86,18 @@ enum GraphShaderSource {
 
     // -------- Edges --------
 
+    // Edges are tessellated CPU-side into short straight segments
+    // along a quadratic Bézier (see GraphRenderer.uploadEdges), so
+    // every vertex carries BOTH endpoint seeds + depths plus its
+    // curve parameter `t`. The drift wobble and parallax are then
+    // blended along the curve — at t=0/1 a vertex exactly tracks its
+    // node, and interior points interpolate — so a curved edge stays
+    // glued to both wobbling nodes.
     struct EdgeVertexIn {
         float2 position  [[attribute(0)]];
         float4 color     [[attribute(1)]];
-        float  hashSeed  [[attribute(2)]];   // 0..1 per endpoint
-        float  depth     [[attribute(3)]];   // era depth of the endpoint
+        float2 seeds     [[attribute(2)]];   // seed0, seed1
+        float4 params    [[attribute(3)]];   // depth0, depth1, t, pad
     };
 
     struct EdgeVertexOut {
@@ -102,12 +109,12 @@ enum GraphShaderSource {
                                      constant Uniforms& u [[buffer(1)]]) {
         EdgeVertexOut out;
         float4 clip = u.worldToClip * float4(in.position, 0.0, 1.0);
-        // Apply the same screen-space drift + parallax as the
-        // connected node so the edge endpoint stays glued to the
-        // node's center as it wobbles and as the camera pans.
-        float2 offset = nodeDrift(in.hashSeed, u.time)
-                      + parallaxCorrection(in.depth, u);
-        out.position = offsetClip(clip, offset, u);
+        float t = in.params.z;
+        float2 drift = mix(nodeDrift(in.seeds.x, u.time),
+                           nodeDrift(in.seeds.y, u.time), t);
+        float2 par = mix(parallaxCorrection(in.params.x, u),
+                         parallaxCorrection(in.params.y, u), t);
+        out.position = offsetClip(clip, drift + par, u);
         out.color = in.color;
         return out;
     }

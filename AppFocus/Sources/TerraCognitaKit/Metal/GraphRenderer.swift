@@ -55,18 +55,23 @@ final class GraphRenderer: NSObject, MTKViewDelegate {
         var _p3: Float = 0
     }
 
-    /// One vertex of the edge line list. The byte layout matches the
-    /// shader's `EdgeVertexIn`: `position` at offset 0 (float2),
-    /// `hashSeed` at offset 8 (float), `depth` at offset 12, then
-    /// `color` at offset 16 (float4). `hashSeed` mirrors the seed
-    /// of the connected node so the edge endpoint drifts in lock-
-    /// step with the node center; `depth` mirrors the node's era
-    /// depth so the endpoint also pans with the node's parallax.
+    /// One vertex of the tessellated edge line list. Byte layout
+    /// matches the shader's `EdgeVertexIn`: `position` (float2) @0,
+    /// `seeds` (float2 = seed0,seed1) @8, `params` (float4 =
+    /// depth0,depth1,t,pad) @16, `color` (float4) @32 — 48-byte
+    /// stride, color 16-byte aligned. Every vertex along a curved
+    /// edge carries both endpoint seeds + depths plus its own curve
+    /// parameter `t`, so the shader can blend drift + parallax along
+    /// the Bézier and keep the whole curve glued to its two nodes.
     struct EdgeVertex {
         var x: Float
         var y: Float
-        var hashSeed: Float = 0
-        var depth: Float = 1
+        var seed0: Float = 0
+        var seed1: Float = 0
+        var depth0: Float = 1
+        var depth1: Float = 1
+        var t: Float = 0
+        var _pad: Float = 0
         var r: Float
         var g: Float
         var b: Float
@@ -74,9 +79,11 @@ final class GraphRenderer: NSObject, MTKViewDelegate {
     }
 
     /// An edge ready to be drawn. Stored as two endpoints with their
-    /// own colors + their own drift seeds + their own era depths so
-    /// the shader can wobble and parallax-pan each end in lock-step
-    /// with its connected node.
+    /// own colors + drift seeds + era depths, plus a stable per-edge
+    /// `curveSign` (+1/-1) so the quadratic Bézier always bends the
+    /// same way between frames — and A→B vs B→A bend opposite,
+    /// keeping reciprocal edges distinct (mirrors the Canvas path).
+    /// The renderer tessellates this into short segments at upload.
     struct EdgeRenderable {
         var x0: Float
         var y0: Float
@@ -94,7 +101,13 @@ final class GraphRenderer: NSObject, MTKViewDelegate {
         var g1: Float
         var b1: Float
         var a1: Float
+        var curveSign: Float
     }
+
+    /// Number of straight segments each edge's quadratic Bézier is
+    /// tessellated into. 6 is smooth at the gentle 12%-of-length bend
+    /// the Canvas path uses, without inflating the vertex buffer.
+    static let edgeCurveSegments = 6
 
     /// One atmosphere speck — matches the shader's `SpeckInstance`
     /// (16 bytes). World-positioned, fixed screen-point radius,
@@ -209,22 +222,21 @@ final class GraphRenderer: NSObject, MTKViewDelegate {
         edgeVertexDescriptor.attributes[0].format = .float2
         edgeVertexDescriptor.attributes[0].offset = 0
         edgeVertexDescriptor.attributes[0].bufferIndex = 0
-        // attribute(2) — hashSeed (float) at offset 8 — drives the
-        // shader's drift wobble so this edge endpoint moves with
-        // its connected node.
-        edgeVertexDescriptor.attributes[2].format = .float
+        // attribute(2) — seeds (float2 = seed0, seed1) at offset 8 —
+        // both endpoint drift seeds, blended along the curve.
+        edgeVertexDescriptor.attributes[2].format = .float2
         edgeVertexDescriptor.attributes[2].offset = MemoryLayout<Float>.size * 2
         edgeVertexDescriptor.attributes[2].bufferIndex = 0
-        // attribute(1) — color (float4) at offset 16 (after hashSeed
-        // + one pad float so the float4 lands 16-byte aligned).
-        edgeVertexDescriptor.attributes[1].format = .float4
-        edgeVertexDescriptor.attributes[1].offset = MemoryLayout<Float>.size * 4
-        edgeVertexDescriptor.attributes[1].bufferIndex = 0
-        // attribute(3) — depth (float) at offset 12 — per-endpoint
-        // era depth for the parallax correction.
-        edgeVertexDescriptor.attributes[3].format = .float
-        edgeVertexDescriptor.attributes[3].offset = MemoryLayout<Float>.size * 3
+        // attribute(3) — params (float4 = depth0, depth1, t, pad) at
+        // offset 16 — endpoint depths for parallax + the curve
+        // parameter `t` used to blend drift/parallax along the edge.
+        edgeVertexDescriptor.attributes[3].format = .float4
+        edgeVertexDescriptor.attributes[3].offset = MemoryLayout<Float>.size * 4
         edgeVertexDescriptor.attributes[3].bufferIndex = 0
+        // attribute(1) — color (float4) at offset 32 (16-byte aligned).
+        edgeVertexDescriptor.attributes[1].format = .float4
+        edgeVertexDescriptor.attributes[1].offset = MemoryLayout<Float>.size * 8
+        edgeVertexDescriptor.attributes[1].bufferIndex = 0
         edgeVertexDescriptor.layouts[0].stride = MemoryLayout<EdgeVertex>.stride
         edgeVertexDescriptor.layouts[0].stepFunction = .perVertex
         edgeDescriptor.vertexDescriptor = edgeVertexDescriptor
@@ -338,14 +350,17 @@ final class GraphRenderer: NSObject, MTKViewDelegate {
     }
 
     private func uploadEdges(_ edges: [EdgeRenderable]) {
-        // Each EdgeRenderable becomes two vertices in the line list.
-        // Each vertex is laid out as `EdgeVertex` (32 bytes — float2
-        // position + 8 bytes pad + float4 color) so the shader's
-        // float4 color stays 16-byte aligned.
-        edgeVertexCount = edges.count * 2
+        // Each edge is tessellated into `edgeCurveSegments` straight
+        // segments along a quadratic Bézier — 2 vertices per segment
+        // (line list). The control point is offset perpendicular to
+        // the chord by 12% of its length, on the side picked by the
+        // stable per-edge `curveSign`, mirroring the Canvas path's
+        // `edgePath`.
+        let segs = Self.edgeCurveSegments
+        edgeVertexCount = edges.count * 2 * segs
         guard !edges.isEmpty else { return }
         let stride = MemoryLayout<EdgeVertex>.stride
-        let needed = edges.count * 2 * stride
+        let needed = edges.count * 2 * segs * stride
         if (edgeBuffer?.length ?? 0) < needed {
             edgeBuffer = device.makeBuffer(
                 length: max(needed, stride * 4096),
@@ -355,15 +370,35 @@ final class GraphRenderer: NSObject, MTKViewDelegate {
         let ptr = buffer.contents().assumingMemoryBound(to: EdgeVertex.self)
         var i = 0
         for e in edges {
-            ptr[i] = EdgeVertex(
-                x: e.x0, y: e.y0,
-                hashSeed: e.seed0, depth: e.depth0,
-                r: e.r0, g: e.g0, b: e.b0, a: e.a0)
-            ptr[i + 1] = EdgeVertex(
-                x: e.x1, y: e.y1,
-                hashSeed: e.seed1, depth: e.depth1,
-                r: e.r1, g: e.g1, b: e.b1, a: e.a1)
-            i += 2
+            let p0 = SIMD2<Float>(e.x0, e.y0)
+            let p1 = SIMD2<Float>(e.x1, e.y1)
+            let d = p1 - p0
+            let len = max((d.x * d.x + d.y * d.y).squareRoot(), 1)
+            let bend = len * 0.12 * e.curveSign
+            let perp = SIMD2<Float>(-d.y / len, d.x / len)
+            let ctrl = (p0 + p1) * 0.5 + perp * bend
+            // Quadratic Bézier sample + per-t color lerp.
+            func point(_ t: Float) -> SIMD2<Float> {
+                let mt = 1 - t
+                return mt * mt * p0 + 2 * mt * t * ctrl + t * t * p1
+            }
+            func vertex(_ t: Float) -> EdgeVertex {
+                let p = point(t)
+                return EdgeVertex(
+                    x: p.x, y: p.y,
+                    seed0: e.seed0, seed1: e.seed1,
+                    depth0: e.depth0, depth1: e.depth1,
+                    t: t, _pad: 0,
+                    r: e.r0 + (e.r1 - e.r0) * t,
+                    g: e.g0 + (e.g1 - e.g0) * t,
+                    b: e.b0 + (e.b1 - e.b0) * t,
+                    a: e.a0 + (e.a1 - e.a0) * t)
+            }
+            for s in 0..<segs {
+                ptr[i]     = vertex(Float(s)     / Float(segs))
+                ptr[i + 1] = vertex(Float(s + 1) / Float(segs))
+                i += 2
+            }
         }
     }
 

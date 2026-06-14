@@ -1091,13 +1091,18 @@ struct GraphMetalView: View {
             let (r1, g1, b1) = desaturatedRGB((tr, tg, tb), by: Float(1.0 - dB) * 0.55)
             let a0 = edgeAlpha * (srcIn ? 1.0 : dimOpacity) * Float(0.55 + 0.45 * dA)
             let a1 = edgeAlpha * (dstIn ? 1.0 : dimOpacity) * Float(0.55 + 0.45 * dB)
+            // Stable per-edge bend direction from the id hash — same
+            // rule as the Canvas path, so reciprocal A→B / B→A edges
+            // curve to opposite sides.
+            let curveSign: Float = (abs(edge.id.hashValue) & 1) == 0 ? 1 : -1
             let renderable = GraphRenderer.EdgeRenderable(
                 x0: Float(p0.x), y0: Float(p0.y),
                 seed0: Self.hashSeed(for: edge.sourceID), depth0: Float(dA),
                 r0: r0, g0: g0, b0: b0, a0: a0,
                 x1: Float(p1.x), y1: Float(p1.y),
                 seed1: Self.hashSeed(for: edge.targetID), depth1: Float(dB),
-                r1: r1, g1: g1, b1: b1, a1: a1)
+                r1: r1, g1: g1, b1: b1, a1: a1,
+                curveSign: curveSign)
             // Dim edges first in the buffer so highlight-subnet
             // edges overdraw them — same two-pass z-order as the
             // Canvas path.
