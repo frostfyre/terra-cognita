@@ -11,12 +11,14 @@
 #
 #     ruby scripts/generate_xcodeproj.rb
 #
-# UUIDs are randomized by xcodeproj, so regeneration produces churn —
-# only run when needed. Source files for the app targets live under
-# Apps/TerraCognita-macOS/ and Apps/TerraCognita-iOS/ and should be
-# edited directly.
+# Object UUIDs are made deterministic (see UUIDGenerator below), so
+# regenerating without structural changes is a no-op diff and a pure
+# build-number bump touches only the two version lines. Source files
+# for the app targets live under Apps/TerraCognita-macOS/ and
+# Apps/TerraCognita-iOS/ and should be edited directly.
 
 require 'xcodeproj'
+require 'xcodeproj/project/uuid_generator'
 require 'fileutils'
 
 ROOT = File.expand_path(File.join(__dir__, '..'))
@@ -29,12 +31,15 @@ PROJECT_PATH = File.join(ROOT, 'TerraCognita.xcodeproj')
 #                           Required for installs on real iOS devices,
 #                           TestFlight uploads, and signed Mac builds.
 #   MARKETING_VERSION     — User-facing version (e.g. "1.0").
-#   CURRENT_PROJECT_VERSION — Build number. Defaults to a YYMMDDHHMM
-#                             timestamp so every regen is automatically
-#                             greater than the last — TestFlight rejects
-#                             a build whose CFBundleVersion isn't strictly
-#                             higher than the previous upload. Override
-#                             only if you need a specific integer.
+#   CURRENT_PROJECT_VERSION — Build number. Defaults to a static '1'
+#                             so the committed project file never
+#                             carries a per-build timestamp (which
+#                             would churn the build-config UUIDs every
+#                             upload). The real monotonic build number
+#                             is injected at archive time by
+#                             upload_testflight.sh via an xcodebuild
+#                             setting override. Override here only if
+#                             you need to bake a specific integer in.
 #
 # Without DEVELOPMENT_TEAM, the project falls back to its dev-mode
 # ad-hoc Mac signing + simulator-only iOS signing.
@@ -43,7 +48,7 @@ PROJECT_PATH = File.join(ROOT, 'TerraCognita.xcodeproj')
 # from a different team.
 TEAM_ID              = ENV['DEVELOPMENT_TEAM'] || 'TUMFPT4C67'
 MARKETING_VERSION    = ENV['MARKETING_VERSION'] || '1.0.1'
-CURRENT_BUILD_NUMBER = ENV['CURRENT_PROJECT_VERSION'] || Time.now.strftime('%y%m%d%H%M')
+CURRENT_BUILD_NUMBER = ENV['CURRENT_PROJECT_VERSION'] || '1'
 
 # Wipe any previous project so generation is idempotent.
 FileUtils.rm_rf(PROJECT_PATH)
@@ -192,6 +197,17 @@ project.files.each do |file|
     file.source_tree = 'SDKROOT'
   end
 end
+
+# --- Deterministic object UUIDs ---
+# The xcodeproj gem assigns a random 24-char hex UUID to every object
+# on each run, so regeneration rewrote all ~200 object ids (and the
+# scheme BlueprintIdentifiers), burying every build-number bump under
+# hundreds of lines of churn. This generator — the same one CocoaPods
+# uses — derives each UUID from a stable hash of the object's position
+# in the tree, so the same project structure always produces the same
+# ids. Run before `save` (and before scheme writing) so schemes pick
+# up the stable target ids too.
+Xcodeproj::Project::UUIDGenerator.new([project]).generate!
 
 # --- Shared schemes so the two apps surface in Xcode's scheme picker ---
 project.save

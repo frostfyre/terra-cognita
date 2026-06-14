@@ -60,8 +60,18 @@ exec > >(tee "$LOG_FILE") 2>&1
 # build log scrolls past the screen.
 trap 'rc=$?; if [ $rc -eq 0 ]; then echo "✓ DONE — upload submitted (log: $LOG_FILE)"; else echo "✗ FAILED (exit $rc) — see $LOG_FILE" >&2; fi' EXIT
 
-# 1) Regenerate to bump the build number to a fresh timestamp.
-echo "==> [1/4] Regenerating project (timestamp build number bump)…"
+# 1) Regenerate the project and compute the build number.
+#
+# The number is a fresh YYMMDDHHMM timestamp so each upload is
+# strictly greater than the last (ASC rejects re-used build numbers).
+# It is NOT baked into the project file — generate_xcodeproj.rb emits
+# a static placeholder version, and we inject the real number at
+# archive time via an xcodebuild setting override (step 2). That keeps
+# the committed project file identical across uploads, so a release
+# never produces project churn to commit. The regen itself is
+# deterministic (stable UUIDs), so it's a no-op on a clean tree.
+BUILD_NUMBER="$(date +%y%m%d%H%M)"
+echo "==> [1/4] Regenerating project; build number $BUILD_NUMBER (injected at archive)…"
 if [ "$PLATFORM" = "macos" ]; then
     MAC_SIGN=1 ruby scripts/generate_xcodeproj.rb
 else
@@ -93,6 +103,7 @@ xcodebuild archive \
     -configuration Release \
     -archivePath "$ARCHIVE_PATH" \
     -allowProvisioningUpdates \
+    CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
     | xcbeautify --quiet 2>/dev/null || \
 xcodebuild archive \
     -project TerraCognita.xcodeproj \
@@ -100,7 +111,8 @@ xcodebuild archive \
     -destination "$DESTINATION" \
     -configuration Release \
     -archivePath "$ARCHIVE_PATH" \
-    -allowProvisioningUpdates
+    -allowProvisioningUpdates \
+    CURRENT_PROJECT_VERSION="$BUILD_NUMBER"
 
 # 3) Export.
 echo "==> [3/4] Exporting → $EXPORT_DIR …"

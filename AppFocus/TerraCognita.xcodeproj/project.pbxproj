@@ -7,108 +7,108 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		0337220A753CA6A79C4813DA /* TerraCognitaKit in Frameworks */ = {isa = PBXBuildFile; productRef = 8873634184B4CBB163216B42 /* TerraCognitaKit */; };
-		21FE8CF90583FD93EBB5B211 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 6BEC6E4E766272B3CBD3A67C /* Assets.xcassets */; };
-		62E24C5DDB6C40C3674DD853 /* TerraCognitaKit in Frameworks */ = {isa = PBXBuildFile; productRef = E094A5D0A4EE08BD11242411 /* TerraCognitaKit */; };
-		7B7B2517F6E3AA1091E67C42 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = DCD1C0B2CA16B4908542669A /* Assets.xcassets */; };
-		7F099BCE5E7F13F7A0803BF7 /* TerraCognitaMacApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4559942C1D798B916B7420CC /* TerraCognitaMacApp.swift */; };
-		AE544A0621269CE110BC086F /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 0888DABEA2864908394B0104 /* Foundation.framework */; };
-		C627A27BE148D8494ED9B9DD /* TerraCognitaIOSApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = C94E3284039A14A2B979725C /* TerraCognitaIOSApp.swift */; };
-		DAD5A2BD8CF51050CBDCAAF1 /* Cocoa.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 6777AA0C0B6E629CA0270CA1 /* Cocoa.framework */; };
+		013E1333F6F2022B244BFEC2BFC1447B /* Cocoa.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = D81A3A9CD7DC014B84764B06D26BD5CD /* Cocoa.framework */; };
+		15D22E5DFE617504B738EADF7AE069CC /* TerraCognitaMacApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA10FC5493133ADBC9548A46447FCC36 /* TerraCognitaMacApp.swift */; };
+		21E3F772D68EE4EDEBADB17E2E134B8C /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 5697D5DE704E5C6D3FCA99B1A8946FFF /* Assets.xcassets */; };
+		35DBD0F9E55CCA6A5DCB9D8661C48D1A /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 3ADBE018F82D6929FBA216353F5AACB4 /* Foundation.framework */; };
+		74F6B0FD22841D4F3BFD0A1C82C20657 /* TerraCognitaKit in Frameworks */ = {isa = PBXBuildFile; productRef = ACD9425CB95E9DEAD15E6A61AE1E8B76 /* TerraCognitaKit */; };
+		7B60364D8309B71CB685B72556D42612 /* TerraCognitaIOSApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8BD0CDD1383C7E1A559B69E773518346 /* TerraCognitaIOSApp.swift */; };
+		A790DC3109E6788676DA69224860E07C /* TerraCognitaKit in Frameworks */ = {isa = PBXBuildFile; productRef = 44E542C41C952DBF883396F50FEC886C /* TerraCognitaKit */; };
+		B050828F5F808492A96270162E81596A /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 023E627D05F6313A64745D9F7E31DCC1 /* Assets.xcassets */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
-		0888DABEA2864908394B0104 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = System/Library/Frameworks/Foundation.framework; sourceTree = SDKROOT; };
-		4559942C1D798B916B7420CC /* TerraCognitaMacApp.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TerraCognitaMacApp.swift; sourceTree = "<group>"; };
-		6777AA0C0B6E629CA0270CA1 /* Cocoa.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Cocoa.framework; path = System/Library/Frameworks/Cocoa.framework; sourceTree = SDKROOT; };
-		6BEC6E4E766272B3CBD3A67C /* Assets.xcassets */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
-		9405AEE1CC54BFF6AEACC2C1 /* TerraCognita-iOS.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "TerraCognita-iOS.app"; sourceTree = BUILT_PRODUCTS_DIR; };
-		BFCC1011A7C2B269FC755616 /* TerraCognita-macOS.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "TerraCognita-macOS.app"; sourceTree = BUILT_PRODUCTS_DIR; };
-		C94E3284039A14A2B979725C /* TerraCognitaIOSApp.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TerraCognitaIOSApp.swift; sourceTree = "<group>"; };
-		DCD1C0B2CA16B4908542669A /* Assets.xcassets */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		023E627D05F6313A64745D9F7E31DCC1 /* Assets.xcassets */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		3ADBE018F82D6929FBA216353F5AACB4 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = System/Library/Frameworks/Foundation.framework; sourceTree = SDKROOT; };
+		51C036E04896B9C6E9E6188308502E6A /* TerraCognita-macOS.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "TerraCognita-macOS.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		5697D5DE704E5C6D3FCA99B1A8946FFF /* Assets.xcassets */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		8BD0CDD1383C7E1A559B69E773518346 /* TerraCognitaIOSApp.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TerraCognitaIOSApp.swift; sourceTree = "<group>"; };
+		D81A3A9CD7DC014B84764B06D26BD5CD /* Cocoa.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Cocoa.framework; path = System/Library/Frameworks/Cocoa.framework; sourceTree = SDKROOT; };
+		DA10FC5493133ADBC9548A46447FCC36 /* TerraCognitaMacApp.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TerraCognitaMacApp.swift; sourceTree = "<group>"; };
+		F1A4F3885BABF2E788AF330865481082 /* TerraCognita-iOS.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "TerraCognita-iOS.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
-		1B33D996C1B29842D6603828 /* Frameworks */ = {
+		C03B974A9AD10F0453405BC7FAB7A025 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				AE544A0621269CE110BC086F /* Foundation.framework in Frameworks */,
-				62E24C5DDB6C40C3674DD853 /* TerraCognitaKit in Frameworks */,
+				35DBD0F9E55CCA6A5DCB9D8661C48D1A /* Foundation.framework in Frameworks */,
+				A790DC3109E6788676DA69224860E07C /* TerraCognitaKit in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		44358E65D678573D4F8C9C9C /* Frameworks */ = {
+		F8E1B9793CAEF497ED52EE1F51BF189A /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				DAD5A2BD8CF51050CBDCAAF1 /* Cocoa.framework in Frameworks */,
-				0337220A753CA6A79C4813DA /* TerraCognitaKit in Frameworks */,
+				013E1333F6F2022B244BFEC2BFC1447B /* Cocoa.framework in Frameworks */,
+				74F6B0FD22841D4F3BFD0A1C82C20657 /* TerraCognitaKit in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
-		09873ECDFE158D35531A355F /* Products */ = {
+		0EDAA9BBA928637F355A7B5E6629C4E3 /* OS X */ = {
 			isa = PBXGroup;
 			children = (
-				BFCC1011A7C2B269FC755616 /* TerraCognita-macOS.app */,
-				9405AEE1CC54BFF6AEACC2C1 /* TerraCognita-iOS.app */,
+				D81A3A9CD7DC014B84764B06D26BD5CD /* Cocoa.framework */,
 			);
-			name = Products;
+			name = "OS X";
 			sourceTree = "<group>";
 		};
-		160781405A1D2E478E7F6153 /* Frameworks */ = {
+		2B51D1F3655D5593886207B120346143 = {
 			isa = PBXGroup;
 			children = (
-				E9D8E4CEC0010974E0FAE377 /* OS X */,
-				7F40E9D415DC7386F8D07764 /* iOS */,
+				5DFC89845F6E3D6CEFB6B469769D89F4 /* Products */,
+				983040C95DAB9A405757B09119A40F63 /* Frameworks */,
+				FFC8FBDCCBF92127414209B56718B187 /* TerraCognita-macOS */,
+				4552EC27C7085383FC60D97AC9B47E79 /* TerraCognita-iOS */,
 			);
-			name = Frameworks;
 			sourceTree = "<group>";
 		};
-		4FF3407C449A10C40880C678 /* TerraCognita-iOS */ = {
+		4552EC27C7085383FC60D97AC9B47E79 /* TerraCognita-iOS */ = {
 			isa = PBXGroup;
 			children = (
-				C94E3284039A14A2B979725C /* TerraCognitaIOSApp.swift */,
-				DCD1C0B2CA16B4908542669A /* Assets.xcassets */,
+				8BD0CDD1383C7E1A559B69E773518346 /* TerraCognitaIOSApp.swift */,
+				023E627D05F6313A64745D9F7E31DCC1 /* Assets.xcassets */,
 			);
 			name = "TerraCognita-iOS";
 			path = "Apps/TerraCognita-iOS";
 			sourceTree = "<group>";
 		};
-		7F40E9D415DC7386F8D07764 /* iOS */ = {
+		5DFC89845F6E3D6CEFB6B469769D89F4 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				0888DABEA2864908394B0104 /* Foundation.framework */,
+				51C036E04896B9C6E9E6188308502E6A /* TerraCognita-macOS.app */,
+				F1A4F3885BABF2E788AF330865481082 /* TerraCognita-iOS.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		983040C95DAB9A405757B09119A40F63 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				0EDAA9BBA928637F355A7B5E6629C4E3 /* OS X */,
+				D42B12C31774DB79F398E8D26B983531 /* iOS */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		D42B12C31774DB79F398E8D26B983531 /* iOS */ = {
+			isa = PBXGroup;
+			children = (
+				3ADBE018F82D6929FBA216353F5AACB4 /* Foundation.framework */,
 			);
 			name = iOS;
 			sourceTree = "<group>";
 		};
-		B01C395A00AB5EDB78022F38 = {
+		FFC8FBDCCBF92127414209B56718B187 /* TerraCognita-macOS */ = {
 			isa = PBXGroup;
 			children = (
-				09873ECDFE158D35531A355F /* Products */,
-				160781405A1D2E478E7F6153 /* Frameworks */,
-				ECFD97A5514169E5B246B6E9 /* TerraCognita-macOS */,
-				4FF3407C449A10C40880C678 /* TerraCognita-iOS */,
-			);
-			sourceTree = "<group>";
-		};
-		E9D8E4CEC0010974E0FAE377 /* OS X */ = {
-			isa = PBXGroup;
-			children = (
-				6777AA0C0B6E629CA0270CA1 /* Cocoa.framework */,
-			);
-			name = "OS X";
-			sourceTree = "<group>";
-		};
-		ECFD97A5514169E5B246B6E9 /* TerraCognita-macOS */ = {
-			isa = PBXGroup;
-			children = (
-				4559942C1D798B916B7420CC /* TerraCognitaMacApp.swift */,
-				6BEC6E4E766272B3CBD3A67C /* Assets.xcassets */,
+				DA10FC5493133ADBC9548A46447FCC36 /* TerraCognitaMacApp.swift */,
+				5697D5DE704E5C6D3FCA99B1A8946FFF /* Assets.xcassets */,
 			);
 			name = "TerraCognita-macOS";
 			path = "Apps/TerraCognita-macOS";
@@ -117,13 +117,13 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		221649DBC7A9BC1518F786D9 /* TerraCognita-macOS */ = {
+		098983BE259531633CD16A62CD9A4A1C /* TerraCognita-macOS */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 26B82DCE4973ADB7A401B384 /* Build configuration list for PBXNativeTarget "TerraCognita-macOS" */;
+			buildConfigurationList = 3E598E8821ACE2AC55449C48747B08F4 /* Build configuration list for PBXNativeTarget "TerraCognita-macOS" */;
 			buildPhases = (
-				2B4BC96BFBA25691A0CE260F /* Sources */,
-				44358E65D678573D4F8C9C9C /* Frameworks */,
-				5F5CF1514E2E8DF9725DE4CB /* Resources */,
+				4272DA06885167F9D45AA2A1F2E53C85 /* Sources */,
+				F8E1B9793CAEF497ED52EE1F51BF189A /* Frameworks */,
+				D267C60426BAFEF6026C0721C199B1D4 /* Resources */,
 			);
 			buildRules = (
 			);
@@ -131,19 +131,19 @@
 			);
 			name = "TerraCognita-macOS";
 			packageProductDependencies = (
-				8873634184B4CBB163216B42 /* TerraCognitaKit */,
+				ACD9425CB95E9DEAD15E6A61AE1E8B76 /* TerraCognitaKit */,
 			);
 			productName = "TerraCognita-macOS";
-			productReference = BFCC1011A7C2B269FC755616 /* TerraCognita-macOS.app */;
+			productReference = 51C036E04896B9C6E9E6188308502E6A /* TerraCognita-macOS.app */;
 			productType = "com.apple.product-type.application";
 		};
-		6FD1E043F027946EED8CF6B7 /* TerraCognita-iOS */ = {
+		CB3CCC5FB2FDAF090541A489A9660688 /* TerraCognita-iOS */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = D0387C721442945959E55D88 /* Build configuration list for PBXNativeTarget "TerraCognita-iOS" */;
+			buildConfigurationList = 5C4D251615FD19CA573667057BF11E77 /* Build configuration list for PBXNativeTarget "TerraCognita-iOS" */;
 			buildPhases = (
-				D599E9FC48339E7126FB235D /* Sources */,
-				1B33D996C1B29842D6603828 /* Frameworks */,
-				CA77AC1301BEBBA6DAFC4FBE /* Resources */,
+				BDEDCD085A9F55AB11DE86238E2E7C28 /* Sources */,
+				C03B974A9AD10F0453405BC7FAB7A025 /* Frameworks */,
+				F00846F60E00F636B65C821B8F1E4928 /* Resources */,
 			);
 			buildRules = (
 			);
@@ -151,22 +151,22 @@
 			);
 			name = "TerraCognita-iOS";
 			packageProductDependencies = (
-				E094A5D0A4EE08BD11242411 /* TerraCognitaKit */,
+				44E542C41C952DBF883396F50FEC886C /* TerraCognitaKit */,
 			);
 			productName = "TerraCognita-iOS";
-			productReference = 9405AEE1CC54BFF6AEACC2C1 /* TerraCognita-iOS.app */;
+			productReference = F1A4F3885BABF2E788AF330865481082 /* TerraCognita-iOS.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
-		D189DC32788109204A2501F3 /* Project object */ = {
+		5F3CFAA0DF6014DC63EF4F8B740DA53A /* Project object */ = {
 			isa = PBXProject;
 			attributes = {
 				LastSwiftUpdateCheck = 1600;
 				LastUpgradeCheck = 1600;
 			};
-			buildConfigurationList = 06DAEA9A8C904816A513C8D7 /* Build configuration list for PBXProject "TerraCognita" */;
+			buildConfigurationList = 42EEA852FB489B29CBE428ECD83FEF72 /* Build configuration list for PBXProject "TerraCognita" */;
 			compatibilityVersion = "Xcode 3.2";
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
@@ -174,149 +174,62 @@
 				en,
 				Base,
 			);
-			mainGroup = B01C395A00AB5EDB78022F38;
+			mainGroup = 2B51D1F3655D5593886207B120346143;
 			minimizedProjectReferenceProxies = 0;
 			packageReferences = (
-				89679862DEDA7042C8A73F07 /* XCLocalSwiftPackageReference "." */,
+				74E71E89FCE61607B7A2970B0CF0E8F5 /* XCLocalSwiftPackageReference "." */,
 			);
 			preferredProjectObjectVersion = 77;
-			productRefGroup = 09873ECDFE158D35531A355F /* Products */;
+			productRefGroup = 5DFC89845F6E3D6CEFB6B469769D89F4 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				221649DBC7A9BC1518F786D9 /* TerraCognita-macOS */,
-				6FD1E043F027946EED8CF6B7 /* TerraCognita-iOS */,
+				098983BE259531633CD16A62CD9A4A1C /* TerraCognita-macOS */,
+				CB3CCC5FB2FDAF090541A489A9660688 /* TerraCognita-iOS */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
-		5F5CF1514E2E8DF9725DE4CB /* Resources */ = {
+		D267C60426BAFEF6026C0721C199B1D4 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				21FE8CF90583FD93EBB5B211 /* Assets.xcassets in Resources */,
+				21E3F772D68EE4EDEBADB17E2E134B8C /* Assets.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		CA77AC1301BEBBA6DAFC4FBE /* Resources */ = {
+		F00846F60E00F636B65C821B8F1E4928 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				7B7B2517F6E3AA1091E67C42 /* Assets.xcassets in Resources */,
+				B050828F5F808492A96270162E81596A /* Assets.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
-		2B4BC96BFBA25691A0CE260F /* Sources */ = {
+		4272DA06885167F9D45AA2A1F2E53C85 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				7F099BCE5E7F13F7A0803BF7 /* TerraCognitaMacApp.swift in Sources */,
+				15D22E5DFE617504B738EADF7AE069CC /* TerraCognitaMacApp.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		D599E9FC48339E7126FB235D /* Sources */ = {
+		BDEDCD085A9F55AB11DE86238E2E7C28 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				C627A27BE148D8494ED9B9DD /* TerraCognitaIOSApp.swift in Sources */,
+				7B60364D8309B71CB685B72556D42612 /* TerraCognitaIOSApp.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin XCBuildConfiguration section */
-		85D45155683B220F4AD16F05 /* Release */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				ASSETCATALOG_COMPILER_GENERATE_ASSET_SYMBOLS = NO;
-				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				CLANG_ENABLE_OBJC_WEAK = NO;
-				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "Apple Development";
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2606141413;
-				DEVELOPMENT_TEAM = TUMFPT4C67;
-				GENERATE_INFOPLIST_FILE = NO;
-				INFOPLIST_FILE = "Apps/TerraCognita-iOS/Info.plist";
-				INFOPLIST_KEY_CFBundleDisplayName = "Terra Cognita";
-				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
-				INFOPLIST_KEY_NSAppleMusicUsageDescription = "Terra Cognita can play Apple Music alongside your atlas — each atlas can suggest a soundtrack that fits its mood, like Joe Hisaishi for the Miyazaki demo. Only used when you opt in.";
-				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Terra Cognita uses the microphone for voice capture. Audio is transcribed on-device and never uploaded.";
-				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Terra Cognita uses on-device speech recognition to capture spoken notes. Audio stays on this device.";
-				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
-				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
-				MARKETING_VERSION = 1.0.1;
-				PRODUCT_BUNDLE_IDENTIFIER = com.frostfyre.terracognitaatlas;
-				SDKROOT = iphoneos;
-				SWIFT_VERSION = 6.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
-				VALIDATE_PRODUCT = YES;
-			};
-			name = Release;
-		};
-		884BC85CBFF50C6DE0A7457C /* Release */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				ASSETCATALOG_COMPILER_GENERATE_ASSET_SYMBOLS = NO;
-				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				CODE_SIGN_ENTITLEMENTS = "Apps/TerraCognita-macOS/TerraCognita-macOS.entitlements";
-				CODE_SIGN_IDENTITY = "-";
-				CODE_SIGN_STYLE = Automatic;
-				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 2606141413;
-				DEVELOPMENT_TEAM = TUMFPT4C67;
-				ENABLE_HARDENED_RUNTIME = YES;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = "Terra Cognita";
-				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
-				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
-				INFOPLIST_KEY_NSAppleMusicUsageDescription = "Terra Cognita can play Apple Music alongside your atlas — each atlas can suggest a soundtrack that fits its mood, like Joe Hisaishi for the Miyazaki demo. Only used when you opt in.";
-				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Terra Cognita uses the microphone for voice capture. Audio is transcribed on-device and never uploaded.";
-				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Terra Cognita uses on-device speech recognition to capture spoken notes. Audio stays on this device.";
-				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
-				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.0.1;
-				PRODUCT_BUNDLE_IDENTIFIER = com.frostfyre.terracognitaatlas;
-				SDKROOT = macosx;
-				SWIFT_VERSION = 6.0;
-			};
-			name = Release;
-		};
-		AA659501B8F7787489F0B0EC /* Debug */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				ASSETCATALOG_COMPILER_GENERATE_ASSET_SYMBOLS = NO;
-				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				CODE_SIGN_ENTITLEMENTS = "Apps/TerraCognita-macOS/TerraCognita-macOS.entitlements";
-				CODE_SIGN_IDENTITY = "-";
-				CODE_SIGN_STYLE = Automatic;
-				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 2606141413;
-				DEVELOPMENT_TEAM = TUMFPT4C67;
-				ENABLE_HARDENED_RUNTIME = YES;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = "Terra Cognita";
-				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
-				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
-				INFOPLIST_KEY_NSAppleMusicUsageDescription = "Terra Cognita can play Apple Music alongside your atlas — each atlas can suggest a soundtrack that fits its mood, like Joe Hisaishi for the Miyazaki demo. Only used when you opt in.";
-				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Terra Cognita uses the microphone for voice capture. Audio is transcribed on-device and never uploaded.";
-				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Terra Cognita uses on-device speech recognition to capture spoken notes. Audio stays on this device.";
-				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
-				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.0.1;
-				PRODUCT_BUNDLE_IDENTIFIER = com.frostfyre.terracognitaatlas;
-				SDKROOT = macosx;
-				SWIFT_VERSION = 6.0;
-			};
-			name = Debug;
-		};
-		D81101C6D891AF5D20F4C11D /* Release */ = {
+		2263A45933BC2929D385033989E7B421 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
@@ -370,35 +283,7 @@
 			};
 			name = Release;
 		};
-		D8E4633A49F9D305E0451301 /* Debug */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				ASSETCATALOG_COMPILER_GENERATE_ASSET_SYMBOLS = NO;
-				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				CLANG_ENABLE_OBJC_WEAK = NO;
-				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "Apple Development";
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2606141413;
-				DEVELOPMENT_TEAM = TUMFPT4C67;
-				GENERATE_INFOPLIST_FILE = NO;
-				INFOPLIST_FILE = "Apps/TerraCognita-iOS/Info.plist";
-				INFOPLIST_KEY_CFBundleDisplayName = "Terra Cognita";
-				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
-				INFOPLIST_KEY_NSAppleMusicUsageDescription = "Terra Cognita can play Apple Music alongside your atlas — each atlas can suggest a soundtrack that fits its mood, like Joe Hisaishi for the Miyazaki demo. Only used when you opt in.";
-				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Terra Cognita uses the microphone for voice capture. Audio is transcribed on-device and never uploaded.";
-				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Terra Cognita uses on-device speech recognition to capture spoken notes. Audio stays on this device.";
-				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
-				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
-				MARKETING_VERSION = 1.0.1;
-				PRODUCT_BUNDLE_IDENTIFIER = com.frostfyre.terracognitaatlas;
-				SDKROOT = iphoneos;
-				SWIFT_VERSION = 6.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
-			};
-			name = Debug;
-		};
-		E67179119015CE30B96FA452 /* Debug */ = {
+		2C4BCD006CD768AC13FB2FA62A449884 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
@@ -459,32 +344,147 @@
 			};
 			name = Debug;
 		};
+		398FA757533B09E1F85404D131311638 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GENERATE_ASSET_SYMBOLS = NO;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = TUMFPT4C67;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = "Apps/TerraCognita-iOS/Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "Terra Cognita";
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
+				INFOPLIST_KEY_NSAppleMusicUsageDescription = "Terra Cognita can play Apple Music alongside your atlas — each atlas can suggest a soundtrack that fits its mood, like Joe Hisaishi for the Miyazaki demo. Only used when you opt in.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Terra Cognita uses the microphone for voice capture. Audio is transcribed on-device and never uploaded.";
+				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Terra Cognita uses on-device speech recognition to capture spoken notes. Audio stays on this device.";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
+				MARKETING_VERSION = 1.0.1;
+				PRODUCT_BUNDLE_IDENTIFIER = com.frostfyre.terracognitaatlas;
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		637F1F4DFC2C6A993EADD762DE0B1890 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GENERATE_ASSET_SYMBOLS = NO;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = "Apps/TerraCognita-macOS/TerraCognita-macOS.entitlements";
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = TUMFPT4C67;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "Terra Cognita";
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
+				INFOPLIST_KEY_NSAppleMusicUsageDescription = "Terra Cognita can play Apple Music alongside your atlas — each atlas can suggest a soundtrack that fits its mood, like Joe Hisaishi for the Miyazaki demo. Only used when you opt in.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Terra Cognita uses the microphone for voice capture. Audio is transcribed on-device and never uploaded.";
+				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Terra Cognita uses on-device speech recognition to capture spoken notes. Audio stays on this device.";
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 1.0.1;
+				PRODUCT_BUNDLE_IDENTIFIER = com.frostfyre.terracognitaatlas;
+				SDKROOT = macosx;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Release;
+		};
+		E359A2442DF13521F551EFDD1549398F /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GENERATE_ASSET_SYMBOLS = NO;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = "Apps/TerraCognita-macOS/TerraCognita-macOS.entitlements";
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = TUMFPT4C67;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "Terra Cognita";
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
+				INFOPLIST_KEY_NSAppleMusicUsageDescription = "Terra Cognita can play Apple Music alongside your atlas — each atlas can suggest a soundtrack that fits its mood, like Joe Hisaishi for the Miyazaki demo. Only used when you opt in.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Terra Cognita uses the microphone for voice capture. Audio is transcribed on-device and never uploaded.";
+				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Terra Cognita uses on-device speech recognition to capture spoken notes. Audio stays on this device.";
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 1.0.1;
+				PRODUCT_BUNDLE_IDENTIFIER = com.frostfyre.terracognitaatlas;
+				SDKROOT = macosx;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+		E6F2788ADD0C830E19BB052B8D5E1777 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GENERATE_ASSET_SYMBOLS = NO;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = TUMFPT4C67;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = "Apps/TerraCognita-iOS/Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "Terra Cognita";
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
+				INFOPLIST_KEY_NSAppleMusicUsageDescription = "Terra Cognita can play Apple Music alongside your atlas — each atlas can suggest a soundtrack that fits its mood, like Joe Hisaishi for the Miyazaki demo. Only used when you opt in.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Terra Cognita uses the microphone for voice capture. Audio is transcribed on-device and never uploaded.";
+				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Terra Cognita uses on-device speech recognition to capture spoken notes. Audio stays on this device.";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
+				MARKETING_VERSION = 1.0.1;
+				PRODUCT_BUNDLE_IDENTIFIER = com.frostfyre.terracognitaatlas;
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		06DAEA9A8C904816A513C8D7 /* Build configuration list for PBXProject "TerraCognita" */ = {
+		3E598E8821ACE2AC55449C48747B08F4 /* Build configuration list for PBXNativeTarget "TerraCognita-macOS" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				E67179119015CE30B96FA452 /* Debug */,
-				D81101C6D891AF5D20F4C11D /* Release */,
+				637F1F4DFC2C6A993EADD762DE0B1890 /* Release */,
+				E359A2442DF13521F551EFDD1549398F /* Debug */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		26B82DCE4973ADB7A401B384 /* Build configuration list for PBXNativeTarget "TerraCognita-macOS" */ = {
+		42EEA852FB489B29CBE428ECD83FEF72 /* Build configuration list for PBXProject "TerraCognita" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				884BC85CBFF50C6DE0A7457C /* Release */,
-				AA659501B8F7787489F0B0EC /* Debug */,
+				2C4BCD006CD768AC13FB2FA62A449884 /* Debug */,
+				2263A45933BC2929D385033989E7B421 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		D0387C721442945959E55D88 /* Build configuration list for PBXNativeTarget "TerraCognita-iOS" */ = {
+		5C4D251615FD19CA573667057BF11E77 /* Build configuration list for PBXNativeTarget "TerraCognita-iOS" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				85D45155683B220F4AD16F05 /* Release */,
-				D8E4633A49F9D305E0451301 /* Debug */,
+				398FA757533B09E1F85404D131311638 /* Release */,
+				E6F2788ADD0C830E19BB052B8D5E1777 /* Debug */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
@@ -492,24 +492,24 @@
 /* End XCConfigurationList section */
 
 /* Begin XCLocalSwiftPackageReference section */
-		89679862DEDA7042C8A73F07 /* XCLocalSwiftPackageReference "." */ = {
+		74E71E89FCE61607B7A2970B0CF0E8F5 /* XCLocalSwiftPackageReference "." */ = {
 			isa = XCLocalSwiftPackageReference;
 			relativePath = .;
 		};
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
-		8873634184B4CBB163216B42 /* TerraCognitaKit */ = {
+		44E542C41C952DBF883396F50FEC886C /* TerraCognitaKit */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = 89679862DEDA7042C8A73F07 /* XCLocalSwiftPackageReference "." */;
+			package = 74E71E89FCE61607B7A2970B0CF0E8F5 /* XCLocalSwiftPackageReference "." */;
 			productName = TerraCognitaKit;
 		};
-		E094A5D0A4EE08BD11242411 /* TerraCognitaKit */ = {
+		ACD9425CB95E9DEAD15E6A61AE1E8B76 /* TerraCognitaKit */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = 89679862DEDA7042C8A73F07 /* XCLocalSwiftPackageReference "." */;
+			package = 74E71E89FCE61607B7A2970B0CF0E8F5 /* XCLocalSwiftPackageReference "." */;
 			productName = TerraCognitaKit;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
-	rootObject = D189DC32788109204A2501F3 /* Project object */;
+	rootObject = 5F3CFAA0DF6014DC63EF4F8B740DA53A /* Project object */;
 }

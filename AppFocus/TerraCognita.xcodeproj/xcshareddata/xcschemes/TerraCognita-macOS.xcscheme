@@ -14,7 +14,7 @@
             buildForAnalyzing = "YES">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "53FC9EA6E0C222C419766F14"
+               BlueprintIdentifier = "098983BE259531633CD16A62CD9A4A1C"
                BuildableName = "TerraCognita-macOS.app"
                BlueprintName = "TerraCognita-macOS"
                ReferencedContainer = "container:TerraCognita.xcodeproj">
@@ -30,7 +30,7 @@
       <MacroExpansion>
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "53FC9EA6E0C222C419766F14"
+            BlueprintIdentifier = "098983BE259531633CD16A62CD9A4A1C"
             BuildableName = "TerraCognita-macOS.app"
             BlueprintName = "TerraCognita-macOS"
             ReferencedContainer = "container:TerraCognita.xcodeproj">
@@ -53,7 +53,7 @@
          runnableDebuggingMode = "0">
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "53FC9EA6E0C222C419766F14"
+            BlueprintIdentifier = "098983BE259531633CD16A62CD9A4A1C"
             BuildableName = "TerraCognita-macOS.app"
             BlueprintName = "TerraCognita-macOS"
             ReferencedContainer = "container:TerraCognita.xcodeproj">
@@ -70,7 +70,7 @@
          runnableDebuggingMode = "0">
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "53FC9EA6E0C222C419766F14"
+            BlueprintIdentifier = "098983BE259531633CD16A62CD9A4A1C"
             BuildableName = "TerraCognita-macOS.app"
             BlueprintName = "TerraCognita-macOS"
             ReferencedContainer = "container:TerraCognita.xcodeproj">
