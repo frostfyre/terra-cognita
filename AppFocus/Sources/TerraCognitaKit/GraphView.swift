@@ -83,6 +83,14 @@ public struct GraphView: View {
     /// (`@AppStorage`), not per-atlas.
     @AppStorage("useProRenderer") var useProRenderer: Bool = false
 
+    /// "Import from Recipe" is temporarily pulled from the UI — the
+    /// feature works (sheet + `ImportRecipeSheet` stay wired) but its
+    /// two entry points (the Atlas menu item and the global radial's
+    /// Add ▸ Recipe wedge) are hidden until the workflow has been
+    /// exercised more. Flip to `true` to surface it again (e.g. for
+    /// local use) or just delete this flag and its `if` guards.
+    static let recipeImportEnabled = false
+
     /// Source node id while the canvas is in spatial "Connect" mode.
     /// Set by the per-node radial's Connect wedge (and by shift+drag on
     /// macOS); the next tap on a target node creates an edge via

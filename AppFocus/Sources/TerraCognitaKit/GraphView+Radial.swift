@@ -244,7 +244,7 @@ extension GraphView {
     }
 
     func addSubActions(at target: GlobalRadialTarget) -> [RadialMenu.Action] {
-        [
+        var actions: [RadialMenu.Action] = [
             RadialMenu.Action(
                 id: "add-node",
                 label: "Add node",
@@ -257,7 +257,11 @@ extension GraphView {
                 composerSeedID = selectedNodeID
                 activeSheet = .addNode
             },
-            RadialMenu.Action(
+        ]
+        // "Recipe" import is temporarily pulled from the UI — see
+        // GraphView.recipeImportEnabled.
+        if Self.recipeImportEnabled {
+            actions.append(RadialMenu.Action(
                 id: "add-recipe",
                 label: "Recipe",
                 systemImage: "wand.and.stars",
@@ -265,8 +269,9 @@ extension GraphView {
             ) {
                 globalRadial = nil
                 activeSheet = .importRecipe
-            },
-        ]
+            })
+        }
+        return actions
     }
 
     /// One wedge per `LayoutAlgorithm`, plus a No-overlap toggle.

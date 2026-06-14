@@ -505,10 +505,12 @@ extension GraphView {
             } label: {
                 Label("Import GEXF…", systemImage: "square.and.arrow.down.on.square")
             }
-            Button {
-                activeSheet = .importRecipe
-            } label: {
-                Label("Import from Recipe…", systemImage: "wand.and.stars")
+            if Self.recipeImportEnabled {
+                Button {
+                    activeSheet = .importRecipe
+                } label: {
+                    Label("Import from Recipe…", systemImage: "wand.and.stars")
+                }
             }
             Divider()
             Button {
