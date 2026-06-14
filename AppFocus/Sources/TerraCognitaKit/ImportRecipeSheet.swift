@@ -41,8 +41,14 @@ struct ImportRecipeSheet: View {
                     }
                 }
         }
+        #if os(macOS)
+        // Sized for macOS sheets; on iOS the natural sheet width is
+        // already correct and a minWidth this large bleeds the content
+        // off the right edge in portrait (matches the other sheets —
+        // AddNodeSheet, AtlasSettingsSheet, AugmentNodeSheet).
         .frame(minWidth: 540, idealWidth: 640,
                minHeight: 460, idealHeight: 600)
+        #endif
     }
 
     @ViewBuilder
