@@ -267,6 +267,11 @@ public struct GraphView: View {
             duplicateClusters = newClusters
         }
         .onChange(of: store.loadCompletedTick) { _, _ in
+            // Reset to the All lens on every atlas load. A per-type
+            // lens carried over from the previous atlas can reference
+            // a type the new network doesn't have, whose filter would
+            // hide every node — the canvas would open blank.
+            if activeLens != .all { activeLens = .all }
             // Atlas load arrived with content. Arm the settle gate —
             // the actual fit + fade is triggered when the canvas's
             // layout pipeline (`rebuildLayoutPipeline`) increments
@@ -337,6 +342,13 @@ public struct GraphView: View {
             .ignoresSafeArea()
         }
         #endif
+        // GEXF picker presentation differs by platform, for the same
+        // reason as the folder picker: SwiftUI's `.fileImporter`
+        // silently no-ops when fired from inside a `Menu` button on
+        // iOS, so "Import GEXF…" launched nothing. macOS keeps
+        // `.fileImporter` (works there); iOS uses a UIKit
+        // `UIDocumentPickerViewController` via `.sheet` (`FilePicker`).
+        #if os(macOS)
         .fileImporter(
             isPresented: $showingGEXFPicker,
             // `.gexf` files aren't registered as `.xml` on macOS, so
@@ -346,32 +358,18 @@ public struct GraphView: View {
             allowedContentTypes: [.data, .xml],
             allowsMultipleSelection: false
         ) { result in
-            switch result {
-            case .success(let urls):
-                guard let url = urls.first else { break }
-                let ext = url.pathExtension.lowercased()
-                guard ext == "gexf" || ext == "xml" else {
-                    store.loadStatus = "Pick a .gexf file."
-                    return
-                }
-                // Parse RIGHT NOW while the security scope is still
-                // alive. Otherwise the URL's read permission may be
-                // lost by the time we ask for a destination folder.
-                let didStart = url.startAccessingSecurityScopedResource()
-                defer { if didStart { url.stopAccessingSecurityScopedResource() } }
-                do {
-                    pendingGEXFDocument = try GEXFImporter.parse(fileURL: url)
-                    pendingGEXFName = url.deletingPathExtension().lastPathComponent
-                    store.loadStatus = "Parsed \(pendingGEXFDocument?.nodes.count ?? 0) nodes — pick destination folder…"
-                    promptForGEXFDestination()
-                } catch {
-                    store.loadStatus = "GEXF parse failed: \(error.localizedDescription)"
-                }
-            case .failure:
-                pendingGEXFDocument = nil
-                pendingGEXFName = nil
-            }
+            handlePickedGEXF((try? result.get())?.first)
         }
+        #else
+        .sheet(isPresented: $showingGEXFPicker) {
+            FilePicker(
+                isPresented: $showingGEXFPicker,
+                contentTypes: [.data, .xml],
+                onPick: { handlePickedGEXF($0) }
+            )
+            .ignoresSafeArea()
+        }
+        #endif
         .sheet(isPresented: sheetBinding(for: .atlasSettings)) {
             AtlasSettingsSheet(store: store,
                                isPresented: sheetBinding(for: .atlasSettings))
@@ -680,6 +678,37 @@ public struct GraphView: View {
             store.createNewAtlas(at: target, template: template)
         case .none:
             break
+        }
+    }
+
+    /// Step 1 of GEXF import: validate + parse the picked file, then
+    /// hand off to destination selection. Shared by the macOS
+    /// `.fileImporter` and the iOS `FilePicker` so both platforms run
+    /// identical logic. `nil` (cancel / failure) clears any pending
+    /// state. Parsing happens immediately while the URL is readable:
+    /// on macOS the security scope is opened here; on iOS the picker
+    /// already handed back a readable temp copy (`asCopy: true`), so
+    /// `startAccessingSecurityScopedResource` is a harmless no-op.
+    func handlePickedGEXF(_ url: URL?) {
+        guard let url else {
+            pendingGEXFDocument = nil
+            pendingGEXFName = nil
+            return
+        }
+        let ext = url.pathExtension.lowercased()
+        guard ext == "gexf" || ext == "xml" else {
+            store.loadStatus = "Pick a .gexf file."
+            return
+        }
+        let didStart = url.startAccessingSecurityScopedResource()
+        defer { if didStart { url.stopAccessingSecurityScopedResource() } }
+        do {
+            pendingGEXFDocument = try GEXFImporter.parse(fileURL: url)
+            pendingGEXFName = url.deletingPathExtension().lastPathComponent
+            store.loadStatus = "Parsed \(pendingGEXFDocument?.nodes.count ?? 0) nodes — pick destination folder…"
+            promptForGEXFDestination()
+        } catch {
+            store.loadStatus = "GEXF parse failed: \(error.localizedDescription)"
         }
     }
 

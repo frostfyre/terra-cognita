@@ -165,16 +165,94 @@ struct AtlasConfig: Equatable {
     /// if no file exists or parsing fails — existing atlases always
     /// keep working.
     static func load(from atlasURL: URL) -> AtlasConfig {
+        loadExplicit(from: atlasURL) ?? .default
+    }
+
+    /// Like `load`, but returns `nil` when the atlas carries no
+    /// (parseable) config file — so callers can tell an authored
+    /// ontology apart from the `.default` fallback. Used by
+    /// `GraphStore` to decide whether to trust the declared types or
+    /// derive them from the network's actual node types (see
+    /// `reconcilingTypes`).
+    static func loadExplicit(from atlasURL: URL) -> AtlasConfig? {
         let dir = atlasURL.appendingPathComponent(".terracognita")
         for filename in ["config.yaml", "config.yml"] {
             let candidate = dir.appendingPathComponent(filename)
-            if let raw = try? String(contentsOf: candidate, encoding: .utf8) {
-                if let parsed = parse(yaml: raw) {
-                    return parsed
-                }
+            if let raw = try? String(contentsOf: candidate, encoding: .utf8),
+               let parsed = parse(yaml: raw) {
+                return parsed
             }
         }
-        return .default
+        return nil
+    }
+
+    /// Names the loader's extractors stamp onto non-`.md` nodes.
+    /// Styled by the matching `.default` specs when present in the
+    /// network, but never shown as standalone lenses unless actually
+    /// used.
+    static let syntheticTypeNames: Set<String> = ["tag", "embed", "placeholder"]
+
+    /// Palette for types the network uses but the config doesn't
+    /// declare — so synthesized lenses/legend entries still get a
+    /// stable, distinct color instead of all-white.
+    private static let synthesizedPalette: [Color] = [
+        .cyan, .yellow, .mint, .orange, .pink,
+        .purple, .teal, .red, .blue, .brown, .indigo
+    ]
+
+    private static func synthesizedSpec(name: String, index: Int) -> TypeSpec {
+        TypeSpec(name: name,
+                 displayName: nil,
+                 color: synthesizedPalette[index % synthesizedPalette.count],
+                 icon: "circle.fill",
+                 folder: nil)
+    }
+
+    /// Return a copy whose `types` reflect the types actually present
+    /// in the loaded network, so Atlas Settings and the lens picker
+    /// stay in sync with what's on screen.
+    ///
+    /// - When the atlas had an authored config (`hadExplicitConfig`),
+    ///   the declared types are preserved as-is and any node type the
+    ///   author didn't declare is appended with a synthesized spec —
+    ///   additive, so nothing in the network goes unrepresented.
+    /// - When the config fell back to `.default`, the default's five
+    ///   sample user-types are dropped entirely and the type list is
+    ///   derived from the network: each present type styled by the
+    ///   matching default spec if there is one, else synthesized.
+    ///   Synthetic types (tag/embed/placeholder) are included only
+    ///   when the network actually contains them.
+    func reconcilingTypes(presentInNodeTypes nodeTypes: Set<String>,
+                          hadExplicitConfig: Bool) -> AtlasConfig {
+        var result = self
+        if hadExplicitConfig {
+            let declared = Set(types.map { $0.name.lowercased() })
+            let missing = nodeTypes
+                .subtracting(declared)
+                .subtracting(Self.syntheticTypeNames)
+                .sorted()
+            for (i, name) in missing.enumerated() {
+                result.types.append(Self.synthesizedSpec(name: name, index: types.count + i))
+            }
+        } else {
+            var derived: [TypeSpec] = []
+            let userTypes = nodeTypes.subtracting(Self.syntheticTypeNames).sorted()
+            for (i, name) in userTypes.enumerated() {
+                if let d = AtlasConfig.default.types.first(where: { $0.name.lowercased() == name }) {
+                    derived.append(d)
+                } else {
+                    derived.append(Self.synthesizedSpec(name: name, index: i))
+                }
+            }
+            // Keep styled synthetic specs, but only for the kinds the
+            // network actually uses.
+            for spec in AtlasConfig.default.types
+            where Self.syntheticTypeNames.contains(spec.name) && nodeTypes.contains(spec.name) {
+                derived.append(spec)
+            }
+            result.types = derived
+        }
+        return result
     }
 
     /// Write this config to `.terracognita/config.yaml` in the given

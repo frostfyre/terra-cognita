@@ -266,7 +266,10 @@ public final class GraphStore: ObservableObject {
                 do {
                     let (atlasName, g, isWritable, url) = try await Self.loadFromDefaultAtlas()
                     self.graph = g
-                    self.config = AtlasConfig.load(from: url)
+                    let explicitCfg = AtlasConfig.loadExplicit(from: url)
+                    self.config = Self.reconciledConfig(base: explicitCfg ?? .default,
+                                                        hadExplicit: explicitCfg != nil,
+                                                        graph: g)
                     self.loadStatus = "Loaded \(g.nodes.count) nodes / \(g.edges.count) edges from \(atlasName)"
                     self.writableAtlasURL = isWritable ? url : nil
                     // Empty graph (e.g. demo missing) → no auto-frame
@@ -328,6 +331,24 @@ public final class GraphStore: ObservableObject {
         return fm.fileExists(atPath: dest.path) ? dest : nil
     }
 
+    /// Reconcile a loaded `base` config's type list against the types
+    /// actually present in `graph`'s nodes — so the lens picker and
+    /// Atlas Settings reflect the loaded network, not the `.default`
+    /// sample ontology. `hadExplicit` is false when `base` is the
+    /// fallback default (no `.terracognita/config.yaml`), in which
+    /// case the types are derived from the network instead of kept.
+    static func reconciledConfig(base: AtlasConfig,
+                                 hadExplicit: Bool,
+                                 graph: Graph) -> AtlasConfig {
+        let nodeTypes = Set(
+            graph.nodes.values
+                .compactMap { $0.type?.lowercased() }
+                .filter { !$0.isEmpty }
+        )
+        return base.reconcilingTypes(presentInNodeTypes: nodeTypes,
+                                     hadExplicitConfig: hadExplicit)
+    }
+
     /// Load an atlas from a user-chosen folder URL. Manages the
     /// security-scoped resource, saves a current-atlas bookmark, and
     /// touches the recent-atlases library.
@@ -339,12 +360,19 @@ public final class GraphStore: ObservableObject {
             do {
                 // Load the config first so the loader's extractor
                 // toggles + custom types come into play during the walk.
-                let cfg = AtlasConfig.load(from: url)
+                let explicitCfg = AtlasConfig.loadExplicit(from: url)
+                let cfg = explicitCfg ?? .default
                 let (g, diag) = try await Task.detached(priority: .userInitiated) {
                     try Self.coordinatedLoad(at: url, config: cfg)
                 }.value
                 self.graph = g
-                self.config = cfg
+                // Reconcile the type list against the types actually
+                // present in the loaded network, so Atlas Settings +
+                // the lens picker reflect what's on screen rather than
+                // the `.default` sample ontology for config-less atlases.
+                self.config = Self.reconciledConfig(base: cfg,
+                                                    hadExplicit: explicitCfg != nil,
+                                                    graph: g)
                 if g.nodes.isEmpty {
                     // Explain *why* the load came back empty so the
                     // user can act — most often this is a wrong-folder
