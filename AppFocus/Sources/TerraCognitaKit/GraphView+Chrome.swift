@@ -491,17 +491,17 @@ extension GraphView {
                 Label("Create New Atlas…", systemImage: "folder.badge.plus")
             }
             Button {
-                // iOS silent-noop bug: `.fileImporter` mounted via a
-                // Menu button drops if the flag flips in the same
-                // runloop tick the Menu starts dismissing in. Defer
-                // by one tick so the picker presents after the Menu
-                // is gone. macOS doesn't need this — `.fileImporter`
-                // there bridges NSOpenPanel and has its own timing.
-                #if os(iOS)
-                DispatchQueue.main.async { showingGEXFPicker = true }
-                #else
+                // Set the flag synchronously on both platforms. The
+                // old `DispatchQueue.main.async` deferral on iOS —
+                // originally a workaround for the "Menu button drops
+                // the picker in the same runloop tick" bug — was
+                // itself silently dropping the file importer on the
+                // current SwiftUI version, so tapping "Import GEXF…"
+                // launched nothing. This is the same fix already
+                // applied to the folder picker (see
+                // `presentFolderPicker`): a synchronous flag flip
+                // from a Menu button is observed working.
                 showingGEXFPicker = true
-                #endif
             } label: {
                 Label("Import GEXF…", systemImage: "square.and.arrow.down.on.square")
             }
