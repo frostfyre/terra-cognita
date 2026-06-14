@@ -941,6 +941,7 @@ struct GraphCanvasView: View {
             return .zero
         }()
         layout[pending.id] = spawn
+        store.nodePositions[pending.id] = spawn
         selectedNodeID = pending.id
         persistLayout()
         // Defer the frame to the next runloop so the new node is in
@@ -1186,6 +1187,7 @@ struct GraphCanvasView: View {
 
         guard !nodeIDs.isEmpty else {
             layout = [:]
+            store.nodePositions = [:]
             return
         }
 
@@ -1206,6 +1208,7 @@ struct GraphCanvasView: View {
                 if noOverlap {
                     layout = LayoutEngine.enforceNoOverlap(layout)
                 }
+                store.nodePositions = layout
                 store.layoutSettleTick &+= 1
                 return
             }
@@ -1213,6 +1216,7 @@ struct GraphCanvasView: View {
 
         // 1. Cheap circular seed so something appears immediately.
         layout = makeCircularLayout(for: nodeIDs)
+        store.nodePositions = layout
         layoutAlgorithm = .circular
 
         // 2. Background force-directed layout, swapped in once it converges.
@@ -1722,10 +1726,12 @@ struct GraphCanvasView: View {
                     // node center to the touch, losing the depth
                     // parallax offset and producing the "jumps above
                     // the finger" feel.)
-                    layout[id] = CGPoint(
+                    let dragged = CGPoint(
                         x: start.x + value.translation.width / scale,
                         y: start.y + value.translation.height / scale
                     )
+                    layout[id] = dragged
+                    store.nodePositions[id] = dragged
                 } else if let anchor = panAnchor {
                     offset = CGSize(
                         width: anchor.width + value.translation.width,
@@ -1790,6 +1796,7 @@ struct GraphCanvasView: View {
             duration: duration
         )
         layout = target
+        store.nodePositions = target
         // Drop the transition once it's done so per-frame lookups
         // short-circuit to the cheap `layout[id]` path again.
         Task { @MainActor in
@@ -1925,61 +1932,12 @@ struct GraphCanvasView: View {
         let nodeDir = URL(fileURLWithPath: path).deletingLastPathComponent()
         let atlas = store.writableAtlasURL
         Task.detached(priority: .utility) {
-            let image = await Self.loadImage(named: hero, near: nodeDir, atlas: atlas)
+            let image = await HeroImageLoader.load(named: hero, near: nodeDir, atlas: atlas)
             await MainActor.run {
                 if let image { heroImages[nodeID] = image }
                 heroLoadInFlight.remove(nodeID)
             }
         }
-    }
-
-    /// Resolve + decode an image file. Cross-platform: NSImage on Mac,
-    /// UIImage on iOS. Returns a SwiftUI Image or nil.
-    nonisolated private static func loadImage(named filename: String,
-                                              near nodeDir: URL,
-                                              atlas: URL?) async -> Image? {
-        // iOS sandboxes file access through security-scoped resources.
-        // The atlas URL came from the document picker / bookmark and
-        // must be bracketed before any file inside it is readable.
-        // macOS treats this as a no-op for non-sandboxed apps, so
-        // the same code path is safe across both platforms.
-        let didStart = atlas?.startAccessingSecurityScopedResource() ?? false
-        defer {
-            if didStart { atlas?.stopAccessingSecurityScopedResource() }
-        }
-        let fm = FileManager.default
-        var candidates: [URL] = [nodeDir.appendingPathComponent(filename)]
-        if let atlas {
-            candidates.append(atlas.appendingPathComponent(filename))
-            // Recursive basename search — Obsidian doesn't require
-            // a path if the filename is unique. `nextObject()` keeps
-            // us out of the async-unavailable `makeIterator` path.
-            let basename = (filename as NSString).lastPathComponent
-            if let enumerator = fm.enumerator(
-                at: atlas,
-                includingPropertiesForKeys: nil,
-                options: [.skipsHiddenFiles]
-            ) {
-                while let next = enumerator.nextObject() as? URL {
-                    if next.lastPathComponent == basename {
-                        candidates.append(next)
-                        break
-                    }
-                }
-            }
-        }
-        for url in candidates where fm.fileExists(atPath: url.path) {
-            #if canImport(AppKit)
-            if let ns = NSImage(contentsOf: url) {
-                return Image(nsImage: ns)
-            }
-            #elseif canImport(UIKit)
-            if let ui = UIImage(contentsOfFile: url.path) {
-                return Image(uiImage: ui)
-            }
-            #endif
-        }
-        return nil
     }
 
     // MARK: - Context menu (operates on currently selected node)

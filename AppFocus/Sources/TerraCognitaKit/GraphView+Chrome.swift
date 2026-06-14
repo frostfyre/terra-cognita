@@ -27,36 +27,72 @@ extension GraphView {
             LoadingScreen.substrate
                 .ignoresSafeArea()
 
-            GraphCanvasView(
-                store: store,
-                selectedNodeID: $selectedNodeID,
-                pendingNewNode: $pendingNewNode,
-                visibleNodeFilter: visibleFilter,
-                onLongPressEmptyWorld: { worldPoint, screenPoint in
-                    globalRadial = GlobalRadialTarget(
-                        world: worldPoint, screen: screenPoint)
-                },
-                onLongPressNode: { nodeID, screenPoint in
-                    radialTarget = RadialTarget(nodeID: nodeID, point: screenPoint)
-                },
-                frameAllPulse: $frameAllPulse,
-                layoutAlgorithm: $layoutAlgorithm,
-                noOverlap: $noOverlap,
-                layoutRequest: $layoutRequest,
-                highlightDepth: $highlightDepth,
-                connectingFromID: $connectingFromID,
-                onConnectDropEmpty: { sourceID, worldPoint in
-                    // Empty-canvas drop during Connect mode opens the
-                    // unified Add Node sheet seeded with a wikilink to
-                    // the source, spawning at the drop point. Connect
-                    // mode is cleared by the canvas before the
-                    // callback so the sheet doesn't compete for taps.
-                    composerSpawnWorld = worldPoint
-                    composerSeedID = sourceID
-                    activeSheet = .addNode
-                },
-                bridgeNodeIDs: bridgeNodeIDs
-            )
+            Group {
+                if useProRenderer {
+                    // "Pro" path — Metal renderer. Bulk geometry on
+                    // the GPU, chrome (labels / halo / hover / puff /
+                    // hero images) as SwiftUI overlays. Takes the
+                    // same binding set as the Canvas path so every
+                    // interaction — radials, Connect, layout, fit —
+                    // works identically under the bolt.
+                    GraphMetalView(
+                        store: store,
+                        selectedNodeID: $selectedNodeID,
+                        pendingNewNode: $pendingNewNode,
+                        visibleNodeFilter: visibleFilter,
+                        onLongPressEmptyWorld: { worldPoint, screenPoint in
+                            globalRadial = GlobalRadialTarget(
+                                world: worldPoint, screen: screenPoint)
+                        },
+                        onLongPressNode: { nodeID, screenPoint in
+                            radialTarget = RadialTarget(nodeID: nodeID, point: screenPoint)
+                        },
+                        frameAllPulse: $frameAllPulse,
+                        layoutAlgorithm: $layoutAlgorithm,
+                        noOverlap: $noOverlap,
+                        layoutRequest: $layoutRequest,
+                        highlightDepth: $highlightDepth,
+                        connectingFromID: $connectingFromID,
+                        onConnectDropEmpty: { sourceID, worldPoint in
+                            composerSpawnWorld = worldPoint
+                            composerSeedID = sourceID
+                            activeSheet = .addNode
+                        },
+                        bridgeNodeIDs: bridgeNodeIDs
+                    )
+                } else {
+                    GraphCanvasView(
+                        store: store,
+                        selectedNodeID: $selectedNodeID,
+                        pendingNewNode: $pendingNewNode,
+                        visibleNodeFilter: visibleFilter,
+                        onLongPressEmptyWorld: { worldPoint, screenPoint in
+                            globalRadial = GlobalRadialTarget(
+                                world: worldPoint, screen: screenPoint)
+                        },
+                        onLongPressNode: { nodeID, screenPoint in
+                            radialTarget = RadialTarget(nodeID: nodeID, point: screenPoint)
+                        },
+                        frameAllPulse: $frameAllPulse,
+                        layoutAlgorithm: $layoutAlgorithm,
+                        noOverlap: $noOverlap,
+                        layoutRequest: $layoutRequest,
+                        highlightDepth: $highlightDepth,
+                        connectingFromID: $connectingFromID,
+                        onConnectDropEmpty: { sourceID, worldPoint in
+                            // Empty-canvas drop during Connect mode opens the
+                            // unified Add Node sheet seeded with a wikilink to
+                            // the source, spawning at the drop point. Connect
+                            // mode is cleared by the canvas before the
+                            // callback so the sheet doesn't compete for taps.
+                            composerSpawnWorld = worldPoint
+                            composerSeedID = sourceID
+                            activeSheet = .addNode
+                        },
+                        bridgeNodeIDs: bridgeNodeIDs
+                    )
+                }
+            }
             // Force re-mount when the GraphStore signals a mutation
             // that affects rendering (config / node attributes / etc).
             // @Published propagation alone has been observed not to
@@ -101,6 +137,14 @@ extension GraphView {
             }
 
             topBar
+
+            // Canvas-mode FPS readout. The Metal path has its own
+            // GPU-accurate readout inside `GraphMetalView`; here we
+            // sample SwiftUI tick delivery as a "UI responsive?"
+            // proxy so the Canvas path can be compared.
+            if !useProRenderer {
+                CanvasFPSOverlay()
+            }
 
             if !duplicateClusters.isEmpty && !dupeBannerDismissed {
                 duplicateBanner
@@ -305,6 +349,7 @@ extension GraphView {
 
             audioToggleButton
             musicSuggestionButton
+            proRendererButton
 
             Button {
                 inspectorVisible.toggle()
@@ -319,6 +364,27 @@ extension GraphView {
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
         .background(.thinMaterial)
+    }
+
+    /// "Pro" renderer toggle. Flips the canvas between the SwiftUI
+    /// Canvas path (default) and the Metal "Pro" path — feature-
+    /// equivalent rendering with a hard order-of-magnitude perf win
+    /// on large atlases.
+    @ViewBuilder
+    var proRendererButton: some View {
+        Button {
+            useProRenderer.toggle()
+        } label: {
+            Image(systemName: useProRenderer
+                  ? "bolt.fill"
+                  : "bolt")
+                .foregroundStyle(useProRenderer ? Color.yellow : Color.secondary)
+                .opacity(useProRenderer ? 1.0 : 0.55)
+                .symbolRenderingMode(.hierarchical)
+        }
+        .help(useProRenderer
+              ? "Pro renderer (Metal) on. Tap to return to the Canvas renderer."
+              : "Switch to the Pro renderer (Metal) — much higher fps on large atlases")
     }
 
     /// Atlas-suggested music affordance. Appears as a subtle music

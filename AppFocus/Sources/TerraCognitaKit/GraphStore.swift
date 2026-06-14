@@ -108,6 +108,14 @@ public final class GraphStore: ObservableObject {
     /// the canvas once it's been laid out and framed.
     @Published var layoutSettleTick: Int = 0
 
+    /// Most-recent world-space node positions, mirrored from the
+    /// active layout pass so off-canvas renderers (the Metal "Pro"
+    /// path) can draw without re-running force-direction. Written by
+    /// `GraphCanvasView.rebuildLayoutPipeline` after each settle.
+    /// Plain stored property — readers re-fetch on `renderRevision`
+    /// bumps, so it doesn't need its own publish channel.
+    var nodePositions: [String: CGPoint] = [:]
+
     /// Begin (or restart) the loading-caption rotation. Idempotent
     /// per load — calling twice cancels the previous rotator.
     ///

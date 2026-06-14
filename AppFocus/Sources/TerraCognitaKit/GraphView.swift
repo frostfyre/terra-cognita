@@ -73,6 +73,16 @@ public struct GraphView: View {
     /// not just the one that follows a fresh load.
     @State var awaitingLayoutSettle: Bool = false
 
+    /// Opt-in Metal "Pro" renderer. When on, the canvas mounts
+    /// `GraphMetalView` instead of `GraphCanvasView` — bulk geometry
+    /// (discs, edges, depth shadows, atmosphere specks) goes through
+    /// GPU-instanced draws for a hard order-of-magnitude perf win on
+    /// large atlases, with the remaining chrome (labels, halos,
+    /// hero images) layered as SwiftUI overlays. Off by default;
+    /// user-togglable via the topBar bolt button. Device-wide
+    /// (`@AppStorage`), not per-atlas.
+    @AppStorage("useProRenderer") var useProRenderer: Bool = false
+
     /// Source node id while the canvas is in spatial "Connect" mode.
     /// Set by the per-node radial's Connect wedge (and by shift+drag on
     /// macOS); the next tap on a target node creates an edge via
@@ -309,29 +319,17 @@ public struct GraphView: View {
                               selectedNodeID: $selectedNodeID,
                               activeSheet: $activeSheet))
         // Folder-picker presentation differs by platform:
-        //   - macOS uses SwiftUI's `.fileImporter` (NSOpenPanel under
-        //     the hood), which handles `.folder` cleanly.
+        //   - macOS uses `NSOpenPanel` directly (see
+        //     `presentMacOpenPanel`). SwiftUI's `.fileImporter`
+        //     conflicts with the second `.fileImporter` below for
+        //     GEXF — only one of two stacked `.fileImporter`
+        //     modifiers fires on the same view, and the GEXF one
+        //     shadowed Open Atlas.
         //   - iOS / iPadOS uses a `UIDocumentPickerViewController`
         //     via `FolderPicker` — SwiftUI's `.fileImporter` for
         //     `.folder` was observed to silently no-op when presented
         //     from inside a `Menu` button on iOS.
-        #if os(macOS)
-        .fileImporter(
-            // `folderPickerMode` is captured locally at completion
-            // time before being cleared, so SwiftUI can own the
-            // `isPresented` flag without us losing the routing tag.
-            isPresented: $showingFolderPicker,
-            allowedContentTypes: [.folder],
-            allowsMultipleSelection: false
-        ) { result in
-            switch result {
-            case .success(let urls):
-                handleFolderPick(urls.first)
-            case .failure:
-                folderPickerMode = nil
-            }
-        }
-        #else
+        #if !os(macOS)
         .sheet(isPresented: $showingFolderPicker) {
             FolderPicker(isPresented: $showingFolderPicker) { url in
                 handleFolderPick(url)
@@ -610,8 +608,42 @@ public struct GraphView: View {
     /// than re-introducing the async dance.
     func presentFolderPicker(_ mode: FolderPickerMode) {
         folderPickerMode = mode
+        #if os(macOS)
+        // Use NSOpenPanel directly on macOS rather than SwiftUI's
+        // `.fileImporter`. The view chain already has a
+        // `.fileImporter` for GEXF on this same view; stacking two
+        // `.fileImporter` modifiers makes one shadow the other and
+        // produces silent failures. NSOpenPanel sidesteps that
+        // entirely.
+        presentMacOpenPanel()
+        #else
         showingFolderPicker = true
+        #endif
     }
+
+    #if os(macOS)
+    /// Open a folder via `NSOpenPanel`. Modal-but-async via `.begin`
+    /// so we don't block the runloop while the picker is up.
+    private func presentMacOpenPanel() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.canCreateDirectories = true
+        panel.message = folderPickerMode == .createNewAtlas
+            ? "Choose where to put the new atlas"
+            : "Choose an atlas folder"
+        panel.prompt = folderPickerMode == .createNewAtlas
+            ? "Create here" : "Open"
+        panel.begin { response in
+            if response == .OK {
+                handleFolderPick(panel.url)
+            } else {
+                folderPickerMode = nil
+            }
+        }
+    }
+    #endif
 
     /// Route a picked folder URL based on the currently-active
     /// `folderPickerMode`. Shared between the macOS `.fileImporter`
