@@ -188,25 +188,21 @@ struct GraphMetalView: View {
             .contextMenu { selectedNodeMenu() }
             #endif
             .onAppear {
-                seedPositionsIfNeeded()
                 seedAtmosphereSpecks()
-                rebuildGraphCaches()
-                rebuildRenderables()
-                fitCamera(to: geo.size)
             }
-            // Renderable rebuild + re-frame fires on the two store
-            // signals that mean "graph or layout changed". Other
-            // body re-evaluations (camera changes, fps ticks) reuse
-            // the cached arrays.
-            .onChange(of: store.renderRevision) { _, _ in
-                rebuildGraphCaches()
-                rebuildRenderables()
-                fitCamera(to: geo.size)
-            }
-            .onChange(of: store.layoutSettleTick) { _, _ in
-                rebuildGraphCaches()
-                rebuildRenderables()
-                fitCamera(to: geo.size)
+            // The layout pipeline runs HERE, not in GraphCanvasView —
+            // so the Metal path drives both layout and the loading-
+            // screen dismissal on its own. The splash is gated on
+            // `store.layoutSettleTick`, which was previously bumped
+            // ONLY by GraphCanvasView's pipeline; since that view
+            // isn't mounted in bolt mode, leaving the app in bolt
+            // mode meant nothing ever advanced the tick and the
+            // splash hung indefinitely. `.task(id:)` re-runs on node-
+            // count changes and on every remount (chrome remounts us
+            // on `renderRevision`), mirroring the Canvas path's
+            // `.task(id: nodes.count)`.
+            .task(id: store.graph.nodes.count) {
+                await runLayoutPipeline()
             }
             // Selection / hops drive the highlight dimming, which is
             // baked into the instance colors — rebuild WITHOUT
@@ -299,26 +295,106 @@ struct GraphMetalView: View {
         .background(.thickMaterial, in: RoundedRectangle(cornerRadius: 12))
     }
 
-    /// If the user toggles the Pro renderer on with a graph already
-    /// loaded, `store.nodePositions` may be empty — the Canvas path
-    /// only mirrors into it on layout settles, and earlier loads
-    /// missed our mirror writes. Drop a compact circular seed so the
-    /// user sees their graph immediately; force-direction will refine
-    /// on the next atlas reload or layout request.
-    private func seedPositionsIfNeeded() {
-        guard store.nodePositions.isEmpty,
-              !store.graph.nodes.isEmpty else { return }
-        let ids = Array(store.graph.nodes.keys)
-        let n = max(1, ids.count)
-        let radius = 200.0 + 8.0 * sqrt(Double(n))
-        var seed: [String: CGPoint] = [:]
-        seed.reserveCapacity(n)
-        for (i, id) in ids.enumerated() {
-            let angle = 2.0 * .pi * Double(i) / Double(n)
-            seed[id] = CGPoint(x: cos(angle) * radius,
-                               y: sin(angle) * radius)
+    /// Renderer-agnostic layout pipeline for the Metal path — the
+    /// counterpart to `GraphCanvasView.rebuildLayoutPipeline`. Picks
+    /// the cheapest correct source of positions, then ALWAYS advances
+    /// `store.layoutSettleTick` so the loading screen dismisses (the
+    /// bug this fixes: in bolt mode nothing advanced the tick, so the
+    /// splash hung).
+    ///
+    /// Order of preference:
+    ///   (a) positions already in the store (e.g. the user toggled
+    ///       over from the Canvas path mid-session) — reuse as-is.
+    ///   (b) a persisted layout covering the whole node set — restore
+    ///       it AND the camera, instantly (the common relaunch case).
+    ///   (c) otherwise circular-seed for an immediate picture, then
+    ///       swap in a background force-directed layout.
+    private func runLayoutPipeline() async {
+        layoutComputeTask?.cancel()
+        layoutComputeTask = nil
+        rebuildGraphCaches()
+
+        let nodeIDs = Array(store.graph.nodes.keys)
+        guard !nodeIDs.isEmpty else {
+            store.nodePositions = [:]
+            rebuildRenderables()
+            store.layoutSettleTick &+= 1
+            return
         }
-        store.nodePositions = seed
+        let nodeSet = Set(nodeIDs)
+        let persisted = LayoutPersistence.load()
+
+        // Restore the persisted camera on any reuse path — this @State
+        // resets to the default on every remount (chrome remounts us
+        // on `renderRevision`), so without this a mid-session config
+        // edit would snap the view back to origin / scale 1.
+        func restorePersistedCamera() {
+            guard let p = persisted else { return }
+            camera = GraphRenderer.Camera(
+                tx: CGFloat(p.offsetX),
+                ty: CGFloat(p.offsetY),
+                scale: max(0.05, min(8.0, CGFloat(p.scale))))
+        }
+
+        // (a) Already laid out this session.
+        if nodeSet.isSubset(of: Set(store.nodePositions.keys)) {
+            restorePersistedCamera()
+            rebuildRenderables()
+            store.layoutSettleTick &+= 1
+            return
+        }
+
+        // (b) Persisted layout covers the node set — fast restore.
+        if let persisted, nodeSet.isSubset(of: Set(persisted.cgPositions.keys)) {
+            var restored = persisted.cgPositions
+            noOverlap = persisted.noOverlap ?? false
+            if noOverlap { restored = LayoutEngine.enforceNoOverlap(restored) }
+            store.nodePositions = restored
+            restorePersistedCamera()
+            layoutAlgorithm = persisted.algorithm ?? .forceDirected
+            if let d = persisted.highlightDepth { highlightDepth = max(1, min(4, d)) }
+            rebuildRenderables()
+            store.layoutSettleTick &+= 1
+            return
+        }
+
+        // (c) Fresh: circular seed first so the splash dismisses onto
+        // a real picture, then the force-directed pass swapped in.
+        let edgePairs = store.graph.edges.map { ($0.sourceID, $0.targetID) }
+        store.nodePositions = makeCircularLayout(for: nodeIDs)
+        layoutAlgorithm = .circular
+        rebuildRenderables()
+
+        let solver = ForceDirectedLayout()
+        let task = Task.detached(priority: .userInitiated) {
+            solver.compute(nodeIDs: nodeIDs, edges: edgePairs)
+        }
+        layoutComputeTask = task
+        let computed = await task.value
+        // Bail if a newer pipeline cancelled us or the graph was
+        // replaced — but still dismiss the splash; the seed is shown.
+        guard !task.isCancelled,
+              store.graph.nodes.count == nodeIDs.count else {
+            store.layoutSettleTick &+= 1
+            return
+        }
+        let next = noOverlap ? LayoutEngine.enforceNoOverlap(computed) : computed
+        animatePositions(to: next)
+        layoutAlgorithm = .forceDirected
+        persistLayout(positions: next)
+        store.layoutSettleTick &+= 1
+    }
+
+    private func makeCircularLayout(for ids: [String]) -> [String: CGPoint] {
+        let count = max(ids.count, 1)
+        let radius = CGFloat(280 + min(ids.count, 600) / 2)
+        var new: [String: CGPoint] = [:]
+        new.reserveCapacity(count)
+        for (i, id) in ids.enumerated() {
+            let angle = 2 * .pi * CGFloat(i) / CGFloat(count)
+            new[id] = CGPoint(x: cos(angle) * radius, y: sin(angle) * radius)
+        }
+        return new
     }
 
     /// Deterministic background speck field — identical constants to
@@ -342,37 +418,6 @@ struct GraphMetalView: View {
     }
 
     // MARK: - Camera fitting / framing
-
-    /// Frame the camera so the bounding box of all node positions
-    /// fits inside the viewport with a small margin. Jump-cut (no
-    /// animation) — used for data loads where there's no previous
-    /// camera worth easing from.
-    private func fitCamera(to viewSize: CGSize) {
-        guard !store.nodePositions.isEmpty,
-              viewSize.width > 0, viewSize.height > 0 else { return }
-        var minX =  CGFloat.infinity, maxX = -CGFloat.infinity
-        var minY =  CGFloat.infinity, maxY = -CGFloat.infinity
-        for (_, p) in store.nodePositions {
-            if p.x < minX { minX = p.x }
-            if p.x > maxX { maxX = p.x }
-            if p.y < minY { minY = p.y }
-            if p.y > maxY { maxY = p.y }
-        }
-        let extentX = max(1.0, maxX - minX)
-        let extentY = max(1.0, maxY - minY)
-        let margin: CGFloat = 0.85
-        let scaleX = (viewSize.width  * margin) / extentX
-        let scaleY = (viewSize.height * margin) / extentY
-        let scale = max(0.05, min(8.0, min(scaleX, scaleY)))
-        let cx = (minX + maxX) / 2
-        let cy = (minY + maxY) / 2
-        cameraAnimTask?.cancel()
-        camera = GraphRenderer.Camera(
-            tx: -cx * scale,
-            ty: -cy * scale,
-            scale: scale)
-        bridge.needsDisplay()
-    }
 
     /// Ease the camera to `target` over `duration`. The camera is a
     /// plain struct read imperatively by the renderer, so SwiftUI's
