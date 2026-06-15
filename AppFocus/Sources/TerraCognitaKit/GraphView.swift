@@ -31,6 +31,7 @@ public struct GraphView: View {
         case duplicateReview
         case about
         case audioIntro
+        case paywall
 
         var id: Self { self }
     }
@@ -150,6 +151,17 @@ public struct GraphView: View {
 
     /// Browser-style back/forward stack over `selectedNodeID`.
     @StateObject var navigation = NavigationHistory()
+
+    /// Owns the Pro entitlement (StoreKit purchase + signed grant
+    /// tokens). Lives here as a `@StateObject` — same pattern as
+    /// `navigation` — so all three app targets get it for free.
+    @StateObject var entitlements = EntitlementStore()
+
+    /// The effective renderer gate: the user's `useProRenderer`
+    /// preference AND a real entitlement. ANDing with `isPro` means a
+    /// stale AppStorage `true` (e.g. left over from an expired grant)
+    /// can never unlock the Metal renderer on its own.
+    var proRendererActive: Bool { useProRenderer && entitlements.isPro }
     /// Cached "last" state so we can compute the diff in `.onChange`.
     /// Initialized lazily on first selection change.
     @State var lastNavState: NavigationHistory.State = .init()
@@ -508,6 +520,15 @@ public struct GraphView: View {
         .onChange(of: store.graph.edges.count) { _, _ in
             refreshBridgeNodesIfNeeded()
         }
+        // Paywall sheet + entitlement reactions (purchase/restore/grant
+        // landing, scene-phase grant re-check, deep-link redemption),
+        // bundled into a modifier so the body stays type-checkable —
+        // same reason `AudioWiring` exists.
+        .modifier(EntitlementWiring(
+            entitlements: entitlements,
+            useProRenderer: $useProRenderer,
+            activeSheet: $activeSheet
+        ))
     }
 
     /// Recompute `bridgeNodeIDs` when the Systems lens is active.
@@ -861,6 +882,58 @@ private struct AudioWiring: ViewModifier {
                 }
                 let connected = connectedIDs.compactMap { store.graph.nodes[$0] }
                 ChimeSonifier.fire(selected: selected, connected: connected, enabled: true)
+            }
+    }
+}
+
+// MARK: - Entitlement wiring
+
+/// Bundles the Pro paywall sheet and the entitlement-driven reactions so
+/// `GraphView.body` stays small enough to type-check (same rationale as
+/// `AudioWiring`): present the paywall, flip the renderer on when Pro
+/// lands, re-check the time-limited grant on foreground, and redeem a
+/// `terracognita://redeem?token=…` deep link.
+private struct EntitlementWiring: ViewModifier {
+    @ObservedObject var entitlements: EntitlementStore
+    @Binding var useProRenderer: Bool
+    @Binding var activeSheet: GraphView.ActiveSheet?
+    @Environment(\.scenePhase) private var scenePhase
+
+    /// Synthesized `Bool` binding for the `.paywall` case — mirrors
+    /// `GraphView.sheetBinding(for:)`, which isn't reachable from here.
+    private var paywallPresented: Binding<Bool> {
+        Binding(
+            get: { activeSheet == .paywall },
+            set: { newValue in
+                if newValue {
+                    activeSheet = .paywall
+                } else if activeSheet == .paywall {
+                    activeSheet = nil
+                }
+            }
+        )
+    }
+
+    func body(content: Content) -> some View {
+        content
+            .sheet(isPresented: paywallPresented) {
+                PaywallSheet(entitlements: entitlements, isPresented: paywallPresented)
+            }
+            .onChange(of: entitlements.isPro) { _, nowPro in
+                // The moment Pro lands (purchase / restore / redeemed
+                // grant), turn the renderer on and close the paywall.
+                if nowPro {
+                    useProRenderer = true
+                    if activeSheet == .paywall { activeSheet = nil }
+                }
+            }
+            .onChange(of: scenePhase) { _, newPhase in
+                // Foreground re-check so a time-limited grant relocks the
+                // moment it lapses, without needing a relaunch.
+                if newPhase == .active { entitlements.refreshGrant() }
+            }
+            .onOpenURL { url in
+                entitlements.redeem(url: url)
             }
     }
 }

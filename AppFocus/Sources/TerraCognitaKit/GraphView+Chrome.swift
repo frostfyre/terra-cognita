@@ -28,7 +28,7 @@ extension GraphView {
                 .ignoresSafeArea()
 
             Group {
-                if useProRenderer {
+                if proRendererActive {
                     // "Pro" path — Metal renderer. Bulk geometry on
                     // the GPU, chrome (labels / halo / hover / puff /
                     // hero images) as SwiftUI overlays. Takes the
@@ -142,7 +142,7 @@ extension GraphView {
             // GPU-accurate readout inside `GraphMetalView`; here we
             // sample SwiftUI tick delivery as a "UI responsive?"
             // proxy so the Canvas path can be compared.
-            if !useProRenderer {
+            if !proRendererActive {
                 CanvasFPSOverlay()
             }
 
@@ -366,25 +366,58 @@ extension GraphView {
         .background(.thinMaterial)
     }
 
-    /// "Pro" renderer toggle. Flips the canvas between the SwiftUI
-    /// Canvas path (default) and the Metal "Pro" path — feature-
-    /// equivalent rendering with a hard order-of-magnitude perf win
-    /// on large atlases.
+    /// "PRO" badge — the gate for the Metal renderer and the paywall
+    /// entry point. Three states:
+    ///   • not entitled        → unlit (dim). Tap opens the paywall.
+    ///   • entitled, renderer off → lit but idle (tinted). Tap turns it on.
+    ///   • entitled, renderer on  → lit/filled (yellow). Tap turns it off.
+    /// "Lit vs unlit" keys off `entitlements.isPro`; the filled/idle
+    /// distinction keys off `proRendererActive`, so a stale
+    /// `useProRenderer` still reads as locked when the entitlement is gone.
     @ViewBuilder
     var proRendererButton: some View {
         Button {
-            useProRenderer.toggle()
+            if entitlements.isPro {
+                useProRenderer.toggle()
+            } else {
+                activeSheet = .paywall
+            }
         } label: {
-            Image(systemName: useProRenderer
-                  ? "bolt.fill"
-                  : "bolt")
-                .foregroundStyle(useProRenderer ? Color.yellow : Color.secondary)
-                .opacity(useProRenderer ? 1.0 : 0.55)
-                .symbolRenderingMode(.hierarchical)
+            Text("PRO")
+                .font(.caption2.weight(.bold))
+                .tracking(0.5)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .foregroundStyle(proBadgeForeground)
+                .background(
+                    RoundedRectangle(cornerRadius: 4, style: .continuous)
+                        .fill(proRendererActive ? Color.yellow : Color.clear)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 4, style: .continuous)
+                        .strokeBorder(entitlements.isPro ? Color.yellow : Color.secondary,
+                                      lineWidth: 1)
+                )
+                .opacity(entitlements.isPro ? 1.0 : 0.55)
         }
-        .help(useProRenderer
-              ? "Pro renderer (Metal) on. Tap to return to the Canvas renderer."
-              : "Switch to the Pro renderer (Metal) — much higher fps on large atlases")
+        .help(proButtonHelp)
+    }
+
+    /// Foreground for the PRO badge: dark text on the yellow fill when
+    /// the renderer is active, yellow text when owned-but-idle, muted
+    /// when locked.
+    private var proBadgeForeground: Color {
+        if proRendererActive { return .black }
+        return entitlements.isPro ? .yellow : .secondary
+    }
+
+    private var proButtonHelp: String {
+        if !entitlements.isPro {
+            return "Unlock the Pro renderer (Metal) — much higher fps on large atlases"
+        }
+        return proRendererActive
+            ? "Pro renderer (Metal) on. Tap to return to the Canvas renderer."
+            : "Pro renderer (Metal) off. Tap to switch to it."
     }
 
     /// Atlas-suggested music affordance. Appears as a subtle music

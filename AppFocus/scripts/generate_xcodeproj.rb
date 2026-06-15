@@ -145,6 +145,12 @@ mac_target.build_configurations.each do |config|
   # for iOS distribution.
   s['CODE_SIGN_IDENTITY'] = ENV['MAC_SIGN'] == '1' ? 'Apple Development' : '-'
   s['ASSETCATALOG_COMPILER_APPICON_NAME'] = 'AppIcon'
+  # Partial Info.plist: GENERATE_INFOPLIST_FILE stays YES (set in
+  # shared_build_settings), so Xcode merges the generated keys into this
+  # base file. It carries only the custom URL scheme
+  # (terracognita://redeem?token=…) used to redeem Pro grant tokens,
+  # which the INFOPLIST_KEY_* aliases can't express.
+  s['INFOPLIST_FILE'] = 'Apps/TerraCognita-macOS/Info.plist'
 end
 
 # --- iOS app target (universal: iPhone + iPad) ---
@@ -198,6 +204,14 @@ project.files.each do |file|
   end
 end
 
+# --- StoreKit local-testing configuration ---
+# A loose file reference so Products.storekit shows in Xcode's navigator.
+# The scheme's StoreKitConfigurationFileReference (added below) is what
+# actually drives local StoreKit testing; it's path-based, not tied to
+# this ref's UUID.
+storekit_ref = project.main_group.new_reference('Products.storekit')
+storekit_ref.last_known_file_type = 'text'
+
 # --- Deterministic object UUIDs ---
 # The xcodeproj gem assigns a random 24-char hex UUID to every object
 # on each run, so regeneration rewrote all ~200 object ids (and the
@@ -216,6 +230,14 @@ project.save
   scheme = Xcodeproj::XCScheme.new
   scheme.add_build_target(target)
   scheme.set_launch_target(target)
+  # Attach the StoreKit configuration so purchases work against the local
+  # Products.storekit (no sandbox account needed) when running from Xcode.
+  # xcodeproj 1.27 has no helper for this node, so write it directly. The
+  # identifier is the path relative to the .xcodeproj container.
+  scheme.launch_action.xml_element.add_element(
+    'StoreKitConfigurationFileReference',
+    'identifier' => '../Products.storekit'
+  )
   scheme.save_as(PROJECT_PATH, target.name, true)
 end
 

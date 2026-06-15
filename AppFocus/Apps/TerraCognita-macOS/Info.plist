@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<!--
+  Partial Info.plist for the macOS target. GENERATE_INFOPLIST_FILE stays
+  YES (see scripts/generate_xcodeproj.rb): Xcode uses this file as the
+  base and merges the generated keys (CFBundle*, the INFOPLIST_KEY_*
+  usage descriptions, category, encryption flag) into it at build time.
+  We only hand-author what generation can't express — the custom URL
+  scheme used to redeem Pro grant tokens (terracognita://redeem?token=…).
+-->
+<dict>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>CFBundleURLName</key>
+			<string>com.frostfyre.terracognitaatlas.redeem</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>terracognita</string>
+			</array>
+		</dict>
+	</array>
+</dict>
+</plist>

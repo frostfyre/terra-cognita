@@ -1,0 +1,40 @@
+{
+  "identifier" : "045738F0-88ED-4D49-A7BC-A8A179E6536C",
+  "nonRenewingSubscriptions" : [
+
+  ],
+  "products" : [
+    {
+      "displayPrice" : "4.99",
+      "familyShareable" : false,
+      "internalID" : "F93F645A-A430-4DF5-9D56-CC99C156BDEE",
+      "localizations" : [
+        {
+          "description" : "Unlock the Metal renderer for an order-of-magnitude fps gain on large atlases.",
+          "displayName" : "Terra Cognita Pro",
+          "locale" : "en_US"
+        }
+      ],
+      "productID" : "com.frostfyre.terracognitaatlas.pro",
+      "referenceName" : "Terra Cognita Pro",
+      "type" : "NonConsumable"
+    }
+  ],
+  "settings" : {
+    "_applicationInternalID" : "",
+    "_developerTeamID" : "TUMFPT4C67",
+    "_failTransactionsEnabled" : false,
+    "_locale" : "en_US",
+    "_storefront" : "USA",
+    "_storeKitErrors" : [
+
+    ]
+  },
+  "subscriptionGroups" : [
+
+  ],
+  "version" : {
+    "major" : 3,
+    "minor" : 0
+  }
+}
