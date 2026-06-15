@@ -72,6 +72,12 @@ struct GraphMetalView: View {
     @State private var camera = GraphRenderer.Camera()
     @State private var lastPanTranslation: CGSize = .zero
     @State private var lastMagnification: CGFloat = 1
+    /// Camera zoom clamps. The floor is intentionally tiny so the
+    /// Fit action (and manual pinch) can frame very large graphs —
+    /// 15k+ nodes spread wide by force-direction need to zoom out
+    /// well past the old 0.05 floor, which couldn't fit them.
+    private let minCameraScale: CGFloat = 0.002
+    private let maxCameraScale: CGFloat = 8.0
     /// Currently-hovered node id (Mac mouse, iPad pointer).
     @State private var hoveredNodeID: String?
     /// While the user is dragging a node, its id; `nodeDragStartWorld`
@@ -333,7 +339,7 @@ struct GraphMetalView: View {
             camera = GraphRenderer.Camera(
                 tx: CGFloat(p.offsetX),
                 ty: CGFloat(p.offsetY),
-                scale: max(0.05, min(8.0, CGFloat(p.scale))))
+                scale: max(minCameraScale, min(maxCameraScale, CGFloat(p.scale))))
         }
 
         // (a) Already laid out this session.
@@ -527,7 +533,7 @@ struct GraphMetalView: View {
 
         let candidate = min(availableWidth / widthWorld,
                             availableHeight / heightWorld)
-        let targetScale = max(0.05, min(candidate, 2.2))
+        let targetScale = max(minCameraScale, min(candidate, 2.2))
 
         animateCamera(to: GraphRenderer.Camera(
             tx: -centerWorld.x * targetScale,
@@ -745,7 +751,7 @@ struct GraphMetalView: View {
                         let factor = value / lastMagnification
                         lastMagnification = value
                         cameraAnimTask?.cancel()
-                        camera.scale = max(0.05, min(8.0, camera.scale * factor))
+                        camera.scale = max(minCameraScale, min(maxCameraScale, camera.scale * factor))
                         bridge.needsDisplay()
                     }
                     .onEnded { _ in
