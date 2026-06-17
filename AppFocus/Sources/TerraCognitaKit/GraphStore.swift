@@ -56,10 +56,10 @@ public final class GraphStore: ObservableObject {
     private var deferredFinishTask: Task<Void, Never>?
 
     /// Floor for how long the loading surface stays up before fading.
-    /// 3 s reads as deliberate without dragging — enough for the
-    /// cold-start splash artwork / glyph + caption to register, then
-    /// the existing 2 s ease-out begins.
-    private static let minimumLoadingDuration: TimeInterval = 3.0
+    /// 5 s gives the cold-start splash artwork / glyph + caption room
+    /// to register (and to be captured for App Store screenshots),
+    /// then the existing 2 s ease-out begins.
+    private static let minimumLoadingDuration: TimeInterval = 5.0
 
     /// Flipped to true the first time the loading surface dismisses.
     /// After that, `startLoadingPresentation()` becomes a no-op so

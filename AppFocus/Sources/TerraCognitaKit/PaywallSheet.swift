@@ -69,6 +69,12 @@ struct PaywallSheet: View {
         }
     }
 
+    /// True once StoreKit has handed us the product. False means the
+    /// App Store didn't return it (offline, or the product isn't live
+    /// yet) — in which case we disable the buy button rather than let it
+    /// silently no-op.
+    private var productAvailable: Bool { entitlements.product != nil }
+
     private var unlockSection: some View {
         Section {
             Button {
@@ -78,6 +84,9 @@ struct PaywallSheet: View {
                     Spacer()
                     if entitlements.purchaseInFlight {
                         ProgressView()
+                    } else if !productAvailable {
+                        Text("Currently unavailable")
+                            .fontWeight(.semibold)
                     } else {
                         Text("Unlock Pro — \(priceLabel)")
                             .fontWeight(.semibold)
@@ -86,7 +95,7 @@ struct PaywallSheet: View {
                 }
             }
             .buttonStyle(.borderedProminent)
-            .disabled(entitlements.purchaseInFlight || entitlements.isPro)
+            .disabled(entitlements.purchaseInFlight || entitlements.isPro || !productAvailable)
             .listRowBackground(Color.clear)
 
             Button("Restore Purchases") {
@@ -94,7 +103,9 @@ struct PaywallSheet: View {
             }
             .disabled(entitlements.purchaseInFlight)
         } footer: {
-            Text("A one-time purchase. Restore re-applies a previous purchase on a new device.")
+            Text(productAvailable
+                 ? "A one-time purchase. Restore re-applies a previous purchase on a new device."
+                 : "The App Store is unavailable right now, so Pro can't be purchased here. You can still redeem a code below, or try again later.")
         }
     }
 
