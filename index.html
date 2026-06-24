@@ -4,6 +4,21 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Terra Cognita — Know Your Territory</title>
+  <meta name="description" content="Turn your markdown notes into an explorable graph of the people, events, and ideas inside them. Local-first, on-device — iPhone, iPad &amp; Mac. Now in open beta." />
+
+  <!-- Open Graph / social preview -->
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://terra-cognita.app/" />
+  <meta property="og:title" content="Terra Cognita — Know Your Territory" />
+  <meta property="og:description" content="Turn your markdown notes into an explorable graph of the people, events, and ideas inside them. Local-first, on-device. Now in open beta." />
+  <meta property="og:image" content="https://terra-cognita.app/og-card.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Terra Cognita — Know Your Territory" />
+  <meta name="twitter:description" content="Turn your markdown notes into an explorable graph of the people, events, and ideas inside them. Now in open beta." />
+  <meta name="twitter:image" content="https://terra-cognita.app/og-card.png" />
+
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;1,300;1,400&display=swap" rel="stylesheet" />
@@ -315,6 +330,46 @@
       color: rgba(232,224,208,0.35);
     }
 
+    /* ── Open-beta CTA button ── */
+    .beta-cta {
+      margin-top: 3rem;
+      width: 100%;
+      max-width: 480px;
+      text-align: center;
+      animation: fadeUp 1.1s 1s ease both;
+    }
+
+    .testflight-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.6rem;
+      padding: 1rem 2.4rem;
+      background: linear-gradient(135deg, var(--gold-light), var(--gold));
+      color: var(--navy);
+      font-family: 'Cinzel', serif;
+      font-size: 0.8rem;
+      font-weight: 600;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      text-decoration: none;
+      border-radius: 6px;
+      box-shadow: 0 8px 30px rgba(201,168,76,0.25);
+      transition: transform 0.18s ease, box-shadow 0.25s ease, background 0.25s ease;
+    }
+
+    .testflight-btn:hover {
+      background: linear-gradient(135deg, var(--gold-pale), var(--gold-light));
+      box-shadow: 0 12px 42px rgba(201,168,76,0.42);
+      transform: translateY(-2px);
+    }
+
+    .testflight-btn:active {
+      transform: translateY(0) scale(0.99);
+    }
+
+    .testflight-btn svg { flex-shrink: 0; }
+
     .field-error {
       display: block;
       text-align: center;
@@ -325,9 +380,6 @@
       min-height: 1.2em;
     }
 
-    /* Formspree hides [data-fs-success] until submission succeeds */
-    [data-fs-success] { display: none; }
-    [data-fs-success].visible { display: block; }
 
     /* ── Feature nodes ── */
     .features {
@@ -577,24 +629,17 @@
         </div>
         <div class="badge">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
-          Closed Beta
+          Open Beta
         </div>
       </div>
 
-      <div class="signup-section">
-        <div class="signup-label">Request Beta Access</div>
-        <form id="beta-form">
-          <div class="signup-row" id="form-row">
-            <input type="email" id="email-input" name="email" placeholder="your@email.com" autocomplete="email" data-fs-field required />
-            <button type="submit" data-fs-submit-btn>Request Access</button>
-          </div>
-          <span data-fs-error="email" class="field-error"></span>
-          <span data-fs-error class="field-error"></span>
-        </form>
-        <div class="success-msg" data-fs-success>
-          ✦ &nbsp; You're on the map. We'll be in touch when your access is ready.
-        </div>
-        <p class="signup-note">TestFlight invites sent in waves. No noise, no newsletter.</p>
+      <div class="beta-cta">
+        <div class="signup-label">Now in Open Beta</div>
+        <a class="testflight-btn" href="https://testflight.apple.com/join/gCd29zDm" target="_blank" rel="noopener">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/></svg>
+          Join the Open Beta
+        </a>
+        <p class="signup-note">Free, via Apple TestFlight · iPhone, iPad &amp; Mac</p>
       </div>
     </main>
 
@@ -773,11 +818,6 @@
     init();
     tick();
     window.addEventListener('resize', init);
-
-    /* ── Formspree Ajax ── */
-    window.formspree = window.formspree || function () { (formspree.q = formspree.q || []).push(arguments); };
-    formspree('initForm', { formElement: '#beta-form', formId: 'xgoqbanq' });
   </script>
-  <script src="https://unpkg.com/@formspree/ajax@1" defer></script>
 </body>
 </html>
