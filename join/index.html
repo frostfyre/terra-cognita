@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <!-- Click-tracking redirect: every hit to /join is one button click in
+       Cloudflare analytics (top paths), then we bounce to TestFlight.
+       noindex so crawlers don't index the hop. -->
+  <meta name="robots" content="noindex, nofollow" />
+  <title>Joining the Terra Cognita beta…</title>
+  <meta http-equiv="refresh" content="0; url=https://testflight.apple.com/join/gCd29zDm" />
+  <link rel="canonical" href="https://testflight.apple.com/join/gCd29zDm" />
+  <style>
+    html, body { height: 100%; margin: 0; }
+    body {
+      display: flex; align-items: center; justify-content: center;
+      background: #0a1628; color: #e8c97a;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      text-align: center; padding: 1.5rem; letter-spacing: 0.02em;
+    }
+    a { color: #e8c97a; }
+  </style>
+</head>
+<body>
+  <p>Opening TestFlight…<br />
+    <a href="https://testflight.apple.com/join/gCd29zDm">Tap here if you're not redirected automatically.</a>
+  </p>
+  <script>location.replace("https://testflight.apple.com/join/gCd29zDm");</script>
+</body>
+</html>
