@@ -1374,9 +1374,14 @@ struct GraphCanvasView: View {
 
     // MARK: - Node sizing by degree
 
-    private let minNodeRadius: CGFloat = 10
-    private let degreeRadiusFactor: CGFloat = 2.4   // multiplier on sqrt(degree)
-    private let maxNodeRadius: CGFloat = 28
+    // Wider dynamic range so densely-connected hubs visibly tower over
+    // sparse leaves (the old 10–28 band read as near-uniform once the
+    // sqrt curve compressed it). Floor lowered so leaves recede, ceiling
+    // + factor raised so hubs dominate and graph structure stays legible
+    // even zoomed out. Kept in lockstep with `GraphMetalView.nodeWorldRadius`.
+    private let minNodeRadius: CGFloat = 5
+    private let degreeRadiusFactor: CGFloat = 5.0   // multiplier on sqrt(degree)
+    private let maxNodeRadius: CGFloat = 64
 
     private func radiusFor(nodeID: String) -> CGFloat {
         let degree = adjacency[nodeID]?.count ?? 0

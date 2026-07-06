@@ -1005,8 +1005,11 @@ struct GraphMetalView: View {
     /// as the Canvas path, without an O(E) walk per node.
     private func nodeWorldRadius(_ id: String) -> CGFloat {
         let degree = adjacency[id]?.count ?? 0
-        let base = 10.0 + 2.4 * sqrt(Double(degree))
-        return CGFloat(min(base, 28.0))
+        // Wider 5–64 band (was 10–28) with a steeper factor so hubs
+        // visibly dominate leaves. Kept in lockstep with the Canvas
+        // path's minNodeRadius / degreeRadiusFactor / maxNodeRadius.
+        let base = 5.0 + 5.0 * sqrt(Double(degree))
+        return CGFloat(min(base, 64.0))
     }
 
     /// N-hop BFS neighborhood of the selection. Empty set when
