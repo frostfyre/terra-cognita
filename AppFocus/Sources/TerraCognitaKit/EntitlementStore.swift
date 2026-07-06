@@ -46,8 +46,14 @@ public final class EntitlementStore: ObservableObject {
     @Published public private(set) var product: Product?
     /// A purchase round-trip is in flight (disables the buy button).
     @Published public private(set) var purchaseInFlight = false
+    /// An `AppStore.sync()` restore is in flight (spins the restore row).
+    @Published public private(set) var restoreInFlight = false
     /// User-facing error from the last purchase / restore / redeem.
     @Published public var lastError: String?
+    /// Non-error outcome of the last restore ("restored" / "nothing to
+    /// restore"). Restore must never finish silently — App Review and
+    /// users both need to see that the tap did something.
+    @Published public var restoreStatus: String?
 
     /// The gate. OR of a verified StoreKit entitlement and a valid grant.
     /// Views observing the store re-render when either source changes.
@@ -119,11 +125,21 @@ public final class EntitlementStore: ObservableObject {
 
     /// Required by App Review: re-sync with the App Store so a prior
     /// non-consumable purchase re-grants on a fresh install / new device.
+    /// Always ends in visible feedback — success, "nothing found", or an
+    /// error — never a silent no-op.
     public func restore() async {
         lastError = nil
+        restoreStatus = nil
+        restoreInFlight = true
+        defer { restoreInFlight = false }
         do {
             try await AppStore.sync()
             await refreshEntitlements()
+            restoreStatus = storeKitEntitled
+                ? "Pro restored. You're all set."
+                : "No previous purchase was found for this Apple Account."
+        } catch StoreKitError.userCancelled {
+            // User dismissed the App Store sign-in sheet — not an error.
         } catch {
             lastError = "Couldn't restore purchases. \(error.localizedDescription)"
         }

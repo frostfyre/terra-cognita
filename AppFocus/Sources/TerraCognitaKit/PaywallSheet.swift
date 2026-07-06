@@ -41,6 +41,11 @@ struct PaywallSheet: View {
                     Button("Done") { isPresented = false }
                 }
             }
+            .onAppear {
+                // Don't resurface a stale outcome from a previous visit.
+                entitlements.restoreStatus = nil
+                entitlements.lastError = nil
+            }
         }
         #if os(macOS)
         .frame(minWidth: 440, idealWidth: 500, minHeight: 480, idealHeight: 560)
@@ -84,6 +89,9 @@ struct PaywallSheet: View {
                     Spacer()
                     if entitlements.purchaseInFlight {
                         ProgressView()
+                    } else if entitlements.isPro {
+                        Label("Pro Unlocked", systemImage: "checkmark.circle.fill")
+                            .fontWeight(.semibold)
                     } else if !productAvailable {
                         Text("Currently unavailable")
                             .fontWeight(.semibold)
@@ -95,18 +103,42 @@ struct PaywallSheet: View {
                 }
             }
             .buttonStyle(.borderedProminent)
+            .tint(entitlements.isPro ? .green : .accentColor)
             .disabled(entitlements.purchaseInFlight || entitlements.isPro || !productAvailable)
             .listRowBackground(Color.clear)
 
-            Button("Restore Purchases") {
+            Button {
                 Task { await entitlements.restore() }
+            } label: {
+                HStack {
+                    Label("Restore Purchases", systemImage: "arrow.clockwise")
+                    Spacer()
+                    if entitlements.restoreInFlight {
+                        ProgressView()
+                    }
+                }
             }
-            .disabled(entitlements.purchaseInFlight)
+            .disabled(entitlements.purchaseInFlight || entitlements.restoreInFlight)
+
+            if let status = entitlements.restoreStatus {
+                Label(status, systemImage: entitlements.isPro
+                      ? "checkmark.circle.fill" : "info.circle")
+                    .font(.callout)
+                    .foregroundStyle(entitlements.isPro ? .green : .secondary)
+            }
         } footer: {
-            Text(productAvailable
-                 ? "A one-time purchase. Restore re-applies a previous purchase on a new device."
-                 : "The App Store is unavailable right now, so Pro can't be purchased here. You can still redeem a code below, or try again later.")
+            Text(footerText)
         }
+    }
+
+    private var footerText: String {
+        if entitlements.isPro {
+            return "Pro is active on this device. Tap the PRO badge in the toolbar to switch renderers."
+        }
+        if !productAvailable {
+            return "The App Store is unavailable right now, so Pro can't be purchased here. You can still restore a previous purchase, redeem a code below, or try again later."
+        }
+        return "A one-time purchase. Already bought Pro on another device or reinstalled the app? Tap Restore Purchases."
     }
 
     private var redeemSection: some View {
