@@ -296,8 +296,6 @@ See [`PLAN.md`](PLAN.md) for the phased roadmap. Headline gaps:
 ## Build & Run
 
 ```bash
-cd AppFocus
-
 # Fastest dev loop — minimal macOS binary via SwiftPM
 swift run TerraCognita
 
@@ -377,7 +375,7 @@ Lens, Add, Layout, Fit, Privacy, and the per-node actions all live on radial whe
 ## Project Structure
 
 ```
-AppFocus/
+terra-cognita/
 ├── Package.swift                — SwiftPM manifest (TerraCognitaKit library + TerraCognita exec)
 ├── TerraCognita.xcodeproj       — Generated; iOS + macOS app targets
 ├── Apps/
