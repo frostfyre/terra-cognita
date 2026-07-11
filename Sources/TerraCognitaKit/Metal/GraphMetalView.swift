@@ -184,7 +184,9 @@ struct GraphMetalView: View {
                 if bridge.rendererFailed {
                     rendererFailureOverlay
                 }
-                FPSOverlay(bridge: bridge)
+                if FPSReadout.enabled {
+                    FPSOverlay(bridge: bridge)
+                }
             }
             .overlay(alignment: .topLeading) {
                 connectRubberBand(projection: projection)

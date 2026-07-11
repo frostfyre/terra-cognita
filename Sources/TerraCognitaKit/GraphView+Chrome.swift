@@ -142,7 +142,7 @@ extension GraphView {
             // GPU-accurate readout inside `GraphMetalView`; here we
             // sample SwiftUI tick delivery as a "UI responsive?"
             // proxy so the Canvas path can be compared.
-            if !proRendererActive {
+            if !proRendererActive && FPSReadout.enabled {
                 CanvasFPSOverlay()
             }
 

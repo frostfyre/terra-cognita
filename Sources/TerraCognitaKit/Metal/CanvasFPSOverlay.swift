@@ -1,5 +1,20 @@
 import SwiftUI
 
+/// Gate for both renderers' fps readouts. They are development
+/// instruments, not product UI: always on in DEBUG builds (the
+/// `swift run` dev loop), hidden in release unless explicitly
+/// enabled with `defaults write <bundle-id> showFPSReadout -bool YES`
+/// — so a TestFlight perf session can still turn them on.
+enum FPSReadout {
+    static var enabled: Bool {
+        #if DEBUG
+        return true
+        #else
+        return UserDefaults.standard.bool(forKey: "showFPSReadout")
+        #endif
+    }
+}
+
 /// FPS readout for the SwiftUI Canvas path. Mirrors the Metal "Pro"
 /// renderer's `FPSOverlay` so the two renderers can be compared
 /// without flipping mental models.
