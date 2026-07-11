@@ -11,10 +11,13 @@
 #     ~/.appstoreconnect/private_keys/AuthKey_<KEY_ID>.p8
 #   - ASC_KEY_ID and ASC_ISSUER_ID baked in below (these are public
 #     identifiers, not secrets — the .p8 file is the secret).
-#   - For macOS uploads: Mac App Distribution + Mac Installer
-#     Distribution certificates installed in the keychain. Xcode will
-#     fetch these via `-allowProvisioningUpdates` if the Apple ID for
-#     team TUMFPT4C67 is signed in to Xcode → Settings → Accounts.
+#   - For macOS uploads: an Apple Distribution + Mac Installer
+#     Distribution ("3rd Party Mac Developer Installer") identity in
+#     the keychain — the installer cert signs the .pkg. Created
+#     2026-07-09 via the ASC API (expires 2027-07-10); recreate the
+#     same way if it lapses. The archive/export steps authenticate to
+#     ASC with the same API key as the upload step, so no Apple ID
+#     needs to be signed in to Xcode.
 #
 # What it does:
 #   1. Re-runs scripts/generate_xcodeproj.rb so CURRENT_PROJECT_VERSION
@@ -32,6 +35,7 @@ set -euo pipefail
 
 ASC_KEY_ID="JVHQ9YC2VR"
 ASC_ISSUER_ID="69a6de8d-152f-47e3-e053-5b8c7c11a4d1"
+ASC_KEY_PATH="$HOME/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8"
 
 PLATFORM="${1:-}"
 case "$PLATFORM" in
@@ -103,6 +107,9 @@ xcodebuild archive \
     -configuration Release \
     -archivePath "$ARCHIVE_PATH" \
     -allowProvisioningUpdates \
+    -authenticationKeyPath "$ASC_KEY_PATH" \
+    -authenticationKeyID "$ASC_KEY_ID" \
+    -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
     CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
     | xcbeautify --quiet 2>/dev/null || \
 xcodebuild archive \
@@ -112,6 +119,9 @@ xcodebuild archive \
     -configuration Release \
     -archivePath "$ARCHIVE_PATH" \
     -allowProvisioningUpdates \
+    -authenticationKeyPath "$ASC_KEY_PATH" \
+    -authenticationKeyID "$ASC_KEY_ID" \
+    -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
     CURRENT_PROJECT_VERSION="$BUILD_NUMBER"
 
 # 3) Export.
@@ -120,7 +130,10 @@ xcodebuild -exportArchive \
     -archivePath "$ARCHIVE_PATH" \
     -exportPath "$EXPORT_DIR" \
     -exportOptionsPlist "$EXPORT_OPTS" \
-    -allowProvisioningUpdates
+    -allowProvisioningUpdates \
+    -authenticationKeyPath "$ASC_KEY_PATH" \
+    -authenticationKeyID "$ASC_KEY_ID" \
+    -authenticationKeyIssuerID "$ASC_ISSUER_ID"
 
 # 4) Upload.
 echo "==> [4/4] Uploading to App Store Connect…"
