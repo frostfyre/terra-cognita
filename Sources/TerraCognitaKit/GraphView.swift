@@ -890,14 +890,12 @@ private struct AudioWiring: ViewModifier {
 
 /// Bundles the Pro paywall sheet and the entitlement-driven reactions so
 /// `GraphView.body` stays small enough to type-check (same rationale as
-/// `AudioWiring`): present the paywall, flip the renderer on when Pro
-/// lands, re-check the time-limited grant on foreground, and redeem a
-/// `terracognita://redeem?token=…` deep link.
+/// `AudioWiring`): present the paywall and flip the renderer on when Pro
+/// lands.
 private struct EntitlementWiring: ViewModifier {
     @ObservedObject var entitlements: EntitlementStore
     @Binding var useProRenderer: Bool
     @Binding var activeSheet: GraphView.ActiveSheet?
-    @Environment(\.scenePhase) private var scenePhase
 
     /// Synthesized `Bool` binding for the `.paywall` case — mirrors
     /// `GraphView.sheetBinding(for:)`, which isn't reachable from here.
@@ -920,20 +918,12 @@ private struct EntitlementWiring: ViewModifier {
                 PaywallSheet(entitlements: entitlements, isPresented: paywallPresented)
             }
             .onChange(of: entitlements.isPro) { _, nowPro in
-                // The moment Pro lands (purchase / restore / redeemed
-                // grant), turn the renderer on and close the paywall.
+                // The moment Pro lands (purchase / restore), turn the
+                // renderer on and close the paywall.
                 if nowPro {
                     useProRenderer = true
                     if activeSheet == .paywall { activeSheet = nil }
                 }
-            }
-            .onChange(of: scenePhase) { _, newPhase in
-                // Foreground re-check so a time-limited grant relocks the
-                // moment it lapses, without needing a relaunch.
-                if newPhase == .active { entitlements.refreshGrant() }
-            }
-            .onOpenURL { url in
-                entitlements.redeem(url: url)
             }
     }
 }

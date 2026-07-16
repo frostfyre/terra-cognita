@@ -13,10 +13,6 @@ struct PaywallSheet: View {
     @ObservedObject var entitlements: EntitlementStore
     @Binding var isPresented: Bool
 
-    /// Manual grant-token entry. Complements the
-    /// `terracognita://redeem?token=…` deep link for press / testers.
-    @State private var codeField = ""
-
     private var priceLabel: String {
         entitlements.product?.displayPrice ?? "$4.99"
     }
@@ -26,7 +22,6 @@ struct PaywallSheet: View {
             Form {
                 identityHeader
                 unlockSection
-                redeemSection
                 if let error = entitlements.lastError {
                     Section { Text(error).font(.callout).foregroundStyle(.red) }
                 }
@@ -136,25 +131,8 @@ struct PaywallSheet: View {
             return "Pro is active on this device. Tap the PRO badge in the toolbar to switch renderers."
         }
         if !productAvailable {
-            return "The App Store is unavailable right now, so Pro can't be purchased here. You can still restore a previous purchase, redeem a code below, or try again later."
+            return "The App Store is unavailable right now, so Pro can't be purchased here. You can still restore a previous purchase, or try again later."
         }
         return "A one-time purchase. Already bought Pro on another device or reinstalled the app? Tap Restore Purchases."
-    }
-
-    private var redeemSection: some View {
-        Section {
-            DisclosureGroup("Have a code?") {
-                TextField("Enter a Pro code", text: $codeField)
-                    .textFieldStyle(.roundedBorder)
-                    #if os(iOS)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    #endif
-                Button("Redeem") {
-                    if entitlements.redeem(codeField) { codeField = "" }
-                }
-                .disabled(codeField.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-            }
-        }
     }
 }

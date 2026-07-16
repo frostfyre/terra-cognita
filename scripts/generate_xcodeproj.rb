@@ -147,9 +147,8 @@ mac_target.build_configurations.each do |config|
   s['ASSETCATALOG_COMPILER_APPICON_NAME'] = 'AppIcon'
   # Partial Info.plist: GENERATE_INFOPLIST_FILE stays YES (set in
   # shared_build_settings), so Xcode merges the generated keys into this
-  # base file. It carries only the custom URL scheme
-  # (terracognita://redeem?token=…) used to redeem Pro grant tokens,
-  # which the INFOPLIST_KEY_* aliases can't express.
+  # base file, which carries any hand-authored keys the INFOPLIST_KEY_*
+  # aliases can't express (currently none).
   s['INFOPLIST_FILE'] = 'Apps/TerraCognita-macOS/Info.plist'
 end
 
