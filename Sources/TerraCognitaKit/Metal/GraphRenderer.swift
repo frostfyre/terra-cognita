@@ -154,14 +154,6 @@ final class GraphRenderer: NSObject, MTKViewDelegate {
     /// Stored separately so `update(camera:)` doesn't need an MTKView.
     private var viewportSize: SIMD2<Float> = .zero
 
-    /// Called from `draw(in:)` at most ~2× per second with a rolling
-    /// fps measurement. Optional so the FPS overlay can be cheap to
-    /// disable. Always invoked on the main thread (MTKView's draw
-    /// pipeline runs on the main thread by default).
-    var fpsCallback: ((Double) -> Void)?
-    private var frameCount: Int = 0
-    private var lastFPSUpdate: CFTimeInterval = CACurrentMediaTime()
-
     // MARK: - Init
 
     init?(mtkView: MTKView) {
@@ -186,9 +178,7 @@ final class GraphRenderer: NSObject, MTKViewDelegate {
         mtkView.isOpaque = false
         mtkView.backgroundColor = .clear
         #endif
-        // Continuous render while the "Pro" mode is still in beta —
-        // makes the FPS overlay meaningful (it would otherwise read
-        // 0 when the graph is static, since the renderer would idle).
+        // Continuous render while the "Pro" mode is still in beta.
         // Revisit once we've confirmed the perf envelope and we want
         // the event-driven energy win back.
         mtkView.isPaused = false
@@ -410,19 +400,6 @@ final class GraphRenderer: NSObject, MTKViewDelegate {
     }
 
     func draw(in view: MTKView) {
-        // Rolling FPS — sampled at ~2× per second so the overlay
-        // doesn't jitter on every frame. Counted before the GPU work
-        // so dropped/skipped frames still bring the average down.
-        let now = CACurrentMediaTime()
-        frameCount += 1
-        let elapsed = now - lastFPSUpdate
-        if elapsed >= 0.5 {
-            let fps = Double(frameCount) / elapsed
-            fpsCallback?(fps)
-            frameCount = 0
-            lastFPSUpdate = now
-        }
-
         // Bail before acquiring a drawable when the view hasn't been
         // sized yet (cold-start, hidden tab, off-screen window). If
         // we proceeded, `currentDrawable` would still hand back a

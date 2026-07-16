@@ -184,7 +184,6 @@ struct GraphMetalView: View {
                 if bridge.rendererFailed {
                     rendererFailureOverlay
                 }
-                FPSOverlay(bridge: bridge)
             }
             .overlay(alignment: .topLeading) {
                 connectRubberBand(projection: projection)
@@ -1237,41 +1236,6 @@ private struct SplitMix64Speck {
     }
 }
 
-// MARK: - FPS overlay
-
-/// Isolated observer of `bridge.fps` so the readout updates twice
-/// per second WITHOUT invalidating `GraphMetalView.body` — the
-/// parent body owns the 15K-node renderable rebuild and we don't
-/// want an fps tick to trigger a full extraction + GPU upload.
-struct FPSOverlay: View {
-    @ObservedObject var bridge: MetalBridge
-
-    var body: some View {
-        VStack {
-            Spacer()
-            HStack {
-                Text(String(format: "%.0f fps", bridge.fps))
-                    .font(.system(size: 11, weight: .medium, design: .monospaced))
-                    .foregroundStyle(fpsColor(bridge.fps))
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(.black.opacity(0.55),
-                                in: RoundedRectangle(cornerRadius: 6))
-                    .padding(.leading, 12)
-                    .padding(.bottom, 12)
-                Spacer()
-            }
-        }
-        .allowsHitTesting(false)
-    }
-
-    private func fpsColor(_ fps: Double) -> Color {
-        if fps >= 60 { return .green }
-        if fps >= 30 { return .yellow }
-        return .red
-    }
-}
-
 // MARK: - Bridge / Container
 
 /// Holds a reference to the active MTKView so SwiftUI gesture
@@ -1285,9 +1249,6 @@ final class MetalBridge: ObservableObject {
     /// visible red overlay so init failures aren't invisible white
     /// screens — the prior behavior on this code path.
     @Published var rendererFailed: Bool = false
-    /// Rolling FPS sampled by the renderer at ~2× per second. 0
-    /// while no draws have completed yet (first ~half second).
-    @Published var fps: Double = 0
     func needsDisplay() {
         guard let metalView else { return }
         #if canImport(AppKit)
@@ -1326,9 +1287,6 @@ struct MetalContainer: _ViewRepresentable {
     func makeNSView(context: Context) -> MTKView {
         let view = MTKView(frame: .zero)
         if let renderer = GraphRenderer(mtkView: view) {
-            renderer.fpsCallback = { [weak bridge] fps in
-                bridge?.fps = fps
-            }
             context.coordinator.renderer = renderer
             bridge.rendererFailed = false
         } else {
@@ -1347,9 +1305,6 @@ struct MetalContainer: _ViewRepresentable {
         view.isOpaque = false
         view.backgroundColor = .clear
         if let renderer = GraphRenderer(mtkView: view) {
-            renderer.fpsCallback = { [weak bridge] fps in
-                bridge?.fps = fps
-            }
             context.coordinator.renderer = renderer
             bridge.rendererFailed = false
         } else {

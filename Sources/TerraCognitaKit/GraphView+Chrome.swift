@@ -138,14 +138,6 @@ extension GraphView {
 
             topBar
 
-            // Canvas-mode FPS readout. The Metal path has its own
-            // GPU-accurate readout inside `GraphMetalView`; here we
-            // sample SwiftUI tick delivery as a "UI responsive?"
-            // proxy so the Canvas path can be compared.
-            if !proRendererActive {
-                CanvasFPSOverlay()
-            }
-
             if !duplicateClusters.isEmpty && !dupeBannerDismissed {
                 duplicateBanner
             }
