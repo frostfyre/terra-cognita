@@ -15,7 +15,6 @@ struct AboutSheet: View {
             Form {
                 identityHeader
                 aboutSection
-                supportSection
                 linksSection
                 contactSection
                 copyrightFooter
@@ -66,17 +65,6 @@ struct AboutSheet: View {
         }
     }
 
-    private var supportSection: some View {
-        Section("Support") {
-            Link(destination: AppLinks.support) {
-                Label("Support Terra Cognita", systemImage: "heart")
-            }
-            Text("Terra Cognita is free, donation-supported, and source-available under PolyForm Noncommercial. If it's earning a spot in your workflow, a contribution helps keep development going.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
-    }
-
     private var linksSection: some View {
         Section("Links") {
             Link(destination: AppLinks.marketing) {
@@ -122,16 +110,12 @@ struct AboutSheet: View {
 /// Canonical URLs surfaced in the About sheet (and anywhere else the
 /// app needs to link out). `terra-cognita.app/*` paths are
 /// redirectable on the landing side — handy for repointing privacy /
-/// legal targets without an app update. The donation link points
-/// straight at Buy Me A Coffee instead so it works today without
-/// requiring a /support redirect to be set up first; switching
-/// donation channels later means an app update, which is fine.
+/// legal targets without an app update.
+///
+/// No donation link: App Review rejected the Buy Me A Coffee link
+/// under 3.1.1 (donations tied to the app must go through IAP, and
+/// the US link-out allowance doesn't cover other storefronts).
 enum AppLinks {
-    /// Donation landing — Buy Me A Coffee (the Frostfyre Studios
-    /// channel for Terra Cognita, separate from the TTRPG Ko-fi).
-    /// Set up 2026-06-09.
-    static let support = URL(string: "https://buymeacoffee.com/frostfyre")!
-
     /// Public marketing / landing.
     static let marketing = URL(string: "https://terra-cognita.app")!
 
